@@ -1,0 +1,65 @@
+x-eureka-client: &eureka-client
+  depends_on:
+    discovery-service:
+      condition: service_healthy
+  environment:
+    SPRING_APPLICATION_JSON: '{"eureka":{"client":{"serviceUrl":{"defaultZone":"http://discovery-service:8761/eureka/"}}}}'
+
+services:
+  discovery-service:
+    build: ./discovery-service
+    ports:
+      - "8761:8761"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8761/actuator/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  cart-service:
+    <<: *eureka-client
+    build: ./cart-service
+    ports:
+      - "8080:8080"
+
+  gateway-service:
+    <<: *eureka-client
+    build: ./gateway-service
+    ports:
+      - "8081:8081"
+
+  finance-service:
+    <<: *eureka-client
+    build: ./finance-service
+    ports:
+      - "8082:8082"
+
+  identity-service:
+    <<: *eureka-client
+    build: ./identity-service
+    ports:
+      - "8083:8083"
+
+  notification-service:
+    <<: *eureka-client
+    build: ./notification-service
+    ports:
+      - "8084:8084"
+
+  order-service:
+    <<: *eureka-client
+    build: ./order-service
+    ports:
+      - "8085:8085"
+
+  payment-service:
+    <<: *eureka-client
+    build: ./payment-service
+    ports:
+      - "8086:8086"
+
+  product-service:
+    <<: *eureka-client
+    build: ./product-service
+    ports:
+      - "8087:8087"
