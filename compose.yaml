@@ -2,10 +2,32 @@ x-eureka-client: &eureka-client
   depends_on:
     discovery-service:
       condition: service_healthy
+    database:
+      condition: service_healthy
   environment:
     SPRING_APPLICATION_JSON: '{"eureka":{"client":{"serviceUrl":{"defaultZone":"http://discovery-service:8761/eureka/"}}}}'
+    SPRING_DATASOURCE_URL: jdbc:postgresql://database:5432/ecommerce
+    SPRING_DATASOURCE_USERNAME: ecommerce
+    SPRING_DATASOURCE_PASSWORD: ecommerce
 
 services:
+  # shortcut: shared database and credentials for dev, split before production.
+  database:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ecommerce
+      POSTGRES_USER: ecommerce
+      POSTGRES_PASSWORD: ecommerce
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecommerce -d ecommerce"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
   discovery-service:
     build: ./discovery-service
     ports:
@@ -63,3 +85,6 @@ services:
     build: ./product-service
     ports:
       - "8087:8087"
+
+volumes:
+  postgres-data:
