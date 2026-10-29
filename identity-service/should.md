@@ -1,6 +1,10 @@
-# identity-service — Test improvements (should do)
+# identity-service — Improvements (should do)
 
-Open findings from the Codex review of the step 0 tests (2026-10-29, `gpt-5.6-terra`). Finding 9 (move `WebContractTests` to `@WebMvcTest`) is done. Severity is Codex's; the note is our assessment.
+Open findings from Codex reviews. Severity is Codex's; the note is our assessment. Findings marked *ours* were not raised by Codex.
+
+## Step 0 tests
+
+Open findings from the Codex review of the step 0 tests (2026-10-29, `gpt-5.6-terra`). Findings 9 (move `WebContractTests` to `@WebMvcTest`) and 8 (step 1) are done.
 
 | # | Severity | Where | Problem | Fix | Note |
 |---|---|---|---|---|---|
@@ -11,4 +15,20 @@ Open findings from the Codex review of the step 0 tests (2026-10-29, `gpt-5.6-te
 | 5 | Medium | `unexpectedExceptionDoesNotLeakItsMessage` | Expected message is read from `ErrorCode`, so a bad change there still passes | Assert the literal `"Unexpected error"` and that the body doesn't contain `hunter2` | |
 | 6 | Medium | Request id tests | Only tested on an error response with one value; empty id, >128 chars, allowed-character edges and MDC cleanup untested | Add a success-response (`/test/item`) case, length/charset boundary cases, and a `RequestIdFilter` unit test that checks MDC inside and after the chain | MDC test is nice to have |
 | 7 | Low | `pageDefaultsToFirstPageOfTwenty`, `pageSizeIsCappedAtOneHundred` | No status or content assertions | Add `isOk()` and data assertions (first item `0`; 12 items for the cap) | |
-| 8 | Medium | `IdentityServiceApplicationTests.flywayManagesTheIdentitySchema` | Only proves the Flyway history table exists | Assert the expected migration version and an Identity table | Do in step 1, once `V1__init.sql` exists |
+| 8 | Medium | `IdentityServiceApplicationTests.flywayManagesTheIdentitySchema` | Only proves the Flyway history table exists | Assert the expected migration version and an Identity table | **Done in step 1**: now asserts versions 1, 2 and the exact table list |
+
+## Audit package (`audit/`, `admin_audit_log`)
+
+Codex review of `audit/`, the `admin_audit_log` table in `V1__identity_schema.sql` and `AdminBootstrap` against `docs/database.docx` and `docs/api.docx` (2026-10-29, `gpt-5.6-terra`, read-only).
+
+| # | Severity | Where | Problem | Fix | Note |
+|---|---|---|---|---|---|
+| A1 | High | Audit writers | Only the bootstrap writes audit rows; approve, reject, ban, unban, disable, enable and role revoke write none (DB §6, DB §8 "Mọi hành động của Admin ghi AdminAuditLog") | Write the row in the same transaction as each admin action | Not a defect yet: those endpoints are step 7; tracked in checklist §9 |
+| A2 | Medium | `admin_audit_log.target_type` | No DB allow-list; the Java enum limits it but SQL accepts any string, which could blur the USER/CUSTOMER/SELLER scope distinction (shared ids) | V3 migration: `CHECK (target_type IN ('USER', 'CUSTOMER', 'SELLER'))` | Agree; cheap and consistent with the other enum columns |
+| A3 | Medium | `AdminAuditLog.beforeAfter` | Free-form `Map<String, Object>`, so a future caller could store a token, reset URL or password ("không ghi token/mật khẩu", DB §6) | Typed factories per action (e.g. `AdminAuditLog.ban(...)`) that build the map from known fields only; no raw-map constructor in callers | Agree; do in step 7 |
+| A4 | Medium | `admin_audit_log.reason` | Nullable and unbounded, while reject and ban require `reason` 1–1000 chars (API §6.1) | Validate in the step 7 request DTOs; optionally a DB CHECK requiring `reason` for REJECT/BAN/DISABLE | Partly agree: request validation is the main fix, the DB check is optional |
+| A5 | Medium | `AdminBootstrap` | ADMIN grant doesn't bump `authzVersion` or write `user.roles_changed` (DB §5.8, API §7.2) | Decide in step 3 whether every role grant bumps; write the event once the outbox exists (step 9) | Already an open issue in `identity-service.md`; no risk because a brand-new user has no tokens |
+| A6 | Medium | `AuditAction` | `RETRY_REFUND` missing (API refund retry "Ghi AuditLog RETRY_REFUND") | — | Disagree: refund retry is a Payment admin action; DB §6 puts AdminAuditLog in "Identity và quản trị từng service", so Payment keeps its own |
+| A7 | Low | `AdminAuditLogRepository.findByTargetTypeAndTargetIdOrderByHappenedAt` | Ordering not stable for equal timestamps | Add `auditId` as a tie-breaker | Suggestion, not a spec rule; cheap |
+| A8 | High | `AuditAction`, `ck_admin_audit_log_action` | *Ours (Codex read the line but didn't report it).* The docs conflict on action names: DB §6 lists `APPROVE, REJECT, BAN, UNBAN, DISABLE, ENABLE, GRANT_ROLE, REVOKE_ROLE` (what the code uses); the API enum table lists `APPROVE_SELLER, REJECT_SELLER, BAN, UNBAN, DISABLE_USER, ENABLE_USER, GRANT_ROLE, REVOKE_ROLE` plus Catalog/Payment actions | Team decides which doc wins; if the API names, rename in a V3 migration (CHECK + enum) | Open decision. Only the Identity subset applies to this service either way |
+| A9 | Low | `customers.ban_mode` | *Ours.* Redundant with `has_paid_order_before_ban` (true ⇔ PAYMENT_ONLY), so a buggy write could store them inconsistently | V3: drop `ban_mode` and derive `getBanMode()` in Java (or add a CHECK tying the two) | Not an audit-package finding, but came up in the same review; recommended: drop and derive |
