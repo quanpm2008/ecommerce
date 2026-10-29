@@ -15,19 +15,19 @@ Endpoint paths are shown as the public path after `/api/v1` (e.g. `/identity/aut
 
 ## 1. Schema and seed data (DB §3.1, §6)
 
-- [ ] `users`: `email` unique and stored trimmed + lowercase; `phone_number` unique when not null; `google_subject` unique when not null
-- [ ] CHECK on `users.auth_method`: LOCAL requires `password_hash` and null `google_subject`; GOOGLE the reverse
-- [ ] `users.status` ACTIVE/DISABLED; `disabled_reason` required when DISABLED; `authz_version` defaults to 1
-- [ ] `customers.customer_id` and `sellers.seller_id` are PK **and** FK → `users.user_id` (`ON DELETE RESTRICT`)
-- [ ] `ban_reason` required when BANNED; `rejection_reason` required when REJECTED
-- [ ] Partial unique indexes on normalized `seller_name` and `contact_phone` for PENDING/APPROVED sellers only (a REJECTED seller frees them)
-- [ ] `customer_addresses` FK → `customers`; supports soft delete
-- [ ] `roles`, `permissions`, `user_roles` (PK `user_id, role_id`, `revoked_at`), `role_permissions` (PK `role_id, permission_id`)
-- [ ] Seed contains exactly the roles CUSTOMER, SELLER, ADMIN and the permission matrix from API §3.2.1
-- [ ] Baseline policy (`account:read:own`, `account:update:own`, `seller:application:own`, create own Customer) applies to every ACTIVE user without a role
-- [ ] Support tables exist: `auth_sessions` (`refresh_token_hash` unique), `password_reset_tokens` (`token_hash` unique, `used_at`), `admin_audit_log`, `outbox_events`
-- [ ] Admin user can be bootstrapped (LOCAL + ADMIN role) without any public endpoint
-- [ ] No `LoginIdentifier` or `AdminAccount` table
+- [x] `users`: `email` unique and stored trimmed + lowercase; `phone_number` unique when not null; `google_subject` unique when not null
+- [x] CHECK on `users.auth_method`: LOCAL requires `password_hash` and null `google_subject`; GOOGLE the reverse
+- [x] `users.status` ACTIVE/DISABLED; `disabled_reason` required when DISABLED; `authz_version` defaults to 1
+- [x] `customers.customer_id` and `sellers.seller_id` are PK **and** FK → `users.user_id` (`ON DELETE RESTRICT`)
+- [x] `ban_reason` required when BANNED; `rejection_reason` required when REJECTED
+- [x] Partial unique indexes on normalized `seller_name` and `contact_phone` for PENDING/APPROVED sellers only (a REJECTED seller frees them)
+- [x] `customer_addresses` FK → `customers`; supports soft delete
+- [x] `roles`, `permissions`, `user_roles` (PK `user_id, role_id`, `revoked_at`), `role_permissions` (PK `role_id, permission_id`)
+- [x] Seed contains exactly the roles CUSTOMER, SELLER, ADMIN and the permission matrix from API §3.2.1
+- [x] Baseline policy (`account:read:own`, `account:update:own`, `seller:application:own`, create own Customer) applies to every ACTIVE user without a role
+- [x] Support tables exist: `auth_sessions` (`refresh_token_hash` unique), `password_reset_tokens` (`token_hash` unique, `used_at`), `admin_audit_log`, `outbox_events`
+- [x] Admin user can be bootstrapped (LOCAL + ADMIN role) without any public endpoint
+- [x] No `LoginIdentifier` or `AdminAccount` table
 
 ## 2. Tokens and sessions (API §2.3, §3.2)
 

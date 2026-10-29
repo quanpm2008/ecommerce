@@ -1,8 +1,7 @@
 package com.example.identity_service.common.error;
 
 import com.example.identity_service.common.web.RequestIdFilter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
@@ -22,9 +21,8 @@ import java.util.Map;
  * Turns every exception raised in Spring MVC into the API §3.3 error envelope.
  */
 @RestControllerAdvice
+@Slf4j
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
-
-	private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
 	@ExceptionHandler(ApiException.class)
 	ResponseEntity<Object> handleApiException(ApiException ex, WebRequest request) {
