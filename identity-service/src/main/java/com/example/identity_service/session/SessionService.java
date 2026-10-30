@@ -1,6 +1,7 @@
 package com.example.identity_service.session;
 
 import com.example.identity_service.common.error.ApiException;
+import com.example.identity_service.common.security.OpaqueTokens;
 import com.example.identity_service.common.error.ErrorCode;
 import com.example.identity_service.user.User;
 import com.example.identity_service.user.UserRepository;
@@ -42,8 +43,8 @@ public class SessionService {
 		if (!user.isActive()) {
 			throw new IllegalStateException("Cannot start a session for a disabled user");
 		}
-		String refreshToken = RefreshTokens.generate();
-		AuthSession session = sessions.save(new AuthSession(user.getUserId(), RefreshTokens.hash(refreshToken),
+		String refreshToken = OpaqueTokens.generate();
+		AuthSession session = sessions.save(new AuthSession(user.getUserId(), OpaqueTokens.hash(refreshToken),
 				clock.instant().plus(properties.refreshTtl())));
 		return tokens(user, session, refreshToken);
 	}
@@ -55,7 +56,7 @@ public class SessionService {
 	@Transactional(noRollbackFor = ApiException.class)
 	public IssuedTokens refresh(String refreshToken) {
 		Instant now = clock.instant();
-		String hash = RefreshTokens.hash(refreshToken);
+		String hash = OpaqueTokens.hash(refreshToken);
 		Optional<AuthSession> current = sessions.findByRefreshTokenHash(hash);
 		if (current.isEmpty()) {
 			rotatedTokens.findById(hash)
@@ -72,9 +73,25 @@ public class SessionService {
 			throw new ApiException(ErrorCode.INVALID_REFRESH_TOKEN);
 		}
 		rotatedTokens.save(new RotatedRefreshToken(hash, session.getSessionId(), now));
-		String next = RefreshTokens.generate();
-		session.rotate(RefreshTokens.hash(next), now.plus(properties.refreshTtl()));
+		String next = OpaqueTokens.generate();
+		session.rotate(OpaqueTokens.hash(next), now.plus(properties.refreshTtl()));
 		return tokens(user, session, next);
+	}
+
+	/**
+	 * Logout: revokes the session only if {@code refreshToken} (current or already rotated) belongs to the caller's
+	 * own session. Anything else, including an expired or already revoked session, is silently ignored.
+	 */
+	@Transactional
+	public void logout(UUID userId, UUID sessionId, String refreshToken) {
+		String hash = OpaqueTokens.hash(refreshToken);
+		Optional<UUID> tokenSession = sessions.findByRefreshTokenHash(hash).map(AuthSession::getSessionId)
+				.or(() -> rotatedTokens.findById(hash).map(RotatedRefreshToken::getSessionId));
+		if (tokenSession.filter(sessionId::equals).isPresent()) {
+			sessions.findLockedById(sessionId)
+					.filter(session -> session.getUserId().equals(userId))
+					.ifPresent(session -> session.revoke(clock.instant()));
+		}
 	}
 
 	@Transactional

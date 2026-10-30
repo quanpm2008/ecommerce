@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -27,6 +28,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 	@ExceptionHandler(ApiException.class)
 	ResponseEntity<Object> handleApiException(ApiException ex, WebRequest request) {
 		return respond(ex.code(), ex.getMessage(), ex.details(), new HttpHeaders(), ex.code().status(), request);
+	}
+
+	/** {@code @PreAuthorize} denials happen inside MVC, after the security filters. */
+	@ExceptionHandler(AccessDeniedException.class)
+	ResponseEntity<Object> handleAccessDenied(AccessDeniedException ex, WebRequest request) {
+		ErrorCode code = ErrorCode.FORBIDDEN;
+		return respond(code, code.defaultMessage(), List.of(), new HttpHeaders(), code.status(), request);
 	}
 
 	@ExceptionHandler(Exception.class)

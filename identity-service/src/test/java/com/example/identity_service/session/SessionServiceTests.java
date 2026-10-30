@@ -4,6 +4,7 @@ import com.example.identity_service.MutableClock;
 import com.example.identity_service.TestClockConfiguration;
 import com.example.identity_service.TestcontainersConfiguration;
 import com.example.identity_service.common.error.ApiException;
+import com.example.identity_service.common.security.OpaqueTokens;
 import com.example.identity_service.common.error.ErrorCode;
 import com.example.identity_service.rbac.RoleAssignments;
 import com.example.identity_service.rbac.RoleCode;
@@ -104,7 +105,7 @@ class SessionServiceTests {
 
 		String stored = jdbc.queryForObject("select refresh_token_hash from auth_sessions where session_id = ?",
 				String.class, tokens.sessionId());
-		assertThat(stored).isNotEqualTo(tokens.refreshToken()).isEqualTo(RefreshTokens.hash(tokens.refreshToken()));
+		assertThat(stored).isNotEqualTo(tokens.refreshToken()).isEqualTo(OpaqueTokens.hash(tokens.refreshToken()));
 	}
 
 	@Test
@@ -143,7 +144,7 @@ class SessionServiceTests {
 
 	@Test
 	void unknownRefreshTokenIsRejected() {
-		assertInvalidRefresh(RefreshTokens.generate());
+		assertInvalidRefresh(OpaqueTokens.generate());
 	}
 
 	@Test

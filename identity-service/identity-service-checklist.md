@@ -45,40 +45,40 @@ Endpoint paths are shown as the public path after `/api/v1` (e.g. `/identity/aut
 ## 3. Auth endpoints (API §6.1, UC-A01–A05, A07)
 
 **`POST /identity/auth/register`**
-- [ ] Creates User LOCAL + Customer + UserRole CUSTOMER in one transaction; returns 201 `UserSelfProfile` and no tokens
-- [ ] Email normalized to lowercase; phone normalized to `0xxxxxxxxx`; `confirmPassword` must match
-- [ ] 409 `EMAIL_ALREADY_USED` / `PHONE_ALREADY_USED` with the field in `details`; 400 `PASSWORD_POLICY_VIOLATION` (G-07)
-- [ ] Rate limited per IP
+- [x] Creates User LOCAL + Customer + UserRole CUSTOMER in one transaction; returns 201 `UserSelfProfile` and no tokens
+- [x] Email normalized to lowercase; phone normalized to `0xxxxxxxxx`; `confirmPassword` must match
+- [x] 409 `EMAIL_ALREADY_USED` / `PHONE_ALREADY_USED` with the field in `details`; 400 `PASSWORD_POLICY_VIOLATION` (G-07)
+- [x] Rate limited per IP
 
 **`POST /identity/auth/register-seller`**
-- [ ] Creates User LOCAL + Seller PENDING (`seller_id = user_id`) in one transaction; no SELLER role, no wallet
-- [ ] Returns 201 `UserSelfProfile` with `sellerProfile.approvalStatus=PENDING`, `roles=[]`
-- [ ] 409 `EMAIL_ALREADY_USED`, `PHONE_ALREADY_USED`, `SELLER_NAME_ALREADY_USED`
-- [ ] Publishes `seller.registered`
+- [x] Creates User LOCAL + Seller PENDING (`seller_id = user_id`) in one transaction; no SELLER role, no wallet
+- [x] Returns 201 `UserSelfProfile` with `sellerProfile.approvalStatus=PENDING`, `roles=[]`
+- [x] 409 `EMAIL_ALREADY_USED`, `PHONE_ALREADY_USED`, `SELLER_NAME_ALREADY_USED`
+- [x] Publishes `seller.registered` *(written to the outbox in the same transaction; delivery is step 9)*
 
 **`POST /identity/auth/login`**
-- [ ] Single login for customer, seller and admin; request has no role or actor type
-- [ ] Returns `AuthTokens` with `UserSelfProfile` including both profiles when present
-- [ ] 401 `INVALID_CREDENTIALS`; 409 `WRONG_AUTH_METHOD` for Google accounts; 403 `ACCOUNT_DISABLED` for DISABLED users
-- [ ] PENDING / REJECTED / BANNED profiles still log in when the User is ACTIVE
+- [x] Single login for customer, seller and admin; request has no role or actor type
+- [x] Returns `AuthTokens` with `UserSelfProfile` including both profiles when present
+- [x] 401 `INVALID_CREDENTIALS`; 409 `WRONG_AUTH_METHOD` for Google accounts; 403 `ACCOUNT_DISABLED` for DISABLED users
+- [x] PENDING / REJECTED / BANNED profiles still log in when the User is ACTIVE
 
 **`POST /identity/auth/refresh`** and **`POST /identity/auth/logout`**
-- [ ] Refresh: 401 `INVALID_REFRESH_TOKEN` for disabled user, revoked session or unknown token
-- [ ] Logout revokes only the current session; expired or already-logged-out token still returns 204
-- [ ] Cannot log out someone else's session with your own access token
+- [x] Refresh: 401 `INVALID_REFRESH_TOKEN` for disabled user, revoked session or unknown token
+- [x] Logout revokes only the current session; expired or already-logged-out token still returns 204
+- [x] Cannot log out someone else's session with your own access token
 
-**`POST /identity/auth/google`** (Should)
+**`POST /identity/auth/google`** (Should; deferred, needs a Google client id)
 - [ ] Verifies the Google ID token (issuer, audience, email verified)
 - [ ] New subject + unused email → creates User GOOGLE + Customer + CUSTOMER, `isNewAccount=true`
 - [ ] Email already registered with a password → 409 `WRONG_AUTH_METHOD`, accounts never merged
 - [ ] 401 `GOOGLE_AUTH_FAILED` on invalid token
 
 **Password**
-- [ ] `POST /identity/auth/password/forgot` returns the same 202 response whether the email exists, is Google, or is a pending seller (G-05); rate limited (429 `RATE_LIMITED`)
-- [ ] Reset token stored as hash, expires (P-05), link uses a configured trusted origin (never a client-supplied URL)
-- [ ] Publishes `password.reset_requested`; the reset URL is never logged
-- [ ] `POST /identity/auth/password/reset` is single use, updates the LOCAL password, revokes all sessions; 400 `RESET_TOKEN_INVALID`
-- [ ] `PUT /identity/users/me/password` (LOCAL only) revokes all sessions including the current one; 400 `PASSWORD_INCORRECT`, `PASSWORD_SAME_AS_OLD`; Google account → 403
+- [x] `POST /identity/auth/password/forgot` returns the same 202 response whether the email exists, is Google, or is a pending seller (G-05); rate limited (429 `RATE_LIMITED`)
+- [x] Reset token stored as hash, expires (P-05), link uses a configured trusted origin (never a client-supplied URL)
+- [x] Publishes `password.reset_requested`; the reset URL is never logged *(outbox; delivery is step 9)*
+- [x] `POST /identity/auth/password/reset` is single use, updates the LOCAL password, revokes all sessions; 400 `RESET_TOKEN_INVALID`
+- [x] `PUT /identity/users/me/password` (LOCAL only) revokes all sessions including the current one; 400 `PASSWORD_INCORRECT`, `PASSWORD_SAME_AS_OLD`; Google account → 403
 
 ## 4. Self-service (UC-A02, A06)
 

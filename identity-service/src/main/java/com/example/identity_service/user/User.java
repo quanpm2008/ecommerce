@@ -78,6 +78,14 @@ public class User {
 		return email.strip().toLowerCase(Locale.ROOT);
 	}
 
+	/** {@code passwordHash} is already encoded. Callers revoke the user's sessions. */
+	public void changePassword(String passwordHash) {
+		if (authMethod != AuthMethod.LOCAL) {
+			throw new IllegalStateException("Only LOCAL users have a password");
+		}
+		this.passwordHash = Objects.requireNonNull(passwordHash);
+	}
+
 	public void disable(String reason) {
 		status = UserStatus.DISABLED;
 		disabledReason = Objects.requireNonNull(reason);
