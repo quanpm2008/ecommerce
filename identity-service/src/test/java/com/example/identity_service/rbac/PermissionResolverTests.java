@@ -25,10 +25,7 @@ class PermissionResolverTests {
 	UserRepository users;
 
 	@Autowired
-	RoleRepository roles;
-
-	@Autowired
-	UserRoleRepository userRoles;
+	RoleAssignments roleAssignments;
 
 	@Test
 	void activeUserWithoutRolesGetsOnlyTheBaselinePolicy() {
@@ -52,7 +49,8 @@ class PermissionResolverTests {
 	@Test
 	void revokedRoleGrantsNothing() {
 		User user = newUser();
-		grant(user, RoleCode.CUSTOMER).revoke();
+		grant(user, RoleCode.CUSTOMER);
+		roleAssignments.revoke(user, RoleCode.CUSTOMER);
 
 		assertThat(resolver.activeRolesOf(user)).isEmpty();
 		assertThat(resolver.permissionsOf(user)).containsExactlyInAnyOrderElementsOf(RbacMatrix.BASELINE);
@@ -74,7 +72,7 @@ class PermissionResolverTests {
 		grant(user, RoleCode.CUSTOMER);
 		user.disable("Fraud");
 
-		assertThat(user.getAuthzVersion()).isEqualTo(2);
+		assertThat(user.getAuthzVersion()).as("one bump for the grant, one for disable").isEqualTo(3);
 		assertThat(resolver.permissionsOf(user)).isEmpty();
 	}
 
@@ -82,8 +80,8 @@ class PermissionResolverTests {
 		return users.save(User.local(UUID.randomUUID() + "@example.test", "{noop}x", "Test User", null));
 	}
 
-	private UserRole grant(User user, RoleCode code) {
-		return userRoles.save(new UserRole(user.getUserId(), roles.findByCode(code).orElseThrow(), null));
+	private void grant(User user, RoleCode code) {
+		roleAssignments.grant(user, code, null);
 	}
 
 }

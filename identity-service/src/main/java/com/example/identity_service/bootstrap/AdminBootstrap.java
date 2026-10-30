@@ -4,11 +4,8 @@ import com.example.identity_service.audit.AdminAuditLog;
 import com.example.identity_service.audit.AdminAuditLogRepository;
 import com.example.identity_service.audit.AuditAction;
 import com.example.identity_service.audit.AuditTargetType;
-import com.example.identity_service.rbac.Role;
+import com.example.identity_service.rbac.RoleAssignments;
 import com.example.identity_service.rbac.RoleCode;
-import com.example.identity_service.rbac.RoleRepository;
-import com.example.identity_service.rbac.UserRole;
-import com.example.identity_service.rbac.UserRoleRepository;
 import com.example.identity_service.user.PasswordPolicy;
 import com.example.identity_service.user.User;
 import com.example.identity_service.user.UserRepository;
@@ -37,9 +34,7 @@ public class AdminBootstrap implements ApplicationRunner {
 
 	private final UserRepository users;
 
-	private final RoleRepository roles;
-
-	private final UserRoleRepository userRoles;
+	private final RoleAssignments roleAssignments;
 
 	private final AdminAuditLogRepository auditLog;
 
@@ -63,8 +58,7 @@ public class AdminBootstrap implements ApplicationRunner {
 		}
 		User admin = users.save(User.local(email, passwordEncoder.encode(properties.password()),
 				properties.fullName(), null));
-		Role adminRole = roles.findByCode(RoleCode.ADMIN).orElseThrow();
-		userRoles.save(new UserRole(admin.getUserId(), adminRole, null));
+		roleAssignments.grant(admin, RoleCode.ADMIN, null);
 		auditLog.save(new AdminAuditLog(null, AuditAction.GRANT_ROLE, AuditTargetType.USER, admin.getUserId(),
 				"Admin bootstrap", Map.of("after", Map.of("role", RoleCode.ADMIN.name())), null));
 		log.info("Admin bootstrap created user {}", admin.getUserId());

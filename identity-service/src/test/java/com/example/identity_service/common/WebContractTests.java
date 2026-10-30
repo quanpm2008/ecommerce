@@ -8,11 +8,16 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -32,10 +37,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Web-layer slice: no database or Eureka. {@code @WebMvcTest} picks up {@code RequestIdFilter} and
- * {@code GlobalExceptionHandler} itself; the test-only controller is nested, so it is imported explicitly.
+ * {@code GlobalExceptionHandler} itself; the test-only controller is nested, so it is imported explicitly. Security
+ * is opened up here: token handling is covered by {@code AccessTokenAuthenticationTests}.
  */
 @WebMvcTest(controllers = WebContractTests.ContractController.class)
-@Import(WebContractTests.ContractController.class)
+@Import({ WebContractTests.ContractController.class, WebContractTests.OpenSecurity.class })
 class WebContractTests {
 
 	@Autowired
@@ -178,6 +184,18 @@ class WebContractTests {
 		@GetMapping("/test/boom")
 		ApiResponse<Void> boom() {
 			throw new IllegalStateException("database password is hunter2");
+		}
+
+	}
+
+	@TestConfiguration
+	static class OpenSecurity {
+
+		@Bean
+		SecurityFilterChain openSecurity(HttpSecurity http) throws Exception {
+			return http.csrf(AbstractHttpConfigurer::disable)
+					.authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
+					.build();
 		}
 
 	}

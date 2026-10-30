@@ -84,6 +84,12 @@ public class User {
 		bumpAuthzVersion();
 	}
 
+	public void enable() {
+		status = UserStatus.ACTIVE;
+		disabledReason = null;
+		bumpAuthzVersion();
+	}
+
 	/** Invalidates permissions carried by tokens issued before a role or access-status change. */
 	public void bumpAuthzVersion() {
 		authzVersion++;

@@ -50,8 +50,14 @@ public class UserRole {
 		return revokedAt == null;
 	}
 
-	public void revoke() {
+	void revoke() {
 		revokedAt = Instant.now();
+	}
+
+	void regrant(UUID grantedByUserId) {
+		this.grantedByUserId = grantedByUserId;
+		this.grantedAt = Instant.now();
+		this.revokedAt = null;
 	}
 
 }
