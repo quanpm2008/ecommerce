@@ -8,8 +8,7 @@ import com.example.identity_service.audit.AuditTargetType;
 import com.example.identity_service.rbac.PermissionResolver;
 import com.example.identity_service.rbac.Permissions;
 import com.example.identity_service.rbac.RoleCode;
-import com.example.identity_service.rbac.RoleRepository;
-import com.example.identity_service.rbac.UserRoleRepository;
+import com.example.identity_service.rbac.RoleAssignments;
 import com.example.identity_service.user.AuthMethod;
 import com.example.identity_service.user.User;
 import com.example.identity_service.user.UserRepository;
@@ -40,10 +39,7 @@ class AdminBootstrapTests {
 	UserRepository users;
 
 	@Autowired
-	RoleRepository roles;
-
-	@Autowired
-	UserRoleRepository userRoles;
+	RoleAssignments roleAssignments;
 
 	@Autowired
 	AdminAuditLogRepository auditLog;
@@ -67,6 +63,7 @@ class AdminBootstrapTests {
 		assertThat(admin.getAuthMethod()).isEqualTo(AuthMethod.LOCAL);
 		assertThat(admin.getStatus()).isEqualTo(UserStatus.ACTIVE);
 		assertThat(admin.getFullName()).isEqualTo("Administrator");
+		assertThat(admin.getAuthzVersion()).as("the ADMIN grant bumps the version").isEqualTo(2);
 		assertThat(passwordEncoder.matches("Admin1234", admin.getPasswordHash())).isTrue();
 		assertThat(resolver.activeRolesOf(admin)).containsExactly(RoleCode.ADMIN);
 		assertThat(resolver.permissionsOf(admin)).contains("seller:approve", "account:moderate")
@@ -116,7 +113,7 @@ class AdminBootstrapTests {
 	}
 
 	private AdminBootstrap withProperties(AdminBootstrapProperties properties) {
-		return new AdminBootstrap(properties, users, roles, userRoles, auditLog, passwordEncoder);
+		return new AdminBootstrap(properties, users, roleAssignments, auditLog, passwordEncoder);
 	}
 
 }

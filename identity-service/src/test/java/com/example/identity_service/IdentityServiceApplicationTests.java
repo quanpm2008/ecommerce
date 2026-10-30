@@ -26,7 +26,7 @@ class IdentityServiceApplicationTests {
 		List<String> versions = jdbcTemplate.queryForList("""
 				select version from identity.flyway_schema_history
 				where success and version is not null order by installed_rank""", String.class);
-		assertThat(versions).containsExactly("1", "2");
+		assertThat(versions).containsExactly("1", "2", "3");
 	}
 
 	@Test
@@ -36,7 +36,7 @@ class IdentityServiceApplicationTests {
 		// No LoginIdentifier or AdminAccount table: email/google_subject are unique on users and admins are User + ADMIN.
 		assertThat(tables).containsExactlyInAnyOrder("flyway_schema_history", "users", "customers", "sellers",
 				"customer_addresses", "roles", "permissions", "user_roles", "role_permissions", "auth_sessions",
-				"password_reset_tokens", "admin_audit_log", "outbox_events");
+				"rotated_refresh_tokens", "password_reset_tokens", "admin_audit_log", "outbox_events");
 	}
 
 }

@@ -31,16 +31,16 @@ Endpoint paths are shown as the public path after `/api/v1` (e.g. `/identity/aut
 
 ## 2. Tokens and sessions (API §2.3, §3.2)
 
-- [ ] Access token claims: `sub` (= `user_id`), `iss`, `aud`, `iat`, `exp`, `jti`, `sessionId`, `authzVersion`; no email, phone or credentials
-- [ ] Tokens are signed and verifiable by the gateway and other services (public key / JWKS endpoint or shared config)
-- [ ] Access and refresh lifetimes are configurable (proposed 15 min / 7 days, P-06)
-- [ ] Only the refresh token **hash** is stored
-- [ ] Refresh rotates the token; the old one stops working
-- [ ] Reusing an already-rotated refresh token revokes the whole token chain
-- [ ] Refresh reloads roles and permissions from the database, never copies them from the old token
-- [ ] A token whose `authzVersion` is older than the user's current version is rejected with 401 `TOKEN_STALE`
-- [ ] A token whose session is revoked is rejected
-- [ ] `authz_version` increments in the same transaction as every role or access-status change
+- [x] Access token claims: `sub` (= `user_id`), `iss`, `aud`, `iat`, `exp`, `jti`, `sessionId`, `authzVersion`; no email, phone or credentials
+- [x] Tokens are signed and verifiable by the gateway and other services (public key / JWKS endpoint or shared config)
+- [x] Access and refresh lifetimes are configurable (proposed 15 min / 7 days, P-06)
+- [x] Only the refresh token **hash** is stored
+- [x] Refresh rotates the token; the old one stops working
+- [x] Reusing an already-rotated refresh token revokes the whole token chain
+- [x] Refresh reloads roles and permissions from the database, never copies them from the old token
+- [x] A token whose `authzVersion` is older than the user's current version is rejected with 401 `TOKEN_STALE`
+- [x] A token whose session is revoked is rejected
+- [ ] `authz_version` increments in the same transaction as every role or access-status change *(done for role grant/revoke via `RoleAssignments` and User disable/enable; Customer/Seller ban, unban and approval come in step 7 and must bump too)*
 
 ## 3. Auth endpoints (API §6.1, UC-A01–A05, A07)
 
