@@ -1,5 +1,6 @@
 package com.example.identity_service.common.error;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -23,6 +24,15 @@ public class ApiException extends RuntimeException {
 		super(message);
 		this.code = code;
 		this.details = List.copyOf(details);
+	}
+
+	/** An error about one request field: {@code details: [{ field, issue, message }]}, like bean validation. */
+	public static ApiException forField(ErrorCode code, String field, String issue) {
+		Map<String, Object> detail = new LinkedHashMap<>();
+		detail.put("field", field);
+		detail.put("issue", issue);
+		detail.put("message", code.defaultMessage());
+		return new ApiException(code, code.defaultMessage(), List.of(detail));
 	}
 
 	public ErrorCode code() {

@@ -10,4 +10,9 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 	/** {@code email} must already be normalized with {@link User#normalizeEmail}. */
 	Optional<User> findByEmail(String email);
 
+	boolean existsByEmail(String email);
+
+	/** {@code phoneNumber} must already be normalized with {@link PhoneNumbers#normalize}. */
+	boolean existsByPhoneNumber(String phoneNumber);
+
 }
