@@ -105,8 +105,8 @@ Endpoint paths are shown as the public path after `/api/v1` (e.g. `/identity/aut
 
 ## 6. Public seller lookup (UC-B02)
 
-- [ ] `GET /identity/sellers` returns only sellers with User ACTIVE, Seller APPROVED + ACTIVE, and the SELLER role active (G-06); case-insensitive search on name
-- [ ] `GET /identity/sellers/{sellerId}` returns only `SellerPublic` (no email, phone, ban or review reasons); invalid seller → 404
+- [x] `GET /identity/sellers` returns only sellers with User ACTIVE, Seller APPROVED + ACTIVE, and the SELLER role active (G-06); case-insensitive search on name — `PublicSellerEndpointsTests`; ordered by name (the spec has no `sort`), accent-insensitive search still open (C-08)
+- [x] `GET /identity/sellers/{sellerId}` returns only `SellerPublic` (no email, phone, ban or review reasons); invalid seller → 404 (a malformed id is 400 `VALIDATION_ERROR`)
 
 ## 7. Admin (UC-E01, E03, E06)
 
