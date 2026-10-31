@@ -17,6 +17,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -56,6 +57,27 @@ public class Customer {
 	public Customer(User user) {
 		this.user = user;
 		this.status = CustomerStatus.ACTIVE;
+	}
+
+	public boolean isBanned() {
+		return status == CustomerStatus.BANNED;
+	}
+
+	/**
+	 * G-14: the mode is fixed from Order's answer at ban time ({@code hasPaidOrder}) and never re-evaluated later.
+	 */
+	public void ban(String reason, boolean hasPaidOrder) {
+		this.status = CustomerStatus.BANNED;
+		this.banReason = Objects.requireNonNull(reason);
+		this.hasPaidOrderBeforeBan = hasPaidOrder;
+		this.banMode = hasPaidOrder ? CustomerBanMode.PAYMENT_ONLY : CustomerBanMode.CUSTOMER_SCOPE;
+	}
+
+	public void unban() {
+		this.status = CustomerStatus.ACTIVE;
+		this.banReason = null;
+		this.hasPaidOrderBeforeBan = null;
+		this.banMode = null;
 	}
 
 }

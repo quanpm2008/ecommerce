@@ -2,6 +2,7 @@ package com.example.identity_service.seller;
 
 import com.example.identity_service.common.error.ApiException;
 import com.example.identity_service.common.error.ErrorCode;
+import com.example.identity_service.common.persistence.LikePattern;
 import com.example.identity_service.media.MediaStorage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -31,7 +32,7 @@ public class SellerDirectory {
 	@Transactional(readOnly = true)
 	public Page<SellerPublic> search(String q, Pageable pageable) {
 		Pageable page = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), ORDER);
-		return sellers.findPublic(containsPattern(q), page).map(this::view);
+		return sellers.findPublic(LikePattern.contains(q), page).map(this::view);
 	}
 
 	@Transactional(readOnly = true)
@@ -43,15 +44,6 @@ public class SellerDirectory {
 	private SellerPublic view(Seller seller) {
 		String key = seller.getLogoObjectKey();
 		return SellerPublic.of(seller, key == null ? null : media.readUrl(key));
-	}
-
-	/** Blank matches everything; otherwise a literal substring ({@code %}, {@code _} and {@code \} escaped). */
-	static String containsPattern(String q) {
-		if (q == null || q.isBlank()) {
-			return "%";
-		}
-		String literal = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
-		return "%" + literal + "%";
 	}
 
 }

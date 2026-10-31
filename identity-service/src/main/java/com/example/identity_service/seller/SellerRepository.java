@@ -57,4 +57,17 @@ public interface SellerRepository extends JpaRepository<Seller, UUID> {
 	Page<Seller> findVisible(UUID sellerId, String namePattern, UserStatus userStatus,
 			SellerApprovalStatus approvalStatus, SellerStatus sellerStatus, RoleCode role, Pageable pageable);
 
+	/**
+	 * Admin list, including pending applications: optional approval status and status, and {@code pattern}
+	 * ({@code like}, {@code \} escape, already lower-case) on the shop name, email or contact phone.
+	 */
+	@Query("""
+			select s from Seller s join s.user u
+			where (:approvalStatus is null or s.approvalStatus = :approvalStatus)
+			  and (:status is null or s.status = :status)
+			  and (lower(s.sellerName) like :pattern escape '\\' or u.email like :pattern escape '\\'
+			       or s.contactPhone like :pattern escape '\\')""")
+	Page<Seller> findForAdmin(SellerApprovalStatus approvalStatus, SellerStatus status, String pattern,
+			Pageable pageable);
+
 }

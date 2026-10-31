@@ -40,7 +40,7 @@ Endpoint paths are shown as the public path after `/api/v1` (e.g. `/identity/aut
 - [x] Refresh reloads roles and permissions from the database, never copies them from the old token
 - [x] A token whose `authzVersion` is older than the user's current version is rejected with 401 `TOKEN_STALE`
 - [x] A token whose session is revoked is rejected
-- [ ] `authz_version` increments in the same transaction as every role or access-status change *(done for role grant/revoke via `RoleAssignments` and User disable/enable; Customer/Seller ban, unban and approval come in step 7 and must bump too)*
+- [x] `authz_version` increments in the same transaction as every role or access-status change *(role grant/revoke via `RoleAssignments`, User disable/enable, and since step 7 seller approve/reject and Customer/Seller ban/unban; `SellerReviewEndpointsTests`, `ModerationEndpointsTests`)*
 
 ## 3. Auth endpoints (API §6.1, UC-A01–A05, A07)
 
@@ -110,17 +110,17 @@ Endpoint paths are shown as the public path after `/api/v1` (e.g. `/identity/aut
 
 ## 7. Admin (UC-E01, E03, E06)
 
-- [ ] `GET /identity/admin/customers`, `/customers/{id}`, `/sellers`, `/sellers/{id}` require `operations:read:any`; filters and sort as specified; never return password hash, Google subject or tokens
-- [ ] Approve: PENDING only → APPROVED + SELLER role + `authzVersion` bump + audit + `seller.approved` event in one transaction
-- [ ] Approve: 409 `ALREADY_PROCESSED` if not PENDING; 403 `SELF_APPROVAL_FORBIDDEN` when admin = seller
-- [ ] Reject: PENDING only → REJECTED with reason, `authzVersion` bump, audit, `seller.rejected`; User and Customer kept; name and phone freed
-- [ ] Ban requires `scope` USER / CUSTOMER / SELLER (missing or invalid → 400)
-- [ ] Ban USER → DISABLED, all sessions revoked, `user.disabled`
-- [ ] Ban CUSTOMER → BANNED per G-14, calling Order `has-paid-order`; result stored with the ban; Order unavailable → 503 and nothing changed; `customer.banned`
-- [ ] Ban SELLER → BANNED, selling and withdrawal blocked, role kept, `seller.banned`
-- [ ] Banning a user with ADMIN is refused; banning a missing profile → 404
-- [ ] Same ban repeated → 200 with no new event or audit; different reason while already banned → 409 `INVALID_STATE_TRANSITION`
-- [ ] Unban restores only that scope; never grants SELLER to an unapproved seller; already ACTIVE → 200 with no event
+- [x] `GET /identity/admin/customers`, `/customers/{id}`, `/sellers`, `/sellers/{id}` require `operations:read:any`; filters and sort as specified; never return password hash, Google subject or tokens — `AdminReadEndpointsTests`; unknown sort keys → 400
+- [x] Approve: PENDING only → APPROVED + SELLER role + `authzVersion` bump + audit + `seller.approved` event in one transaction — `SellerReviewEndpointsTests`
+- [x] Approve: 409 `ALREADY_PROCESSED` if not PENDING; 403 `SELF_APPROVAL_FORBIDDEN` when admin = seller (also for reject)
+- [x] Reject: PENDING only → REJECTED with reason, `authzVersion` bump, audit, `seller.rejected`; User and Customer kept; name and phone freed
+- [x] Ban requires `scope` USER / CUSTOMER / SELLER (missing or invalid → 400) — `ModerationEndpointsTests`
+- [x] Ban USER → DISABLED, all sessions revoked, `user.disabled`
+- [x] Ban CUSTOMER → BANNED per G-14, calling Order `has-paid-order`; result stored with the ban; Order unavailable → 503 and nothing changed; `customer.banned` — tested with a fake Order (`FakeOrderClient`) plus `HttpOrderClientTests`; in Docker it is 503 until order-service implements the endpoint
+- [x] Ban SELLER → BANNED, selling and withdrawal blocked, role kept, `seller.banned` — Identity side: shop hidden and seller endpoints refused; Order/Finance enforce theirs from the authorization context and the event
+- [x] Banning a user with ADMIN is refused; banning a missing profile → 404
+- [x] Same ban repeated → 200 with no new event or audit; different reason while already banned → 409 `INVALID_STATE_TRANSITION`
+- [x] Unban restores only that scope; never grants SELLER to an unapproved seller; already ACTIVE → 200 with no event
 
 ## 8. Internal API (API §7.1) — service credentials only
 

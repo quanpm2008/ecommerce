@@ -89,6 +89,7 @@ services:
       # Uploads are signed for the browser's view of the storage; identity itself talks to it inside the network.
       IDENTITY_MEDIA_ENDPOINT: http://object-storage:8333
       IDENTITY_MEDIA_PUBLIC_ENDPOINT: http://localhost:${S3_HOST_PORT:-8333}
+      IDENTITY_ORDER_BASE_URL: http://order-service:8085
     ports:
       - "8083:8083"
 
