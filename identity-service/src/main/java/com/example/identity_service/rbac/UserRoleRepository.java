@@ -16,4 +16,8 @@ public interface UserRoleRepository extends JpaRepository<UserRole, UserRoleId> 
 			where ur.id.userId = :userId and ur.revokedAt is null""")
 	Set<String> findActivePermissionCodes(UUID userId);
 
+	/** True if the user held the role and it was revoked (only admins revoke roles). */
+	@Query("select count(ur) > 0 from UserRole ur where ur.id.userId = :userId and ur.role.code = :code and ur.revokedAt is not null")
+	boolean wasRevoked(UUID userId, RoleCode code);
+
 }

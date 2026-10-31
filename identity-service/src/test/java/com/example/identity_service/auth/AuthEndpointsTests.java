@@ -1,11 +1,8 @@
 package com.example.identity_service.auth;
 
-import com.example.identity_service.rbac.RoleAssignments;
+import com.example.identity_service.EndpointTestSupport;
 import com.example.identity_service.rbac.RoleCode;
-import com.example.identity_service.user.UserRepository;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.Map;
 import java.util.UUID;
@@ -24,16 +21,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * Register, register-seller, login, refresh and logout through HTTP (API §6.1, checklist section 3).
  */
-class AuthEndpointsTests extends AuthEndpointTestSupport {
-
-	@Autowired
-	RoleAssignments roleAssignments;
-
-	@Autowired
-	UserRepository users;
-
-	@Autowired
-	TransactionTemplate tx;
+class AuthEndpointsTests extends EndpointTestSupport {
 
 	// --- register ---
 
@@ -157,7 +145,7 @@ class AuthEndpointsTests extends AuthEndpointTestSupport {
 	void oneLoginReturnsTokensAndEveryProfileTheUserHas() throws Exception {
 		String email = uniqueEmail();
 		UUID userId = UUID.fromString(registerCustomer(email));
-		makeApprovedSeller(userId);
+		approveSellerProfile(userId);
 
 		login(email.toUpperCase(), PASSWORD).andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.tokenType").value("Bearer"))
@@ -295,16 +283,11 @@ class AuthEndpointsTests extends AuthEndpointTestSupport {
 		return email;
 	}
 
-	/** Gives the user an APPROVED Seller profile and the SELLER role, as an admin approval would. */
-	private void makeApprovedSeller(UUID userId) {
-		UUID reviewer = jdbc.queryForObject("""
-				insert into users (email, auth_method, password_hash, full_name) values (?, 'LOCAL', 'x', 'Reviewer')
-				returning user_id""", UUID.class, uniqueEmail());
-		jdbc.update("""
-				insert into sellers (seller_id, seller_name, contact_phone, approval_status, reviewed_at, reviewed_by_user_id)
-				values (?, ?, ?, 'APPROVED', now(), ?)""", userId, "Shop " + userId, uniquePhone(), reviewer);
-		tx.executeWithoutResult(status -> roleAssignments.grant(users.findById(userId).orElseThrow(), RoleCode.SELLER,
-				reviewer));
+	/** Gives a customer an extra APPROVED Seller profile and the SELLER role. */
+	private void approveSellerProfile(UUID userId) {
+		jdbc.update("insert into sellers (seller_id, seller_name, contact_phone) values (?, ?, ?)", userId,
+				"Shop " + userId, uniquePhone());
+		approveSeller(userId);
 	}
 
 }

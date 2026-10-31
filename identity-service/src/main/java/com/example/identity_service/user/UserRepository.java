@@ -15,4 +15,6 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 	/** {@code phoneNumber} must already be normalized with {@link PhoneNumbers#normalize}. */
 	boolean existsByPhoneNumber(String phoneNumber);
 
+	boolean existsByPhoneNumberAndUserIdNot(String phoneNumber, UUID userId);
+
 }

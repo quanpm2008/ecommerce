@@ -82,19 +82,19 @@ Endpoint paths are shown as the public path after `/api/v1` (e.g. `/identity/aut
 
 ## 4. Self-service (UC-A02, A06)
 
-- [ ] `GET /identity/users/me` returns `UserSelfProfile` with roles, permissions, `authzVersion` and both optional profiles
-- [ ] `PATCH /identity/users/me` accepts only `fullName`, `phoneNumber`; any other field → 400 `VALIDATION_ERROR`; duplicate phone → 409
-- [ ] `POST /identity/users/me/customer-profile`: 201 creates Customer + CUSTOMER and bumps `authzVersion`; 200 if it already exists; BANNED Customer is returned unchanged; CUSTOMER revoked by an admin → 403
-- [ ] `POST /identity/users/me/seller-application`: 201 first time, 200 on resubmission after REJECTED, same `seller_id`; PENDING/APPROVED → 409 `INVALID_STATE_TRANSITION`; body never accepts userId/email/password/role/status
-- [ ] `GET /identity/users/me/seller-application` returns own `SellerSelfProfile` or null without needing SELLER
-- [ ] `PATCH /identity/sellers/me` updates description, `logoObjectKey`, `contactPhone`; cannot change email or seller name
-- [ ] `POST /identity/media/upload-urls` only purpose `SELLER_LOGO`, only for APPROVED/ACTIVE seller; 422 `MEDIA_INVALID`
+- [x] `GET /identity/users/me` returns `UserSelfProfile` with roles, permissions, `authzVersion` and both optional profiles
+- [x] `PATCH /identity/users/me` accepts only `fullName`, `phoneNumber`; any other field → 400 `VALIDATION_ERROR`; duplicate phone → 409
+- [x] `POST /identity/users/me/customer-profile`: 201 creates Customer + CUSTOMER and bumps `authzVersion`; 200 if it already exists; BANNED Customer is returned unchanged; CUSTOMER revoked by an admin → 403
+- [x] `POST /identity/users/me/seller-application`: 201 first time, 200 on resubmission after REJECTED, same `seller_id`; PENDING/APPROVED → 409 `INVALID_STATE_TRANSITION`; body never accepts userId/email/password/role/status
+- [x] `GET /identity/users/me/seller-application` returns own `SellerSelfProfile` or null without needing SELLER
+- [x] `PATCH /identity/sellers/me` updates description, `logoObjectKey`, `contactPhone`; cannot change email or seller name
+- [x] `POST /identity/media/upload-urls` only purpose `SELLER_LOGO`, only for APPROVED/ACTIVE seller; 422 `MEDIA_INVALID`
 
 **Addresses** (`/identity/customers/me/addresses`)
-- [ ] List returns only `customer_id = sub`, ordered: default first, then `lastUsedAt` desc, `createdAt` asc; `meta.maxAddresses` present
-- [ ] Create validates the ward belongs to the province; 422 `ADDRESS_LIMIT_EXCEEDED` (P-09), 422 `INVALID_REGION`
-- [ ] Update / delete of another customer's address → 404
-- [ ] Deleting the last address is allowed; deleting an address referenced by an order is soft (G-13)
+- [x] List returns only `customer_id = sub`, ordered: default first, then `lastUsedAt` desc, `createdAt` asc; `meta.maxAddresses` present
+- [x] Create validates the ward belongs to the province; 422 `ADDRESS_LIMIT_EXCEEDED` (P-09), 422 `INVALID_REGION` *(through `RegionProvider`; tested with a fake source, the real provider is step 5)*
+- [x] Update / delete of another customer's address → 404
+- [x] Deleting the last address is allowed; deleting an address referenced by an order is soft (G-13) *("referenced" = already used by a checkout, i.e. `last_used_at` set)*
 
 ## 5. Regions (API §6.1 "Nguồn dữ liệu địa giới")
 
