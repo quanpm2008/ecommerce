@@ -4,7 +4,7 @@ x-eureka-client: &eureka-client
       condition: service_healthy
     database:
       condition: service_healthy
-  environment:
+  environment: &eureka-client-env
     SPRING_APPLICATION_JSON: '{"eureka":{"client":{"serviceUrl":{"defaultZone":"http://discovery-service:8761/eureka/"}}}}'
     SPRING_DATASOURCE_URL: jdbc:postgresql://database:5432/ecommerce
     SPRING_DATASOURCE_USERNAME: ecommerce
@@ -24,6 +24,21 @@ services:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ecommerce -d ecommerce"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  # S3-compatible object storage (SeaweedFS) for presigned media uploads. Dev credentials in identity-service/infra/seaweedfs/s3.json.
+  object-storage:
+    image: chrislusf/seaweedfs:4.45
+    command: server -s3 -s3.config=/etc/seaweedfs/s3.json -dir=/data -ip.bind=0.0.0.0
+    ports:
+      - "127.0.0.1:${S3_HOST_PORT:-8333}:8333"
+    volumes:
+      - ./identity-service/infra/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
+      - object-storage-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8333/healthz"]
       interval: 5s
       timeout: 3s
       retries: 12
@@ -69,6 +84,11 @@ services:
     build: ./identity-service
     volumes:
       - ./identity-service/src:/app/src:ro
+    environment:
+      <<: *eureka-client-env
+      # Uploads are signed for the browser's view of the storage; identity itself talks to it inside the network.
+      IDENTITY_MEDIA_ENDPOINT: http://object-storage:8333
+      IDENTITY_MEDIA_PUBLIC_ENDPOINT: http://localhost:${S3_HOST_PORT:-8333}
     ports:
       - "8083:8083"
 
@@ -106,3 +126,4 @@ services:
 
 volumes:
   postgres-data:
+  object-storage-data:

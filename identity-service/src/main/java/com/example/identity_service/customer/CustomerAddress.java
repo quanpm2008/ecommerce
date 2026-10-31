@@ -60,4 +60,24 @@ public class CustomerAddress {
 		this.addressDetail = addressDetail;
 	}
 
+
+	/** {@code recipientPhone} must already be normalized and the region already verified. */
+	public void update(String recipientName, String recipientPhone, String provinceCode, String wardCode,
+			String addressDetail) {
+		this.recipientName = recipientName;
+		this.recipientPhone = recipientPhone;
+		this.provinceCode = provinceCode;
+		this.wardCode = wardCode;
+		this.addressDetail = addressDetail;
+	}
+
+	/** An address used by a checkout may be referenced by orders, so it is only hidden (G-13). */
+	public boolean mustBeKept() {
+		return lastUsedAt != null;
+	}
+
+	public void markDeleted(Instant now) {
+		this.deletedAt = now;
+	}
+
 }

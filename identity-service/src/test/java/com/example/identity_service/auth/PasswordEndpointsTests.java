@@ -1,8 +1,8 @@
 package com.example.identity_service.auth;
 
+import com.example.identity_service.EndpointTestSupport;
 import com.example.identity_service.common.security.OpaqueTokens;
 import com.example.identity_service.session.SessionService;
-import com.example.identity_service.user.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,15 +25,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Forgot, reset and change password through HTTP (API §6.1, UC-A04, A05, checklist section 3).
  */
 @ExtendWith(OutputCaptureExtension.class)
-class PasswordEndpointsTests extends AuthEndpointTestSupport {
+class PasswordEndpointsTests extends EndpointTestSupport {
 
 	static final String NEW_PASSWORD = "Changed456";
 
 	@Autowired
 	SessionService sessions;
-
-	@Autowired
-	UserRepository users;
 
 	// --- forgot ---
 

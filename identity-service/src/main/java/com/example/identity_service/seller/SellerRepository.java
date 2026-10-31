@@ -21,4 +21,10 @@ public interface SellerRepository extends JpaRepository<Seller, UUID> {
 			where contact_phone = :contactPhone and approval_status in ('PENDING', 'APPROVED'))""", nativeQuery = true)
 	boolean existsActiveContactPhone(String contactPhone);
 
+	@Query(value = """
+			select exists (select 1 from sellers
+			where contact_phone = :contactPhone and seller_id <> :sellerId
+			  and approval_status in ('PENDING', 'APPROVED'))""", nativeQuery = true)
+	boolean existsActiveContactPhoneOfAnotherSeller(String contactPhone, UUID sellerId);
+
 }

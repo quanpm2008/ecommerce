@@ -78,4 +78,39 @@ public class Seller {
 		this.registeredAt = Instant.now();
 	}
 
+
+	/** Only APPROVED and ACTIVE sellers may run their shop (DB §3.1.3). */
+	public boolean canOperate() {
+		return approvalStatus == SellerApprovalStatus.APPROVED && status == SellerStatus.ACTIVE;
+	}
+
+	/** A REJECTED application submitted again: same seller id, back to PENDING, review fields cleared. */
+	public void resubmit(String sellerName, String contactPhone, String description) {
+		if (approvalStatus != SellerApprovalStatus.REJECTED) {
+			throw new IllegalStateException("Only a REJECTED application can be resubmitted");
+		}
+		this.sellerName = sellerName.strip();
+		this.contactPhone = contactPhone;
+		this.description = description;
+		this.approvalStatus = SellerApprovalStatus.PENDING;
+		this.rejectionReason = null;
+		this.reviewedAt = null;
+		this.reviewedByUserId = null;
+		this.registeredAt = Instant.now();
+	}
+
+	public void changeDescription(String description) {
+		this.description = description;
+	}
+
+	/** {@code logoObjectKey} must already be verified; null removes the logo. */
+	public void changeLogo(String logoObjectKey) {
+		this.logoObjectKey = logoObjectKey;
+	}
+
+	/** {@code contactPhone} must already be normalized. */
+	public void changeContactPhone(String contactPhone) {
+		this.contactPhone = contactPhone;
+	}
+
 }

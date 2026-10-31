@@ -78,6 +78,15 @@ public class User {
 		return email.strip().toLowerCase(Locale.ROOT);
 	}
 
+	public void rename(String fullName) {
+		this.fullName = Objects.requireNonNull(fullName);
+	}
+
+	/** {@code phoneNumber} must already be normalized. */
+	public void changePhoneNumber(String phoneNumber) {
+		this.phoneNumber = Objects.requireNonNull(phoneNumber);
+	}
+
 	/** {@code passwordHash} is already encoded. Callers revoke the user's sessions. */
 	public void changePassword(String passwordHash) {
 		if (authMethod != AuthMethod.LOCAL) {

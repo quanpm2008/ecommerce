@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "ecommerce-dev",
+      "credentials": [{ "accessKey": "ecommerce", "secretKey": "ecommerce-secret" }],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}
