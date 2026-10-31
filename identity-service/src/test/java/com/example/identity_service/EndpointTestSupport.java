@@ -34,7 +34,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * clock), fresh emails and phone numbers per test, and a random client IP per test so per-IP rate limits never leak
  * between tests.
  */
-@SpringBootTest(properties = "eureka.client.enabled=false")
+@SpringBootTest(properties = { "eureka.client.enabled=false",
+		"identity.internal.clients.order-service=" + EndpointTestSupport.ORDER_TOKEN,
+		"identity.internal.clients.notification-service=" + EndpointTestSupport.NOTIFICATION_TOKEN,
+		"identity.internal.clients.gateway-service=" + EndpointTestSupport.GATEWAY_TOKEN,
+		"identity.internal.clients.payment-service=too-short" })
 @AutoConfigureMockMvc
 @Import({ TestcontainersConfiguration.class, TestClockConfiguration.class, SeaweedfsTestConfiguration.class,
 		FakeRegionProvider.Configuration.class, FakeOrderClient.Configuration.class })
@@ -43,6 +47,13 @@ public abstract class EndpointTestSupport {
 	protected static final String API = "/api/v1/identity";
 
 	protected static final String PASSWORD = "Secret123";
+
+	/** {@code X-Service-Token} values of the services configured for tests ({@code payment-service}'s is too short). */
+	protected static final String ORDER_TOKEN = "order-service-test-token-0123456789abcdef";
+
+	protected static final String NOTIFICATION_TOKEN = "notification-service-test-token-0123456789";
+
+	protected static final String GATEWAY_TOKEN = "gateway-service-test-token-0123456789abcdef";
 
 	@Autowired
 	protected MockMvc mvc;
@@ -103,6 +114,29 @@ public abstract class EndpointTestSupport {
 		});
 		if (json != null) {
 			request.contentType(MediaType.APPLICATION_JSON).content(json);
+		}
+		if (accessToken != null) {
+			request.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken);
+		}
+		return mvc.perform(request);
+	}
+
+	/**
+	 * Any endpoint under {@code /internal/v1/identity}, as a service ({@code serviceToken} in {@code X-Service-Token},
+	 * may be null), optionally carrying a user's access token as Bearer.
+	 */
+	protected ResultActions internal(HttpMethod method, String path, String json, String serviceToken,
+			String accessToken) throws Exception {
+		MockHttpServletRequestBuilder request = withIp(switch (method.name()) {
+			case "GET" -> get("/internal/v1/identity" + path);
+			case "POST" -> post("/internal/v1/identity" + path);
+			default -> throw new IllegalArgumentException(method.name());
+		});
+		if (json != null) {
+			request.contentType(MediaType.APPLICATION_JSON).content(json);
+		}
+		if (serviceToken != null) {
+			request.header("X-Service-Token", serviceToken);
 		}
 		if (accessToken != null) {
 			request.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken);

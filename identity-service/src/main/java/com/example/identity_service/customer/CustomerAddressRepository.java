@@ -1,6 +1,7 @@
 package com.example.identity_service.customer;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 import java.util.List;
@@ -21,5 +22,12 @@ public interface CustomerAddressRepository extends JpaRepository<CustomerAddress
 	List<CustomerAddress> findBook(UUID customerId);
 
 	Optional<CustomerAddress> findByAddressIdAndCustomerIdAndDeletedAtIsNull(UUID addressId, UUID customerId);
+
+	/** Records a checkout's use of an address once; 0 means this checkout session already touched it. */
+	@Modifying
+	@Query(value = """
+			insert into address_touches (address_id, checkout_session_id) values (:addressId, :checkoutSessionId)
+			on conflict do nothing""", nativeQuery = true)
+	int recordTouch(UUID addressId, String checkoutSessionId);
 
 }

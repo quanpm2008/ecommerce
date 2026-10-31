@@ -59,15 +59,31 @@ public class RegionCatalog {
 	/** Display names, or empty when the source is unavailable: listing addresses must not fail because of it. */
 	public Optional<Names> names(String provinceCode, String wardCode) {
 		try {
-			String province = provinces().items().stream().filter(p -> p.code().equals(provinceCode))
-					.map(Province::name).findFirst().orElse(null);
-			String ward = wards(provinceCode).items().stream().filter(w -> w.code().equals(wardCode))
-					.map(Ward::name).findFirst().orElse(null);
-			return Optional.of(new Names(province, ward));
+			return Optional.of(lookUpNames(provinceCode, wardCode));
 		}
 		catch (ApiException ex) {
 			return Optional.empty();
 		}
+	}
+
+	/**
+	 * Both names for an address snapshot that must be complete (an order keeps them): 503 if the source cannot
+	 * answer, 422 {@code INVALID_REGION} if it no longer knows the province or ward.
+	 */
+	public Names requireNames(String provinceCode, String wardCode) {
+		Names names = lookUpNames(provinceCode, wardCode);
+		if (names.provinceName() == null || names.wardName() == null) {
+			throw ApiException.forField(ErrorCode.INVALID_REGION, "wardCode", "NOT_IN_PROVINCE");
+		}
+		return names;
+	}
+
+	private Names lookUpNames(String provinceCode, String wardCode) {
+		String province = provinces().items().stream().filter(p -> p.code().equals(provinceCode))
+				.map(Province::name).findFirst().orElse(null);
+		String ward = province == null ? null : wards(provinceCode).items().stream()
+				.filter(w -> w.code().equals(wardCode)).map(Ward::name).findFirst().orElse(null);
+		return new Names(province, ward);
 	}
 
 	@SuppressWarnings("unchecked")

@@ -7,6 +7,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -56,6 +58,10 @@ public interface SellerRepository extends JpaRepository<Seller, UUID> {
 			  and lower(s.sellerName) like lower(:namePattern) escape '\\'""")
 	Page<Seller> findVisible(UUID sellerId, String namePattern, UserStatus userStatus,
 			SellerApprovalStatus approvalStatus, SellerStatus sellerStatus, RoleCode role, Pageable pageable);
+
+	/** Sellers with their users in one query, for batch status lookups. */
+	@Query("select s from Seller s join fetch s.user where s.sellerId in :sellerIds")
+	List<Seller> findWithUserByIdIn(Collection<UUID> sellerIds);
 
 	/**
 	 * Admin list, including pending applications: optional approval status and status, and {@code pattern}

@@ -18,6 +18,7 @@ import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -33,6 +34,17 @@ public class AccessTokenDecoderConfig {
 	@Bean
 	JwtDecoder jwtDecoder(RSAKey signingKey, TokenProperties properties, SessionTokenValidator sessionValidator,
 			Clock clock) throws JOSEException {
+		return decoder(signingKey, properties, clock, sessionValidator);
+	}
+
+	/**
+	 * RS256 with Identity's key, then {@code exp}, {@code iss}, {@code aud} and any {@code extra} validators. Without
+	 * extras it checks only the token itself, as other services do; authorization-context uses that and reports the
+	 * session and user state instead of rejecting them.
+	 */
+	@SafeVarargs
+	public static JwtDecoder decoder(RSAKey signingKey, TokenProperties properties, Clock clock,
+			OAuth2TokenValidator<Jwt>... extra) throws JOSEException {
 		NimbusJwtDecoder decoder = NimbusJwtDecoder.withPublicKey(signingKey.toRSAPublicKey())
 				.signatureAlgorithm(SignatureAlgorithm.RS256)
 				.build();
@@ -43,8 +55,10 @@ public class AccessTokenDecoderConfig {
 				: OAuth2TokenValidatorResult.success();
 		OAuth2TokenValidator<Jwt> audience = new JwtClaimValidator<List<String>>(JwtClaimNames.AUD,
 				aud -> aud != null && aud.contains(properties.audience()));
-		decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(expiry,
-				new JwtIssuerValidator(properties.issuer()), audience, sessionValidator));
+		List<OAuth2TokenValidator<Jwt>> validators = new ArrayList<>(
+				List.of(expiry, new JwtIssuerValidator(properties.issuer()), audience));
+		validators.addAll(List.of(extra));
+		decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(validators));
 		return decoder;
 	}
 

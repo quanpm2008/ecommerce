@@ -19,11 +19,17 @@ public record CustomerProfile(UUID customerId, CustomerStatus status, String ban
 	}
 
 	static CustomerProfile of(Customer customer, boolean profileComplete) {
-		boolean banned = customer.getStatus() == CustomerStatus.BANNED;
-		AccessMode mode = !banned ? AccessMode.FULL
-				: customer.getBanMode() == CustomerBanMode.PAYMENT_ONLY ? AccessMode.PAYMENT_BLOCKED : AccessMode.BLOCKED;
-		return new CustomerProfile(customer.getCustomerId(), customer.getStatus(), customer.getBanReason(), banned,
-				mode, profileComplete, customer.getCreatedAt());
+		return new CustomerProfile(customer.getCustomerId(), customer.getStatus(), customer.getBanReason(),
+				customer.getStatus() == CustomerStatus.BANNED, accessModeOf(customer), profileComplete,
+				customer.getCreatedAt());
+	}
+
+	/** G-14: a banned customer with a paid order before the ban keeps old orders; one without loses everything. */
+	public static AccessMode accessModeOf(Customer customer) {
+		if (customer.getStatus() != CustomerStatus.BANNED) {
+			return AccessMode.FULL;
+		}
+		return customer.getBanMode() == CustomerBanMode.PAYMENT_ONLY ? AccessMode.PAYMENT_BLOCKED : AccessMode.BLOCKED;
 	}
 
 }
