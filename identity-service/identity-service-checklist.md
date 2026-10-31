@@ -124,13 +124,13 @@ Endpoint paths are shown as the public path after `/api/v1` (e.g. `/identity/aut
 
 ## 8. Internal API (API §7.1) — service credentials only
 
-- [ ] Every internal endpoint rejects calls without a valid service credential
-- [ ] `POST /internal/v1/identity/auth/authorization-context` returns `{ userId, userStatus, authzVersion, roles, permissions, customerProfile, sellerProfile, sessionActive }` and checks `sessionId` and token version
-- [ ] `GET /identity/sellers/status?ids=` returns status and a `sellable` flag with no PII
-- [ ] `GET /identity/customers/{id}/checkout-eligibility` returns `{ userStatus, customerStatus, paymentBlocked, hasPhone, addressCount, canCheckout, authzVersion }`
-- [ ] `GET /identity/customers/{id}/addresses/{addressId}` returns a snapshot; 404 if the address belongs to another customer
-- [ ] `POST /identity/customers/{id}/addresses/{addressId}/touch` updates `lastUsedAt`; repeating with the same `checkoutSessionId` has no extra effect
-- [ ] `GET /identity/users/{userId}/contact` returns `{ userId, email, fullName }` only to allowlisted services (Notification)
+- [x] Every internal endpoint rejects calls without a valid service credential — per-service `X-Service-Token` (team decision), own security chain for `/internal/**`, per-endpoint consumer allowlist; `InternalSecurityTests`
+- [x] `POST /internal/v1/identity/auth/authorization-context` returns `{ userId, userStatus, authzVersion, roles, permissions, customerProfile, sellerProfile, sessionActive }` and checks `sessionId` and token version — `AuthorizationContextTests`; stale → 401 `TOKEN_STALE`, revoked session reported as `sessionActive: false` with no roles/permissions
+- [x] `GET /identity/sellers/status?ids=` returns status and a `sellable` flag with no PII — `InternalQueriesTests`
+- [x] `GET /identity/customers/{id}/checkout-eligibility` returns `{ userStatus, customerStatus, paymentBlocked, hasPhone, addressCount, canCheckout, authzVersion }`
+- [x] `GET /identity/customers/{id}/addresses/{addressId}` returns a snapshot; 404 if the address belongs to another customer (also if deleted; 503 if region names can't be resolved)
+- [x] `POST /identity/customers/{id}/addresses/{addressId}/touch` updates `lastUsedAt`; repeating with the same `checkoutSessionId` has no extra effect (`address_touches`, V4)
+- [x] `GET /identity/users/{userId}/contact` returns `{ userId, email, fullName }` only to allowlisted services (Notification)
 
 ## 9. Events and audit (API §7.2, DB §6)
 

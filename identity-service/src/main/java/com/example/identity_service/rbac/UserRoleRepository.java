@@ -3,6 +3,7 @@ package com.example.identity_service.rbac;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
+import java.util.Collection;
 import java.util.Set;
 import java.util.UUID;
 
@@ -19,5 +20,11 @@ public interface UserRoleRepository extends JpaRepository<UserRole, UserRoleId> 
 	/** True if the user held the role and it was revoked (only admins revoke roles). */
 	@Query("select count(ur) > 0 from UserRole ur where ur.id.userId = :userId and ur.role.code = :code and ur.revokedAt is not null")
 	boolean wasRevoked(UUID userId, RoleCode code);
+
+	/** Which of {@code userIds} currently hold the role. */
+	@Query("""
+			select ur.id.userId from UserRole ur
+			where ur.id.userId in :userIds and ur.role.code = :code and ur.revokedAt is null""")
+	Set<UUID> findHoldersOfActiveRole(Collection<UUID> userIds, RoleCode code);
 
 }

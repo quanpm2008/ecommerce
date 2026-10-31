@@ -80,4 +80,9 @@ public class CustomerAddress {
 		this.deletedAt = now;
 	}
 
+	/** A committed checkout used this address; it becomes the default and is kept on delete. */
+	public void markUsed(Instant now) {
+		this.lastUsedAt = now;
+	}
+
 }
