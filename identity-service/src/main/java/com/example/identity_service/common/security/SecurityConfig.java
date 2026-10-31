@@ -2,6 +2,7 @@ package com.example.identity_service.common.security;
 
 import com.example.identity_service.auth.AuthController;
 import com.example.identity_service.region.RegionController;
+import com.example.identity_service.seller.PublicSellerController;
 import com.example.identity_service.session.JwksController;
 import org.springframework.http.HttpMethod;
 import org.springframework.context.annotation.Bean;
@@ -34,6 +35,8 @@ public class SecurityConfig {
 						.requestMatchers("/actuator/health", "/hello", JwksController.PATH).permitAll()
 						.requestMatchers(HttpMethod.POST, PUBLIC_POSTS).permitAll()
 						.requestMatchers(HttpMethod.GET, RegionController.PATH + "/**").permitAll()
+						.requestMatchers(HttpMethod.GET, PublicSellerController.PATH, PublicSellerController.PATH + "/*")
+						.permitAll()
 						.anyRequest().authenticated())
 				.oauth2ResourceServer(oauth -> oauth.jwt(jwt -> jwt.jwtAuthenticationConverter(permissions::authenticate))
 						.authenticationEntryPoint(errors)
