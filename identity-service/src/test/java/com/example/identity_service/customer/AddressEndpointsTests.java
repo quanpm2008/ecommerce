@@ -4,6 +4,7 @@ import com.example.identity_service.EndpointTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 
+import java.time.Duration;
 import java.util.UUID;
 
 import static com.example.identity_service.FakeRegionProvider.BA_DINH;
@@ -83,12 +84,14 @@ class AddressEndpointsTests extends EndpointTestSupport {
 	void unavailableRegionSourceIsAServiceErrorNotAnInvalidAddress() throws Exception {
 		Session customer = customer();
 		String existing = create(customer, "Before outage", HANOI, BA_DINH);
+		clock.advance(Duration.ofHours(25)); // past the 24 h cache, so nothing valid is left to answer from
+		String token = read(loginBody(customer.email()), "$.data.accessToken");
 		regions.setAvailable(false);
 
-		call(HttpMethod.POST, PATH, address("Le Van D", uniquePhone(), HANOI, BA_DINH), customer.accessToken())
+		call(HttpMethod.POST, PATH, address("Le Van D", uniquePhone(), HANOI, BA_DINH), token)
 				.andExpect(status().isServiceUnavailable())
 				.andExpect(jsonPath("$.error.code").value("REGION_SOURCE_UNAVAILABLE"));
-		call(HttpMethod.GET, PATH, null, customer.accessToken()).andExpect(status().isOk())
+		call(HttpMethod.GET, PATH, null, token).andExpect(status().isOk())
 				.andExpect(jsonPath("$.data[0].addressId").value(existing))
 				.andExpect(jsonPath("$.data[0].provinceName").isEmpty());
 	}
