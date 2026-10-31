@@ -25,7 +25,8 @@ public class RequestIdFilter extends OncePerRequestFilter {
 
 	public static final String HEADER = "X-Request-Id";
 	public static final String ATTRIBUTE = RequestIdFilter.class.getName() + ".requestId";
-	private static final String MDC_KEY = "requestId";
+	/** The current request's id while it is handled, or absent; also read by the audit log. */
+	public static final String MDC_KEY = "requestId";
 	private static final Pattern SAFE_ID = Pattern.compile("[A-Za-z0-9._-]{1,128}");
 
 	@Override

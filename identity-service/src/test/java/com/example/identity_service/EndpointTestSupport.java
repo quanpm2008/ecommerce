@@ -37,7 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = "eureka.client.enabled=false")
 @AutoConfigureMockMvc
 @Import({ TestcontainersConfiguration.class, TestClockConfiguration.class, SeaweedfsTestConfiguration.class,
-		FakeRegionProvider.Configuration.class })
+		FakeRegionProvider.Configuration.class, FakeOrderClient.Configuration.class })
 public abstract class EndpointTestSupport {
 
 	protected static final String API = "/api/v1/identity";
@@ -57,6 +57,9 @@ public abstract class EndpointTestSupport {
 	protected FakeRegionProvider regions;
 
 	@Autowired
+	protected FakeOrderClient orders;
+
+	@Autowired
 	protected RoleAssignments roleAssignments;
 
 	@Autowired
@@ -71,6 +74,7 @@ public abstract class EndpointTestSupport {
 	void freshClientAndClock() {
 		clock.reset();
 		regions.setAvailable(true);
+		orders.reset();
 		clientIp = randomIp();
 	}
 
@@ -173,6 +177,29 @@ public abstract class EndpointTestSupport {
 		Session pending = pendingSeller();
 		approveSeller(pending.userId());
 		return new Session(pending.userId(), pending.email(), read(loginBody(pending.email()), "$.data.accessToken"));
+	}
+
+	/**
+	 * A registered user (who is also a customer) granted ADMIN, logged in afterwards. Admins are only made by the
+	 * bootstrap in production; this is the test shortcut.
+	 */
+	protected Session admin() throws Exception {
+		Session user = customer();
+		tx.executeWithoutResult(status -> roleAssignments.grant(users.findById(user.userId()).orElseThrow(),
+				RoleCode.ADMIN, null));
+		return new Session(user.userId(), user.email(), read(loginBody(user.email()), "$.data.accessToken"));
+	}
+
+	/** Number of outbox rows of {@code eventType} for the aggregate. */
+	protected int events(String eventType, UUID aggregateId) {
+		return jdbc.queryForObject("select count(*) from outbox_events where event_type = ? and aggregate_id = ?",
+				Integer.class, eventType, aggregateId);
+	}
+
+	/** Number of audit rows with {@code action} on the target. */
+	protected int audits(String action, UUID targetId) {
+		return jdbc.queryForObject("select count(*) from admin_audit_log where action = ? and target_id = ?",
+				Integer.class, action, targetId);
 	}
 
 	/** Marks the user's Seller profile APPROVED and grants SELLER, like an admin approval. */

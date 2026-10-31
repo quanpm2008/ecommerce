@@ -17,6 +17,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -97,6 +98,44 @@ public class Seller {
 		this.reviewedAt = null;
 		this.reviewedByUserId = null;
 		this.registeredAt = Instant.now();
+	}
+
+	public boolean isPending() {
+		return approvalStatus == SellerApprovalStatus.PENDING;
+	}
+
+	/** PENDING → APPROVED; the SELLER role is granted by the caller in the same transaction. */
+	public void approve(UUID reviewerId, Instant now) {
+		requirePending();
+		this.approvalStatus = SellerApprovalStatus.APPROVED;
+		this.reviewedAt = now;
+		this.reviewedByUserId = reviewerId;
+	}
+
+	/** PENDING → REJECTED; the partial unique indexes then free the shop name and contact phone. */
+	public void reject(UUID reviewerId, String reason, Instant now) {
+		requirePending();
+		this.approvalStatus = SellerApprovalStatus.REJECTED;
+		this.rejectionReason = Objects.requireNonNull(reason);
+		this.reviewedAt = now;
+		this.reviewedByUserId = reviewerId;
+	}
+
+	/** Blocks selling and withdrawals (G-14); approval and the SELLER role are kept. */
+	public void ban(String reason) {
+		this.status = SellerStatus.BANNED;
+		this.banReason = Objects.requireNonNull(reason);
+	}
+
+	public void unban() {
+		this.status = SellerStatus.ACTIVE;
+		this.banReason = null;
+	}
+
+	private void requirePending() {
+		if (!isPending()) {
+			throw new IllegalStateException("Only a PENDING application can be reviewed");
+		}
 	}
 
 	public void changeDescription(String description) {

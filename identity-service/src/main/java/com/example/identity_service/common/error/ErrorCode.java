@@ -31,6 +31,8 @@ public enum ErrorCode {
 	FORBIDDEN(HttpStatus.FORBIDDEN, "You do not have permission to perform this action"),
 	NOT_FOUND(HttpStatus.NOT_FOUND, "Resource not found"),
 	INVALID_STATE_TRANSITION(HttpStatus.CONFLICT, "The current state does not allow this action"),
+	ALREADY_PROCESSED(HttpStatus.CONFLICT, "This item has already been processed"),
+	SELF_APPROVAL_FORBIDDEN(HttpStatus.FORBIDDEN, "Admins cannot review their own seller application"),
 	RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "Too many requests"),
 	INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Unexpected error"),
 	SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "A dependent service is not responding, please try again");

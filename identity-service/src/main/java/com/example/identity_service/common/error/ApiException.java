@@ -27,6 +27,11 @@ public class ApiException extends RuntimeException {
 	}
 
 	/** An error about one request field: {@code details: [{ field, issue, message }]}, like bean validation. */
+	/** A state conflict with {@code details[0].currentStatus} (API §4.1). */
+	public static ApiException currentStatus(ErrorCode code, Enum<?> currentStatus) {
+		return new ApiException(code, code.defaultMessage(), List.of(Map.of("currentStatus", currentStatus.name())));
+	}
+
 	public static ApiException forField(ErrorCode code, String field, String issue) {
 		Map<String, Object> detail = new LinkedHashMap<>();
 		detail.put("field", field);
