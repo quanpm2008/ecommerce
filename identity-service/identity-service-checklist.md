@@ -92,16 +92,16 @@ Endpoint paths are shown as the public path after `/api/v1` (e.g. `/identity/aut
 
 **Addresses** (`/identity/customers/me/addresses`)
 - [x] List returns only `customer_id = sub`, ordered: default first, then `lastUsedAt` desc, `createdAt` asc; `meta.maxAddresses` present
-- [x] Create validates the ward belongs to the province; 422 `ADDRESS_LIMIT_EXCEEDED` (P-09), 422 `INVALID_REGION` *(through `RegionProvider`; tested with a fake source, the real provider is step 5)*
+- [x] Create validates the ward belongs to the province; 422 `ADDRESS_LIMIT_EXCEEDED` (P-09), 422 `INVALID_REGION` *(through `RegionProvider`; tested with a fake source, and in Docker against the real provider since step 5)*
 - [x] Update / delete of another customer's address → 404
 - [x] Deleting the last address is allowed; deleting an address referenced by an order is soft (G-13) *("referenced" = already used by a checkout, i.e. `last_used_at` set)*
 
 ## 5. Regions (API §6.1 "Nguồn dữ liệu địa giới")
 
-- [ ] `GET /identity/regions/provinces` and `/provinces/{code}/wards` proxy an external provider configured on the server (`GEO_API_BASE_URL`, timeout, dataset version)
-- [ ] Responses include `meta { sourceVersion, fetchedAt }`; results cached (24 h proposed)
-- [ ] Not configured, or timeout with no valid cache → 503 `REGION_SOURCE_UNAVAILABLE`; never falls back to a static list
-- [ ] 422 `INVALID_REGION` only when the provider confirms the code is invalid
+- [x] `GET /identity/regions/provinces` and `/provinces/{code}/wards` proxy an external provider configured on the server (`GEO_API_BASE_URL`, timeout, dataset version) — provinces.open-api.vn v2 by default (provider choice still to be confirmed by the team); `RegionEndpointsTests`, `OpenApiVnRegionProviderTests`, manual check in Docker
+- [x] Responses include `meta { sourceVersion, fetchedAt }`; results cached (24 h proposed) — `sourceVersion` is the configured `GEO_API_DATASET_VERSION` (the provider publishes none)
+- [x] Not configured, or timeout with no valid cache → 503 `REGION_SOURCE_UNAVAILABLE`; never falls back to a static list
+- [x] 422 `INVALID_REGION` only when the provider confirms the code is invalid (missing from its province list, upstream 404, or a ward not in that province's list)
 
 ## 6. Public seller lookup (UC-B02)
 
