@@ -5,7 +5,7 @@ x-eureka-client: &eureka-client
     database:
       condition: service_healthy
   environment: &eureka-client-env
-    SPRING_APPLICATION_JSON: '{"eureka":{"client":{"serviceUrl":{"defaultZone":"http://discovery-service:8761/eureka/"}}}}'
+    SPRING_APPLICATION_JSON: &eureka-url-json '{"eureka":{"client":{"serviceUrl":{"defaultZone":"http://discovery-service:8761/eureka/"}}}}'
     SPRING_DATASOURCE_URL: jdbc:postgresql://database:5432/ecommerce
     SPRING_DATASOURCE_USERNAME: ecommerce
     SPRING_DATASOURCE_PASSWORD: ecommerce
@@ -62,6 +62,12 @@ services:
   gateway-service:
     <<: *eureka-client
     build: ./gateway-service
+    # No database: only wait for Eureka and only pass its URL (no SPRING_DATASOURCE_*).
+    depends_on:
+      discovery-service:
+        condition: service_healthy
+    environment:
+      SPRING_APPLICATION_JSON: *eureka-url-json
     ports:
       - "8081:8081"
 
