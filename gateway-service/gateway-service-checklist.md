@@ -45,11 +45,11 @@ Routes resolve services through Eureka (`lb://<spring.application.name>`), never
 
 ## 2. Blocking `/internal/**` (API §2.3, §7.1)
 
-- [ ] Every external request to `/internal/**` is rejected and never reaches a service. Any method, with or without a token or `X-Service-Token`. Status and code decided and documented (404 `NOT_FOUND` hides the path, 403 `FORBIDDEN` is explicit)
-- [ ] `/api/v1/internal/**` and other paths that put `internal/v1` under a public prefix are rejected too, or are not routable at all
-- [ ] Encoding and normalization tricks cannot get through: `/api/v1/identity/../../internal/v1/...`, `%2e%2e`, `%2F`, `//internal/v1`, `/INTERNAL/v1`, `;` path parameters, trailing `/`
-- [ ] Client-sent `X-Service-Token` is removed on public routes, so the gateway is never used to pass a service credential *(not in the spec; defensive)*
-- [ ] In the Docker setup, services' own ports being published to the host (8083 etc.) is a dev shortcut and recorded as such. In a deployment only the gateway is reachable from outside
+- [x] Every external request to `/internal/**` is rejected and never reaches a service. Any method, with or without a token or `X-Service-Token`. Status and code decided and documented (404 `NOT_FOUND` hides the path, 403 `FORBIDDEN` is explicit) — **404 `NOT_FOUND`**, the same as an unknown path; `security.InternalPathFilter` is the first filter of the security chain (before any token check), `InternalPathTests`, manual check in Docker
+- [x] `/api/v1/internal/**` and other paths that put `internal/v1` under a public prefix are rejected too, or are not routable at all — any path segment `internal` (any case, after percent-decoding) is blocked; no public API path has one
+- [x] Encoding and normalization tricks cannot get through: `/api/v1/identity/../../internal/v1/...`, `%2e%2e`, `%2F`, `//internal/v1`, `/INTERNAL/v1`, `;` path parameters, trailing `/` — 400 `VALIDATION_ERROR` (Tomcat or Spring Security's `StrictHttpFirewall`) or 404; 16 variants tested, none reaches a service. Tomcat's own rejections also use the envelope (`error.JsonErrorReportValve`)
+- [x] Client-sent `X-Service-Token` is removed on public routes, so the gateway is never used to pass a service credential *(not in the spec; defensive)* — `RoutesConfig` (`removeRequestHeader`), every casing and repeat
+- [x] In the Docker setup, services' own ports being published to the host (8083 etc.) is a dev shortcut and recorded as such. In a deployment only the gateway is reachable from outside — `DEVELOPMENT.md` and `gateway-service.md`
 
 ## 3. JWT verification (API §2.3, §3.2)
 
@@ -85,7 +85,7 @@ Tokens are issued by identity-service: RS256, `iss` `ecommerce-identity`, `aud` 
 
 ## 5. Error envelope (API §3.3, §3.4, §4.1)
 
-- [ ] Every error the gateway itself produces uses `{ "error": { code, message, details, requestId } }` with `Content-Type: application/json`; never the Spring Whitelabel page, a default `/error` JSON, or an empty 401/403 body
+- [ ] Every error the gateway itself produces uses `{ "error": { code, message, details, requestId } }` with `Content-Type: application/json`; never the Spring Whitelabel page, a default `/error` JSON, or an empty 401/403 body — *`/error` (step 1) and Tomcat's own rejections (step 2) done; 401/403 come with JWT (step 3)*
 - [ ] Codes come only from API §4.1: `UNAUTHENTICATED`, `TOKEN_EXPIRED` (401), `FORBIDDEN` (403), `NOT_FOUND` (404), `RATE_LIMITED` (429), `INTERNAL_ERROR` (500), `SERVICE_UNAVAILABLE` (503)
 - [ ] Messages in English (team decision, same as identity-service); no stack traces, class names or downstream host names in the body
 - [ ] Request body too large → rejected with a clear error (limit can be configured; status and code decided)

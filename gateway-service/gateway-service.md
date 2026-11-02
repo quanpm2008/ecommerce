@@ -26,13 +26,14 @@ API Gateway for the platform: routing, JWT verification, stripping client-suppli
   - `DownstreamErrors`: no instance, connection refused or read timeout → 503 `SERVICE_UNAVAILABLE`; anything else → 500 `INTERNAL_ERROR` (logged). It is registered as the first route filter, because the builder's `onError` only wraps the handler, not the `lb` filter.
   - Timeouts are Spring Boot's `spring.http.clients.*`: connect `GATEWAY_CONNECT_TIMEOUT` (2 s), read `GATEWAY_READ_TIMEOUT` (30 s).
 - **Errors** (`error` package): `ErrorResponse` / `ErrorCode` (the API §4.1 codes the gateway uses) and `GatewayErrorController`, which replaces Boot's `/error` so that 404s and other gateway-side errors use the envelope. `web.RequestIds` reads a safe `X-Request-Id` (identity-service's pattern); generating one is §4. Static resource mappings are off and `PageNotFound` warnings are muted.
+- **`/internal/**` blocked** (checklist §2): `security.InternalPathFilter`, the first filter of the security chain, answers 404 `NOT_FOUND` (like an unknown path, so nothing is revealed) to any path with a segment `internal`, in any case and after percent-decoding. Encoded `/`, `\`, `.`, `;`, `//` and `../` are rejected with 400 before that, by Tomcat or Spring Security's `StrictHttpFirewall`. A client-sent `X-Service-Token` is removed from every proxied request.
+- **Tomcat error page** (`error.JsonErrorReportValve`, installed by `TomcatErrorPageConfig`): requests Tomcat rejects itself (e.g. `%2F` in the path) also get the JSON envelope instead of Tomcat's HTML.
 - **Routing tests**: `RoutingTests` (every prefix, 404s, pass-through of methods, query, body, headers and downstream statuses/bodies, round robin over two instances) and `DownstreamFailureTests` (refused, no instance, timeout), against JDK-`HttpServer` stubs (`support.StubService`) over real HTTP. 59 tests.
 
 ## Not implemented yet
 
 - [ ] JWT resource-server config: issuer, audience, signing key or JWKS from identity-service
 - [ ] Remove client-sent `X-User-Id`, `X-Actor-Id`, `X-Actor-Type` and `X-Permissions` headers; forward `Authorization` and `X-Request-Id`, generating `X-Request-Id` when the client doesn't send one (services don't generate it)
-- [ ] Reject external requests to `/internal/**`
 - [ ] CORS for the 3 web apps; rate limiting
 - [ ] Standard error envelope (`{ "error": { code, message, details, requestId } }`) for gateway-level failures
 
@@ -41,6 +42,7 @@ API Gateway for the platform: routing, JWT verification, stripping client-suppli
 - The gateway stays on **8081**; the API spec's suggested base URL `http://localhost:8080/api/v1` doesn't apply here (8080 is cart-service). The FE base URL is `http://localhost:8081/api/v1` (`DEVELOPMENT.md`).
 - A crashed instance stays in Eureka until its lease expires (about 90 s) and requests sent to it get 503; there is no retry on another instance yet (checklist §1, open).
 - Until JWT verification (§3) the gateway forwards every routed request without checking the token; services still verify it themselves.
+- In compose every service also publishes its own port on all host interfaces (`8083:8083` etc.), so `/internal` is reachable around the gateway in dev (identity still demands `X-Service-Token`). That is a dev shortcut; in a deployment only the gateway is exposed. Binding those ports to `127.0.0.1` in `compose.yaml` would limit it to the dev machine.
 
 ## Log
 
@@ -52,3 +54,4 @@ API Gateway for the platform: routing, JWT verification, stripping client-suppli
 | 2026-11-02 | Added `gateway-service-checklist.md` (routing, `/internal/**` block, JWT, headers and `X-Request-Id`, error envelope, CORS, rate limits, Docker, end-to-end) |
 | 2026-11-02 | Checklist step 0: servlet stack only (webflux removed), stateless `SecurityConfig` replaces the temporary one and `HelloController`, health-only actuator without details, compose without database dependency or `SPRING_DATASOURCE_*`, foundation tests; FE base URL documented as 8081 |
 | 2026-11-02 | Checklist step 1 (routing): API §2.2 route table through Eureka with paths unchanged, 404 envelope for everything else (`GatewayErrorController`), 503 `SERVICE_UNAVAILABLE` for no instance / refused / timeout, configurable timeouts, no LoadBalancer cache; 59 tests; register → login → me → refresh → logout checked through the gateway in Docker |
+| 2026-11-02 | Checklist step 2 (`/internal/**`): `InternalPathFilter` blocks any `internal` path segment (any case, decoded) with 404 before token checks; encoding tricks rejected with 400 (16 variants tested); `X-Service-Token` stripped from proxied requests; Tomcat's own error page replaced by the JSON envelope; 95 tests |
