@@ -33,6 +33,8 @@ public class SecurityConfig {
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers("/actuator/health", "/hello", JwksController.PATH).permitAll()
+						// API docs; switched off with IDENTITY_API_DOCS_ENABLED=false where they shouldn't be public.
+						.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
 						.requestMatchers(HttpMethod.POST, PUBLIC_POSTS).permitAll()
 						.requestMatchers(HttpMethod.GET, RegionController.PATH + "/**").permitAll()
 						.requestMatchers(HttpMethod.GET, PublicSellerController.PATH, PublicSellerController.PATH + "/*")

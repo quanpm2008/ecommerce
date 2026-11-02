@@ -1,6 +1,7 @@
 package com.example.identity_service.common.web;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.data.domain.Page;
 
 import java.util.List;
@@ -11,6 +12,8 @@ import java.util.List;
  */
 public record ApiResponse<T>(
 		T data,
+		@Schema(description = "Lists: { page, size, totalItems, totalPages }; some endpoints add their own, e.g. "
+				+ "{ maxAddresses } or { sourceVersion, fetchedAt }. Absent otherwise.")
 		@JsonInclude(JsonInclude.Include.NON_NULL) Object meta) {
 
 	public static <T> ApiResponse<T> of(T data) {
