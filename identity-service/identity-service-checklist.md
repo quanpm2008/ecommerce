@@ -134,15 +134,15 @@ Endpoint paths are shown as the public path after `/api/v1` (e.g. `/identity/aut
 
 ## 9. Events and audit (API §7.2, DB §6)
 
-- [ ] Events are written to `outbox_events` in the same transaction as the change and published afterwards
-- [ ] Each event has the shared envelope (event id, actor) and the documented payload:
-  - [ ] `seller.registered` / `seller.approved` / `seller.rejected`
-  - [ ] `seller.banned` / `seller.unbanned`
-  - [ ] `customer.banned` / `customer.unbanned`
-  - [ ] `user.disabled` / `user.enabled`
-  - [ ] `user.roles_changed`
-  - [ ] `password.reset_requested`
-- [ ] `admin_audit_log` gets a row for every approve, reject, ban, unban, disable, enable, role grant and role revoke, with actor, target, reason, before/after and request id; never tokens or passwords
+- [ ] Events are written to `outbox_events` in the same transaction as the change and published afterwards — *written: yes. Published: `OutboxRelay` + `EventPublisher` are built and tested with a recording publisher (`OutboxRelayTests`), but no broker is chosen yet (team decision), so events stay PENDING. Tick once a broker adapter exists.*
+- [x] Each event has the shared envelope (event id, actor) and the documented payload — `EventPayloadTests` (exact keys) plus a per-user `version` (V5):
+  - [x] `seller.registered` / `seller.approved` / `seller.rejected`
+  - [x] `seller.banned` / `seller.unbanned`
+  - [x] `customer.banned` / `customer.unbanned`
+  - [x] `user.disabled` / `user.enabled`
+  - [x] `user.roles_changed`
+  - [x] `password.reset_requested`
+- [x] `admin_audit_log` gets a row for every approve, reject, ban, unban, disable, enable, role grant and role revoke, with actor, target, reason, before/after and request id; never tokens or passwords — role grant/revoke rows when an admin makes the change (`RoleAssignmentsTests`); typed `AuditState` snapshots
 
 ## 10. Cross-cutting RBAC rules (DB §5.8, API §2.3)
 
