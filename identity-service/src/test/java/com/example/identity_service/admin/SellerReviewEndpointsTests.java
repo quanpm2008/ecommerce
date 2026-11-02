@@ -30,7 +30,9 @@ class SellerReviewEndpointsTests extends EndpointTestSupport {
 
 		assertThat(authzVersion(seller.userId())).isGreaterThan(before);
 		assertThat(audits("APPROVE", seller.userId())).isEqualTo(1);
+		assertThat(audits("GRANT_ROLE", seller.userId())).isEqualTo(1);
 		assertThat(events("seller.approved", seller.userId())).isEqualTo(1);
+		assertThat(events("user.roles_changed", seller.userId())).isEqualTo(1);
 		assertThat(jdbc.queryForObject("""
 				select payload -> 'payload' ->> 'authzVersion' from outbox_events
 				where event_type = 'seller.approved' and aggregate_id = ?""", String.class, seller.userId()))

@@ -13,15 +13,15 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * An event waiting to be published (DB §6), written in the same transaction as the change it describes.
- * {@code payload} holds the whole API §7.2 envelope, so the publisher sends it as is.
- */
 @Entity
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Table(name = "outbox_events")
 public class OutboxEvent {
+
+	static final String PENDING = "PENDING";
+
+	static final String PUBLISHED = "PUBLISHED";
 
 	@Id
 	private UUID eventId;
@@ -30,6 +30,10 @@ public class OutboxEvent {
 
 	private UUID aggregateId;
 
+	/** Position among the aggregate's events: 1, 2, 3... (API §7.2). */
+	private long version;
+
+	/** The whole API §7.2 envelope, as published. */
 	@JdbcTypeCode(SqlTypes.JSON)
 	private Map<String, Object> payload;
 
@@ -39,13 +43,26 @@ public class OutboxEvent {
 
 	private Instant publishedAt;
 
-	OutboxEvent(UUID eventId, String eventType, UUID aggregateId, Map<String, Object> payload, Instant createdAt) {
+	OutboxEvent(UUID eventId, String eventType, UUID aggregateId, long version, Map<String, Object> payload,
+			Instant createdAt) {
 		this.eventId = eventId;
 		this.eventType = eventType;
 		this.aggregateId = aggregateId;
+		this.version = version;
 		this.payload = payload;
-		this.status = "PENDING";
+		this.status = PENDING;
 		this.createdAt = createdAt;
+	}
+
+	public boolean isPending() {
+		return PENDING.equals(status);
+	}
+
+	/** Delivered to the broker; {@code storedPayload} replaces the stored envelope (e.g. without secrets). */
+	void markPublished(Instant now, Map<String, Object> storedPayload) {
+		this.status = PUBLISHED;
+		this.publishedAt = now;
+		this.payload = storedPayload;
 	}
 
 }

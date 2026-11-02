@@ -1,10 +1,13 @@
 package com.example.identity_service.audit;
 
 import com.example.identity_service.customer.Customer;
+import com.example.identity_service.rbac.RoleCode;
 import com.example.identity_service.seller.Seller;
 import com.example.identity_service.user.User;
 
+import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -12,7 +15,7 @@ import java.util.Map;
  * authorization version: by construction no token, password or reset URL can reach the audit log (DB §6).
  */
 public record AuditState(String userStatus, String customerStatus, String banMode, Boolean hasPaidOrderBeforeBan,
-		String sellerStatus, String approvalStatus, long authzVersion) {
+		String sellerStatus, String approvalStatus, List<String> roles, long authzVersion) {
 
 	/** {@code customer} and {@code seller} may be null when the user has no such profile. */
 	public static AuditState capture(User user, Customer customer, Seller seller) {
@@ -21,7 +24,13 @@ public record AuditState(String userStatus, String customerStatus, String banMod
 				customer == null || customer.getBanMode() == null ? null : customer.getBanMode().name(),
 				customer == null ? null : customer.getHasPaidOrderBeforeBan(),
 				seller == null ? null : seller.getStatus().name(),
-				seller == null ? null : seller.getApprovalStatus().name(), user.getAuthzVersion());
+				seller == null ? null : seller.getApprovalStatus().name(), null, user.getAuthzVersion());
+	}
+
+	/** For role grants and revokes: the user's active roles. */
+	public static AuditState roles(User user, Collection<RoleCode> roles) {
+		return new AuditState(user.getStatus().name(), null, null, null, null, null,
+				roles.stream().map(Enum::name).sorted().toList(), user.getAuthzVersion());
 	}
 
 	Map<String, Object> asMap() {
@@ -32,6 +41,7 @@ public record AuditState(String userStatus, String customerStatus, String banMod
 		putIfPresent(map, "hasPaidOrderBeforeBan", hasPaidOrderBeforeBan);
 		putIfPresent(map, "sellerStatus", sellerStatus);
 		putIfPresent(map, "approvalStatus", approvalStatus);
+		putIfPresent(map, "roles", roles);
 		map.put("authzVersion", authzVersion);
 		return map;
 	}

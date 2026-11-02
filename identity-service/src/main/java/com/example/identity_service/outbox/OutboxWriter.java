@@ -12,8 +12,10 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Records an event in the caller's transaction, so it is stored exactly when the change commits. Publishing is a
- * separate job (step 9). Never log the payload: some events carry secrets (password reset links).
+ * Records an event in the caller's transaction, so it is stored exactly when the change commits; {@link OutboxRelay}
+ * publishes it afterwards. The envelope's {@code version} numbers the aggregate's events 1, 2, 3...; two transactions
+ * writing for the same user at once cannot both commit a number (unique constraint), and admin actions lock the user
+ * row anyway. Never log the payload: some events carry secrets (password reset links).
  */
 @Component
 @RequiredArgsConstructor
@@ -29,15 +31,18 @@ public class OutboxWriter {
 	public UUID write(String eventType, UUID aggregateId, EventActor actor, Map<String, Object> payload) {
 		UUID eventId = UUID.randomUUID();
 		Instant now = clock.instant();
+		long version = events.nextVersion(aggregateId);
 		Map<String, Object> envelope = new LinkedHashMap<>();
 		envelope.put("eventId", eventId.toString());
 		envelope.put("eventType", eventType);
 		envelope.put("occurredAt", now.toString());
 		envelope.put("producer", PRODUCER);
 		envelope.put("aggregateId", aggregateId.toString());
+		envelope.put("version", version);
 		envelope.put("actor", actor);
 		envelope.put("payload", payload);
-		events.save(new OutboxEvent(eventId, eventType, aggregateId, envelope, now));
+		// Flushed now, so a second event for the same aggregate in this transaction numbers after this one.
+		events.saveAndFlush(new OutboxEvent(eventId, eventType, aggregateId, version, envelope, now));
 		return eventId;
 	}
 

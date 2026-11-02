@@ -26,7 +26,7 @@ class IdentityServiceApplicationTests {
 		List<String> versions = jdbcTemplate.queryForList("""
 				select version from identity.flyway_schema_history
 				where success and version is not null order by installed_rank""", String.class);
-		assertThat(versions).containsExactly("1", "2", "3", "4");
+		assertThat(versions).containsExactly("1", "2", "3", "4", "5");
 	}
 
 	@Test

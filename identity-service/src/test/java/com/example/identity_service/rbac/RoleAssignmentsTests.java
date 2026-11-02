@@ -73,6 +73,30 @@ class RoleAssignmentsTests {
 	}
 
 	@Test
+	void everyChangeWritesRolesChangedButOnlyAdminChangesAreAudited() {
+		User user = newUser();
+		User admin = newUser();
+
+		roleAssignments.grant(user, RoleCode.CUSTOMER, null);
+		roleAssignments.grant(user, RoleCode.SELLER, admin.getUserId());
+		roleAssignments.revoke(user, RoleCode.CUSTOMER, admin.getUserId());
+		roleAssignments.revoke(user, RoleCode.CUSTOMER, admin.getUserId());
+		users.flush();
+
+		assertThat(jdbc.queryForList("""
+				select payload -> 'payload' ->> 'roleCodes' from outbox_events
+				where event_type = 'user.roles_changed' and aggregate_id = ? order by version""", String.class,
+				user.getUserId())).containsExactly("[\"CUSTOMER\"]", "[\"CUSTOMER\", \"SELLER\"]", "[\"SELLER\"]");
+		assertThat(jdbc.queryForList("""
+				select action || ' ' || (before_after -> 'before' ->> 'roles') || ' -> '
+				       || (before_after -> 'after' ->> 'roles')
+				from admin_audit_log where target_id = ? and actor_user_id = ? order by happened_at, action""", String.class,
+				user.getUserId(), admin.getUserId()))
+				.containsExactly("GRANT_ROLE [\"CUSTOMER\"] -> [\"CUSTOMER\", \"SELLER\"]",
+						"REVOKE_ROLE [\"CUSTOMER\", \"SELLER\"] -> [\"SELLER\"]");
+	}
+
+	@Test
 	void disableAndEnableBumpTheAuthzVersion() {
 		User user = newUser();
 
