@@ -1,3 +1,18 @@
+# Development
+
+Build và chạy toàn bộ service lần đầu:
+
+```bash
+bash up.sh
+```
+
+Sau khi sửa code trong `src`, chỉ cần khởi động lại service đã sửa để Maven biên dịch source mới, ví dụ:
+
+```bash
+docker compose -p ecommerce restart product-service
+```
+
+Nếu sửa `pom.xml`, cần build lại image của service đó.
 
 ## Database dùng chung cho dev
 

@@ -1,15 +1,7 @@
-FROM maven:3.9-eclipse-temurin-21 AS build
+FROM maven:3.9-eclipse-temurin-21
 WORKDIR /app
 COPY pom.xml .
-RUN mvn -B -Dmaven.wagon.http.retryHandler.count=3 \
-    dependency:resolve dependency:resolve-plugins
-
+RUN mvn -B -Dmaven.wagon.http.retryHandler.count=3 dependency:go-offline
 COPY src ./src
-RUN mvn -B -DskipTests package
-
-FROM eclipse-temurin:21-jre
-WORKDIR /app
-COPY --from=build /app/target/*.jar app.jar
-USER 10001:10001
 EXPOSE 8083
-ENTRYPOINT ["java", "-jar", "app.jar"]
+CMD ["mvn", "-B", "spring-boot:run"]

@@ -30,6 +30,8 @@ services:
 
   discovery-service:
     build: ./discovery-service
+    volumes:
+      - ./discovery-service/src:/app/src:ro
     ports:
       - "8761:8761"
     healthcheck:
@@ -41,48 +43,64 @@ services:
   cart-service:
     <<: *eureka-client
     build: ./cart-service
+    volumes:
+      - ./cart-service/src:/app/src:ro
     ports:
       - "8080:8080"
 
   gateway-service:
     <<: *eureka-client
     build: ./gateway-service
+    volumes:
+      - ./gateway-service/src:/app/src:ro
     ports:
       - "8081:8081"
 
   finance-service:
     <<: *eureka-client
     build: ./finance-service
+    volumes:
+      - ./finance-service/src:/app/src:ro
     ports:
       - "8082:8082"
 
   identity-service:
     <<: *eureka-client
     build: ./identity-service
+    volumes:
+      - ./identity-service/src:/app/src:ro
     ports:
       - "8083:8083"
 
   notification-service:
     <<: *eureka-client
     build: ./notification-service
+    volumes:
+      - ./notification-service/src:/app/src:ro
     ports:
       - "8084:8084"
 
   order-service:
     <<: *eureka-client
     build: ./order-service
+    volumes:
+      - ./order-service/src:/app/src:ro
     ports:
       - "8085:8085"
 
   payment-service:
     <<: *eureka-client
     build: ./payment-service
+    volumes:
+      - ./payment-service/src:/app/src:ro
     ports:
       - "8086:8086"
 
   product-service:
     <<: *eureka-client
     build: ./product-service
+    volumes:
+      - ./product-service/src:/app/src:ro
     ports:
       - "8087:8087"
 
