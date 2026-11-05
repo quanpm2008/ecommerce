@@ -1,0 +1,77 @@
+# identity-service on its own: the service, PostgreSQL and S3-compatible storage, without Eureka or the other
+# services. See RUN.md. From this directory:
+#   docker compose pull && docker compose up -d     # published image hnan756/identity-service
+#   docker compose up -d --build                    # build from the local source instead
+# The whole-stack compose file is ../compose.yaml; don't run both at once (same host ports).
+name: identity
+
+services:
+  database:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ecommerce
+      POSTGRES_USER: ecommerce
+      POSTGRES_PASSWORD: ecommerce
+    volumes:
+      - identity-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecommerce -d ecommerce"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  # Only needed for seller logo uploads; everything else works without it.
+  object-storage:
+    image: chrislusf/seaweedfs:4.45
+    command: server -s3 -s3.config=/etc/seaweedfs/s3.json -dir=/data -ip.bind=0.0.0.0
+    ports:
+      - "127.0.0.1:${S3_HOST_PORT:-8333}:8333"
+    volumes:
+      - ./infra/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
+      - identity-object-storage-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8333/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  identity-service:
+    image: ${IDENTITY_IMAGE:-hnan756/identity-service:latest}
+    build: .
+    depends_on:
+      database:
+        condition: service_healthy
+      object-storage:
+        condition: service_healthy
+    ports:
+      - "${IDENTITY_HOST_PORT:-8083}:8083"
+    environment:
+      EUREKA_CLIENT_ENABLED: "false"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://database:5432/ecommerce
+      SPRING_DATASOURCE_USERNAME: ecommerce
+      SPRING_DATASOURCE_PASSWORD: ecommerce
+      IDENTITY_MEDIA_ENDPOINT: http://object-storage:8333
+      IDENTITY_MEDIA_PUBLIC_ENDPOINT: http://localhost:${S3_HOST_PORT:-8333}
+      # Optional; empty values keep the defaults described in RUN.md.
+      IDENTITY_TOKEN_SIGNING_KEY: ${IDENTITY_TOKEN_SIGNING_KEY:-}
+      IDENTITY_BOOTSTRAP_ADMIN_EMAIL: ${IDENTITY_BOOTSTRAP_ADMIN_EMAIL:-}
+      IDENTITY_BOOTSTRAP_ADMIN_PASSWORD: ${IDENTITY_BOOTSTRAP_ADMIN_PASSWORD:-}
+      IDENTITY_PASSWORD_RESET_LINK_BASE: ${IDENTITY_PASSWORD_RESET_LINK_BASE:-http://localhost:3000/reset-password}
+      GEO_API_BASE_URL: ${GEO_API_BASE_URL:-https://provinces.open-api.vn/api/v2}
+      IDENTITY_ORDER_BASE_URL: ${IDENTITY_ORDER_BASE_URL:-http://order-service:8085}
+      IDENTITY_INTERNAL_TOKEN_GATEWAY: ${IDENTITY_INTERNAL_TOKEN_GATEWAY:-}
+      IDENTITY_INTERNAL_TOKEN_CART: ${IDENTITY_INTERNAL_TOKEN_CART:-}
+      IDENTITY_INTERNAL_TOKEN_ORDER: ${IDENTITY_INTERNAL_TOKEN_ORDER:-}
+      IDENTITY_INTERNAL_TOKEN_PAYMENT: ${IDENTITY_INTERNAL_TOKEN_PAYMENT:-}
+      IDENTITY_INTERNAL_TOKEN_FINANCE: ${IDENTITY_INTERNAL_TOKEN_FINANCE:-}
+      IDENTITY_INTERNAL_TOKEN_NOTIFICATION: ${IDENTITY_INTERNAL_TOKEN_NOTIFICATION:-}
+      IDENTITY_INTERNAL_TOKEN_PRODUCT: ${IDENTITY_INTERNAL_TOKEN_PRODUCT:-}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8083/actuator/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+
+volumes:
+  identity-postgres-data:
+  identity-object-storage-data:
