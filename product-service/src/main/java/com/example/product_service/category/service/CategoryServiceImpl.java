@@ -97,7 +97,7 @@ public class CategoryServiceImpl implements CategoryService{
         if (request.getCategoryName() != null) {
             String categoryName = request.getCategoryName().trim();
 
-            if (categoryRepository.existsByCategoryNameIgnoreCase(categoryName)) {
+            if (categoryRepository.existsByCategoryNameIgnoreCaseAndCategoryIdNot(categoryName, id)) {
                 throw new CategoryNameDuplicateException("Tên danh mục đã tồn tại: " + categoryName);
             }
 

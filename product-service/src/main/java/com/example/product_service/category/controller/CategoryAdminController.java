@@ -39,7 +39,7 @@ public class CategoryAdminController {
     public ResponseEntity<ApiResponse<CategoryAdminResponse>> updateCategory(
             @PathVariable String categoryId,
             @Valid @RequestBody UpdateCategoryRequest request) {
-        ApiResponse<CategoryAdminResponse> response = categoryService.updateCategory(categoryId, request);
+        ApiResponse<CategoryAdminResponse> response = categoryService.updateCategory(cgitategoryId, request);
         return ResponseEntity.ok(response);
     }
 
