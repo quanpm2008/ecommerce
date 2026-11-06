@@ -2,8 +2,8 @@ package com.example.product_service.category.controller;
 
 import com.example.product_service.category.dto.CategoryResponse;
 import com.example.product_service.category.service.CategoryService;
-import com.example.product_service.category.utils.dto.ApiPageResponse;
-import com.example.product_service.category.utils.dto.ApiResponse;
+import com.example.product_service.common.response.ApiPageResponse;
+import com.example.product_service.common.response.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;

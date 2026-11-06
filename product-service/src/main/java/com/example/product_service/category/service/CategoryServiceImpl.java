@@ -9,7 +9,7 @@ import com.example.product_service.category.enums.CategoryStatus;
 import com.example.product_service.category.exception.CategoryInUseException;
 import com.example.product_service.category.exception.CategoryNameDuplicateException;
 import com.example.product_service.category.repository.CategoryRepository;
-import com.example.product_service.category.utils.dto.ApiResponse;
+import com.example.product_service.common.response.ApiResponse;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.stereotype.Service;
 

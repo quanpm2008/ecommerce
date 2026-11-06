@@ -1,4 +1,4 @@
-package com.example.product_service.category.utils.dto;
+package com.example.product_service.common.response;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ApiResponse <T> {
+public class ApiResponse<T> {
 
     private T data;
 

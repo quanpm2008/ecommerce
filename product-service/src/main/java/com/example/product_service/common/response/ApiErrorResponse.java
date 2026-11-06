@@ -1,4 +1,4 @@
-package com.example.product_service.media.common;
+package com.example.product_service.common.response;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

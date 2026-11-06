@@ -1,6 +1,6 @@
 package com.example.product_service.media.controller;
 
-import com.example.product_service.media.common.ApiResponse;
+import com.example.product_service.common.response.ApiResponse;
 import com.example.product_service.media.dto.request.UploadUrlItemRequest;
 import com.example.product_service.media.dto.response.UploadUrlResponse;
 import com.example.product_service.media.service.MediaService;

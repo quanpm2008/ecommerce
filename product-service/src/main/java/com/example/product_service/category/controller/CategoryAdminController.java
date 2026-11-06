@@ -4,8 +4,8 @@ import com.example.product_service.category.dto.CategoryAdminResponse;
 import com.example.product_service.category.dto.CreateCategoryRequest;
 import com.example.product_service.category.dto.UpdateCategoryRequest;
 import com.example.product_service.category.service.CategoryService;
-import com.example.product_service.category.utils.dto.ApiPageResponse;
-import com.example.product_service.category.utils.dto.ApiResponse;
+import com.example.product_service.common.response.ApiPageResponse;
+import com.example.product_service.common.response.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -39,7 +39,7 @@ public class CategoryAdminController {
     public ResponseEntity<ApiResponse<CategoryAdminResponse>> updateCategory(
             @PathVariable String categoryId,
             @Valid @RequestBody UpdateCategoryRequest request) {
-        ApiResponse<CategoryAdminResponse> response = categoryService.updateCategory(cgitategoryId, request);
+        ApiResponse<CategoryAdminResponse> response = categoryService.updateCategory(categoryId, request);
         return ResponseEntity.ok(response);
     }
 

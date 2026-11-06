@@ -1,7 +1,7 @@
 package com.example.product_service.media.common.exception;
 
-import com.example.product_service.category.utils.dto.ApiErrorResponse;
-import com.example.product_service.category.utils.dto.ErrorResponse;
+import com.example.product_service.common.response.ApiErrorResponse;
+import com.example.product_service.common.response.ErrorResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

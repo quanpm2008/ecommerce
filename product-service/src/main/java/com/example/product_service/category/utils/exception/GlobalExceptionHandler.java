@@ -2,8 +2,8 @@ package com.example.product_service.category.utils.exception;
 
 import com.example.product_service.category.exception.CategoryInUseException;
 import com.example.product_service.category.exception.CategoryNameDuplicateException;
-import com.example.product_service.category.utils.dto.ApiErrorResponse;
-import com.example.product_service.category.utils.dto.ErrorResponse;
+import com.example.product_service.common.response.ApiErrorResponse;
+import com.example.product_service.common.response.ErrorResponse;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
