@@ -2,6 +2,7 @@ package com.example.product_service.client.identity;
 
 import com.example.product_service.client.identity.dto.SellerStatusDto;
 import com.example.product_service.common.response.ApiResponse;
+import com.example.product_service.product.dto.SellerPublicDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -49,5 +50,22 @@ public class IdentityClientAdapter {
         }
         Map<UUID, Boolean> map = getSellableMap(List.of(sellerId));
         return Boolean.TRUE.equals(map.get(sellerId));
+    }
+
+    public SellerPublicDto getSellerPublic(UUID sellerId) {
+        try {
+            ApiResponse<SellerPublicDto> response = identityClient.getSellerPublic(sellerId);
+            if (response != null && response.getData() != null) {
+                return response.getData();
+            }
+        } catch (Exception e) {
+            log.warn("Không thể lấy SellerPublic từ IdentityClient: {}", e.getMessage());
+        }
+        return SellerPublicDto.builder()
+                .sellerId(sellerId)
+                .sellerName("Gian hàng")
+                .description(null)
+                .logoUrl(null)
+                .build();
     }
 }
