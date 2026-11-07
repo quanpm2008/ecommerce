@@ -10,7 +10,9 @@ import com.example.product_service.category.exception.CategoryInUseException;
 import com.example.product_service.category.exception.CategoryNameDuplicateException;
 import com.example.product_service.category.repository.CategoryRepository;
 import com.example.product_service.common.response.ApiResponse;
+import com.example.product_service.product.repository.ProductRepository;
 import jakarta.persistence.EntityNotFoundException;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -18,13 +20,12 @@ import java.util.UUID;
 
 
 @Service
+@RequiredArgsConstructor
 public class CategoryServiceImpl implements CategoryService{
 
     private final CategoryRepository categoryRepository;
 
-    public CategoryServiceImpl(CategoryRepository categoryRepository) {
-        this.categoryRepository = categoryRepository;
-    }
+    private final ProductRepository productRepository;
 
     public ApiResponse<List<CategoryResponse>> getVisibleCategories() {
 
@@ -51,7 +52,7 @@ public class CategoryServiceImpl implements CategoryService{
                         .categoryId(category.getCategoryId())
                         .categoryName(category.getCategoryName())
                         .status(category.getStatus())
-                        .productCount(0L)
+                        .productCount(productRepository.countByCategoryId(category.getCategoryId()))
                         .build())
                 .toList();
         return ApiResponse.of(categoryAdminResponses);
@@ -76,7 +77,7 @@ public class CategoryServiceImpl implements CategoryService{
                 .categoryId(category.getCategoryId())
                 .categoryName(category.getCategoryName())
                 .status(category.getStatus())
-                .productCount(0L)
+                .productCount(productRepository.countByCategoryId(category.getCategoryId()))
                 .build();
 
         return ApiResponse.of(categoryAdminResponse);
@@ -114,7 +115,7 @@ public class CategoryServiceImpl implements CategoryService{
                 .categoryName(updated.getCategoryName())
                 .categoryId(updated.getCategoryId())
                 .status(updated.getStatus())
-                .productCount(0L)
+                .productCount(productRepository.countByCategoryId(category.getCategoryId()))
                 .build();
 
         return ApiResponse.of(categoryAdminResponse);
@@ -128,9 +129,8 @@ public class CategoryServiceImpl implements CategoryService{
                 () -> new EntityNotFoundException("Không tìm thấy danh mục: " + categoryId)
         );
 
-        long productCount = 0L;
 
-        if (productCount > 0) {
+        if (productRepository.countByCategoryId(category.getCategoryId()) > 0) {
             throw new CategoryInUseException("Không thể xóa danh mục đang có sản phẩm");
         }
 
