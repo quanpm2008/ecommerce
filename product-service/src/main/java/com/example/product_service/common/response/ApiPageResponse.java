@@ -16,4 +16,11 @@ public class ApiPageResponse<T> {
     private List<T> data;
 
     private PageMetaResponse meta;
+
+    public static <T> ApiPageResponse<T> of(List<T> data, PageMetaResponse meta) {
+        return ApiPageResponse.<T>builder()
+                .data(data)
+                .meta(meta)
+                .build();
+    }
 }

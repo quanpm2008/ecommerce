@@ -4,7 +4,6 @@ import com.example.product_service.category.dto.CategoryAdminResponse;
 import com.example.product_service.category.dto.CreateCategoryRequest;
 import com.example.product_service.category.dto.UpdateCategoryRequest;
 import com.example.product_service.category.service.CategoryService;
-import com.example.product_service.common.response.ApiPageResponse;
 import com.example.product_service.common.response.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

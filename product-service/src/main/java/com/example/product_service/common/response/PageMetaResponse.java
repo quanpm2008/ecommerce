@@ -18,4 +18,13 @@ public class PageMetaResponse {
     private Long totalItems;
 
     private int totalPages;
+
+    public static PageMetaResponse of(int page, int size, Long totalItems, int totalPages) {
+        return PageMetaResponse.builder()
+                .page(page)
+                .size(size)
+                .totalItems(totalItems)
+                .totalPages(totalPages)
+                .build();
+    }
 }

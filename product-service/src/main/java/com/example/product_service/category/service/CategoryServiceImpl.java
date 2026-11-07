@@ -42,7 +42,6 @@ public class CategoryServiceImpl implements CategoryService{
         return ApiResponse.of(categoryResponses);
     }
 
-    //Sua sau khi hoan thien produc entity
     public ApiResponse<List<CategoryAdminResponse>> getAllCategories() {
 
         List<Category> categories = categoryRepository.findAllByOrderByCategoryNameAsc();
@@ -130,7 +129,7 @@ public class CategoryServiceImpl implements CategoryService{
         );
 
 
-        if (productRepository.countByCategoryId(category.getCategoryId()) > 0) {
+        if (productRepository.existsByCategoryId(category.getCategoryId())) {
             throw new CategoryInUseException("Không thể xóa danh mục đang có sản phẩm");
         }
 
