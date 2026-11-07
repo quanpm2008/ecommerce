@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.springframework.data.domain.Page;
 
 @Data
 @Builder
@@ -25,6 +26,15 @@ public class PageMetaResponse {
                 .size(size)
                 .totalItems(totalItems)
                 .totalPages(totalPages)
+                .build();
+    }
+
+    public static PageMetaResponse fromPage(Page<?> page) {
+        return PageMetaResponse.builder()
+                .page(page.getNumber() + 1) // Spring Data là 0-based, API là 1-based
+                .size(page.getSize())
+                .totalItems(page.getTotalElements())
+                .totalPages(page.getTotalPages())
                 .build();
     }
 }
