@@ -5,6 +5,8 @@ import com.example.product_service.common.response.ApiResponse;
 import com.example.product_service.product.dto.response.ProductCardResponse;
 import com.example.product_service.product.dto.response.ProductDetailResponse;
 import com.example.product_service.product.service.ProductService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
 
+@Tag(name = "2. Products - Public", description = "Tìm kiếm và xem chi tiết sản phẩm công khai")
 @RestController
 @RequestMapping("/products")
 @RequiredArgsConstructor
@@ -22,6 +25,7 @@ public class ProductPublicController {
 
     private final ProductService productService;
 
+    @Operation(summary = "Tìm kiếm và lọc sản phẩm công khai (hỗ trợ search, filter danh mục/giá/seller, pagination)")
     @GetMapping
     public ResponseEntity<ApiPageResponse<ProductCardResponse>> searchProducts(
             @RequestParam(required = false) String q,
@@ -42,11 +46,13 @@ public class ProductPublicController {
         return ResponseEntity.ok(productService.searchPublicProducts(q, categoryId, sellerId, minPriceVnd, maxPriceVnd, pageable));
     }
 
+    @Operation(summary = "Xem chi tiết sản phẩm công khai (kèm thông tin Seller, tồn kho khả dụng)")
     @GetMapping("/{productId}")
     public ResponseEntity<ApiResponse<ProductDetailResponse>> getProductDetail(@PathVariable UUID productId) {
         return ResponseEntity.ok(ApiResponse.of(productService.getProductDetail(productId)));
     }
 
+    @Operation(summary = "Gợi ý các sản phẩm liên quan (cùng danh mục, đang mở bán)")
     @GetMapping("/{productId}/related")
     public ResponseEntity<ApiResponse<List<ProductCardResponse>>> getRelatedProducts(
             @PathVariable UUID productId,

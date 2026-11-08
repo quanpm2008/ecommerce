@@ -6,6 +6,8 @@ import com.example.product_service.product.dto.request.RemoveProductRequest;
 import com.example.product_service.product.dto.response.AdminProductResponse;
 import com.example.product_service.product.enums.ProductStatus;
 import com.example.product_service.product.service.ProductService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
 
+@Tag(name = "7. Products - Admin", description = "Quản trị, kiểm duyệt và khôi phục sản phẩm (Admin)")
 @RestController
 @RequestMapping("/admin/products")
 @RequiredArgsConstructor
@@ -23,6 +26,7 @@ public class ProductAdminController {
 
     private final ProductService productService;
 
+    @Operation(summary = "Tra cứu danh sách sản phẩm toàn hệ thống (kèm thông tin kiểm duyệt, hạn khôi phục)")
     @GetMapping
     public ResponseEntity<ApiPageResponse<AdminProductResponse>> searchAdminProducts(
             @RequestParam(required = false) String q,
@@ -42,12 +46,14 @@ public class ProductAdminController {
         return ResponseEntity.ok(productService.searchAdminProducts(q, sellerId, categoryId, status, pageable));
     }
 
+    @Operation(summary = "Xem chi tiết sản phẩm cho Admin")
     @GetMapping("/{productId}")
     public ResponseEntity<ApiResponse<AdminProductResponse>> getAdminProductDetail(@PathVariable UUID productId) {
 
         return ResponseEntity.ok(ApiResponse.of(productService.getAdminProductDetail(productId)));
     }
 
+    @Operation(summary = "Gỡ bỏ sản phẩm vi phạm (chuyển sang REMOVED và gửi notification cho Seller)")
     @PostMapping("/{productId}/remove")
     public ResponseEntity<ApiResponse<AdminProductResponse>> removeProduct(
             @PathVariable UUID productId,
@@ -56,6 +62,7 @@ public class ProductAdminController {
         return ResponseEntity.ok(ApiResponse.of(productService.removeProductByAdmin(productId, request)));
     }
 
+    @Operation(summary = "Khôi phục sản phẩm đã bị gỡ về trạng thái Tạm ẩn (HIDDEN) trong thời hạn 30 ngày")
     @PostMapping("/{productId}/restore")
     public ResponseEntity<ApiResponse<AdminProductResponse>> restoreProduct(@PathVariable UUID productId) {
 

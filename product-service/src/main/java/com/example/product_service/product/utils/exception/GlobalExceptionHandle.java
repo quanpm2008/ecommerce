@@ -136,6 +136,16 @@ public class GlobalExceptionHandle {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiErrorResponse(error));
     }
 
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiErrorResponse> handleHttpMessageNotReadable(
+            org.springframework.http.converter.HttpMessageNotReadableException e, HttpServletRequest req) {
+        String msg = "Dữ liệu JSON không hợp lệ hoặc sai định dạng trường.";
+        if (e.getMessage() != null && e.getMessage().contains("MediaPurpose")) {
+            msg = "Mục đích media (purpose) chỉ chấp nhận một trong các giá trị: PRODUCT_MEDIA, REVIEW_MEDIA.";
+        }
+        return buildResponse(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", msg, req);
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiErrorResponse> handleIllegalArgument(
             IllegalArgumentException e, HttpServletRequest req) {
