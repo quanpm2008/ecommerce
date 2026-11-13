@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CompilerConfiguration">
+    <bytecodeTargetLevel>
+      <module name="cart-service" target="21" />
+      <module name="discovery-service" target="21" />
+      <module name="finance-service" target="21" />
+      <module name="gateway-service" target="21" />
+      <module name="identity-service" target="21" />
+      <module name="notification-service" target="21" />
+      <module name="order-service" target="21" />
+      <module name="payment-service" target="21" />
+      <module name="product-service" target="21" />
+    </bytecodeTargetLevel>
+  </component>
+</project>
