@@ -39,3 +39,8 @@ and behavior-level proof; do not create parallel control-plane state.
 - Baseline: SAD v1.1 §7.1/D.1; [coverage](docs/requirements/coverage.md) ghi nguồn,
   phần bị thay thế và câu hỏi mở. Giữ nguyên nguồn `business/`; code/test
   hiện tại không tự là yêu cầu nghiệp vụ đúng.
+  Nguồn chi tiết: [FRD v5.5](docs/requirements/FRD.md),
+  [API v1.1](docs/requirements/api_specs.md), [Database v5.1](docs/requirements/database.md).
+- Ba nguồn ngày 16/11/2026 chưa đồng nghĩa hồ sơ tóm tắt theo baseline
+  11/11/2026 hoặc code đã đồng bộ. Khi khác nhau, đối chiếu nguồn/phiên bản và
+  ghi nhận xung đột ở coverage; không tự suy diễn quyết định thay thế.

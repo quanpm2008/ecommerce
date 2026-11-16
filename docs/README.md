@@ -16,6 +16,9 @@ nhận ngày 11/11/2026; nguồn gốc vẫn giữ nguyên.
 | Settlement, ví, rút tiền, rounding, đối soát | [finance](requirements/finance.md) | Payment/Order nguồn, Identity ban |
 | Email demo, event/delivery/retry | [notifications](requirements/notifications.md) | Producer và Identity contact/reset secret |
 | Library, package, DB owner, test/local run | [engineering](engineering.md) | POM/config/code/test và runbook hiện có |
+| Use case, actor, ngoại lệ và AC tại nguồn | [FRD v5.5](requirements/FRD.md) | Hồ sơ theo task và coverage để đối chiếu baseline |
+| Endpoint, DTO, mã lỗi và sự kiện tại nguồn | [API v1.1](requirements/api_specs.md) | FRD và Database; không thay OpenAPI triển khai |
+| Entity, field, bất biến và state machine tại nguồn | [Database v5.1](requirements/database.md) | FRD, API và ownership trong engineering |
 | Phạm vi, thuật ngữ, mã, phân loại bằng chứng | [requirements README](requirements/README.md) | Coverage khi có xung đột/TBD |
 | Kiểm tra nguồn, độ phủ, phần chưa chuyển | [coverage](requirements/coverage.md) | Section nguồn được dẫn, không tự chọn policy |
 
@@ -25,10 +28,14 @@ nhận ngày 11/11/2026; nguồn gốc vẫn giữ nguyên.
   duyệt, planning/validation và completion.
 - [SAD](../business/Software-Architecture.md) §7.1/D.1: quyết định và thứ tự
   ưu tiên nguồn; phụ lục/DELTA kỹ thuật chưa tự thành contract chính thức.
-- [FRD](../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md): use case,
-  quyền lợi/ngoại lệ và nghiệm thu; [Database](../business/database.md): entity,
-  field/bất biến/state machine; [API](../business/api.md): giao tiếp/DTO/lỗi;
+- [FRD v5.5](requirements/FRD.md): use case, quyền lợi/ngoại lệ và nghiệm thu;
+  [Database v5.1](requirements/database.md): entity, field/bất biến/state machine;
+  [API v1.1](requirements/api_specs.md): giao tiếp/DTO/lỗi;
   [System Architecture](../business/system-architecture.md): thành phần/boundary.
+- Ba nguồn trên mang phiên bản ngày 16/11/2026. Các hồ sơ theo task và coverage
+  còn mô tả baseline 11/11/2026; chưa xác nhận đã đồng bộ với nguồn mới.
+  Đối chiếu phiên bản và quy tắc ưu tiên trước khi code; không coi việc thêm
+  tham chiếu là phê duyệt thay đổi kiến trúc hoặc bằng chứng triển khai.
 - Code/migrations, [Identity OpenAPI](../identity-service/openapi.json), test,
   POM/Compose chứng minh hiện trạng, không tự thay yêu cầu nguồn.
 - [README](../README.md) và [Identity RUN](../identity-service/RUN.md): vận hành
