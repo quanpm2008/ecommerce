@@ -5,21 +5,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="b9634247-823c-45a8-95c5-1c4da6da5ede" name="Changes" comment="fea: add media, category">
-      <change afterPath="$PROJECT_DIR$/.idea/encodings.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/jarRepositories.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/payment-service/src/main/java/com/example/payment_service/entity/OutboxEvent.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/payment-service/src/main/java/com/example/payment_service/entity/Payment.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/payment-service/src/main/java/com/example/payment_service/entity/PaymentStatus.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/payment-service/src/main/java/com/example/payment_service/entity/Refund.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/payment-service/src/main/java/com/example/payment_service/entity/RefundReason.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/payment-service/src/main/java/com/example/payment_service/entity/RefundScope.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/payment-service/src/main/java/com/example/payment_service/entity/RefundStatus.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/compiler.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/compiler.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/payment-service/src/main/java/com/example/payment_service/repository/OutboxEventRepository.java" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/payment-service/src/main/java/com/example/payment_service/repository/PaymentRepository.java" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/payment-service/src/main/java/com/example/payment_service/repository/RefundRepository.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/payment-service/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/payment-service/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/payment-service/payment-service-checklist.md" beforeDir="false" afterPath="$PROJECT_DIR$/payment-service/payment-service-checklist.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/payment-service/src/main/resources/db/migration/V1__init_payment_schema.sql" beforeDir="false" afterPath="$PROJECT_DIR$/payment-service/src/main/resources/db/migration/V1__init_payment_schema.sql" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -35,9 +25,9 @@
     <option name="RECENT_TEMPLATES">
       <list>
         <option value="Exception" />
-        <option value="Interface" />
         <option value="Enum" />
         <option value="Class" />
+        <option value="Interface" />
       </list>
     </option>
   </component>
@@ -246,7 +236,7 @@
       <workItem from="1794649772887" duration="310000" />
       <workItem from="1794650111224" duration="522000" />
       <workItem from="1794661341221" duration="2435000" />
-      <workItem from="1794813582127" duration="4158000" />
+      <workItem from="1794813582127" duration="6575000" />
     </task>
     <task id="LOCAL-00001" summary="fea: add media, category">
       <option name="closed" value="true" />

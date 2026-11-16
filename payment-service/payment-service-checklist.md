@@ -1,4 +1,4 @@
-addd# Checklist Triển khai payment-service
+# Checklist Triển khai payment-service
 
 Tài liệu theo dõi tiến độ chi tiết từng hạng mục công việc bên trong `payment-service`.
 
@@ -13,7 +13,7 @@ Tài liệu theo dõi tiến độ chi tiết từng hạng mục công việc b
   - [x] `mapstruct` + `lombok-mapstruct-binding`
   - [x] Test dependencies: `spring-boot-starter-data-jpa-test`, `testcontainers-postgresql`, `testcontainers-junit-jupiter`
 - [x] Cấu hình `payment-service/src/main/resources/application.properties`:
-  - [x] Datasource kết nối PostgreSQL (`schema=payment`, `search-path`)
+  - [x] Datasource kết nối PostgreSQL (`schema=payment_service`, `search-path`)
   - [x] Flyway migration enabled
   - [x] Hibernate `ddl-auto=validate`
   - [x] Cấu hình logging `[requestId]`
@@ -27,15 +27,15 @@ Tài liệu theo dõi tiến độ chi tiết từng hạng mục công việc b
   - [x] Tạo schema `payment_service` (nếu chưa có)
   - [x] Bảng `payments` (PK, UQ `checkout_session_id`, UQ `idempotency_key`, CHECK status/amount/currency)
   - [x] Bảng `refunds` (PK, FK `payment_id`, UQ `order_id` cho ORDER scope, UQ `idempotency_key`, CHECK scope/status)
-  - [x] Bảng `outbox_events` (lưu event id, aggregate type/id, type, payload jsonb, created_at, processed_at)
-- [ ] Xây dựng domain entities trong package `com.example.payment_service.entity`:
-  - [ ] `Payment`, `PaymentStatus`
-  - [ ] `Refund`, `RefundScope`, `RefundReason`, `RefundStatus`
-  - [ ] `OutboxEvent`
-- [ ] Xây dựng Spring Data Repositories:
-  - [ ] `PaymentRepository` (hỗ trợ findByCheckoutSessionId, findByIdempotencyKey, findWithLockById)
-  - [ ] `RefundRepository` (hỗ trợ findByPaymentId, findByOrderId, sumRefundedAmountByPaymentId)
-  - [ ] `OutboxEventRepository`
+  - [x] Bảng `outbox_events` (lưu event id, aggregate type/id, type, payload jsonb, created_at, published_at)
+- [x] Xây dựng domain entities trong package `com.example.payment_service.entity`:
+  - [x] `Payment`, `PaymentStatus`
+  - [x] `Refund`, `RefundScope`, `RefundReason`, `RefundStatus`
+  - [x] `OutboxEvent`
+- [x] Xây dựng Spring Data Repositories trong package `com.example.payment_service.repository`:
+  - [x] `PaymentRepository` (hỗ trợ findByCheckoutSessionId, findByIdempotencyKey, findByIdForUpdate)
+  - [x] `RefundRepository` (hỗ trợ findByPaymentId, findByOrderId, sumActiveRefundAmountByPaymentId)
+  - [x] `OutboxEventRepository` (hỗ trợ lockPending)
 - [ ] Integration test: kiểm tra migration chạy sạch và JPA mapping khớp schema.
 
 ---
@@ -60,6 +60,11 @@ Tài liệu theo dõi tiến độ chi tiết từng hạng mục công việc b
   - [ ] Gọi `PaymentGateway.refund()` ngoài transaction
   - [ ] Cập nhật kết quả `SUCCESS`/`FAILED`
   - [ ] Thử lại hoàn tiền (`retry`) và tra cứu (`query`) an toàn (tái sử dụng bản ghi và idempotency key)
+- [ ] Triển khai Transactional Outbox (Messaging):
+  - [ ] Interface `EventPublisher` (`isConfigured()`, `publish(...)`)
+  - [ ] Cài đặt `UnconfiguredEventPublisher` (hoặc Log publisher) khi chưa có broker Kafka (REQ-ENG-005)
+  - [ ] Lớp `OutboxRelay` và job quét định kỳ các event `PENDING` để phát
+  - [ ] *(Chờ hạ tầng)*: Cài đặt `KafkaEventPublisher` khi toàn bộ hệ thống kích hoạt Kafka broker
 - [ ] Unit tests:
   - [ ] Test tính toán trạng thái dẫn xuất `refundState`
   - [ ] Test chặn hoàn tiền vượt quá số tiền thanh toán
@@ -86,4 +91,4 @@ Tài liệu theo dõi tiến độ chi tiết từng hạng mục công việc b
 ## Giai đoạn 5: Kiểm chứng toàn diện & Nghiệm thu
 - [ ] Chạy toàn bộ test suite (`mvn clean verify`)
 - [ ] Kiểm tra tính toàn vẹn và không vi phạm DB ownership
-- [ ] Cập nhật trạng thái tiến độ vào `payment-service.md` và `docs/plans/active/payment-service.md`
+- [ ] Cập nhật trạng thái tiến độ vào `payment-service.md` và `PLAN.md`
