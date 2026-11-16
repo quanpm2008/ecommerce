@@ -24,6 +24,21 @@ Hash là SHA-256 toàn bộ bytes; dùng phát hiện đổi nguồn, không ch�
 | `business/Software-Architecture.md` | SAD-ECOM-01 v1.1, 10/11/2026; TO-BE, ADR/DELTA/AT | 1132 | `4245fb93d5227a8a30b59dd6ca8299cd672d85b69225c4674916f379e4894f73` |
 | `business/system-architecture.md` | Không có metadata version/ngày rõ; kiến trúc hệ thống | 1136 | `1e60a4348d298cef62c98c81c37d1dd07a14c2afc1b0b812a59e45257a66c959` |
 
+### Nguồn mới được thêm vào harness ngày 16/11/2026
+
+| Tài liệu | Phiên bản | Dòng | SHA-256 |
+|---|---|---:|---|
+| [docs/requirements/FRD.md](FRD.md) | FRD v5.5 | 1520 | `ca8145facea3bd6f8bbe2d2f9a191d4dcc8983474861344e6238c435670b9775` |
+| [docs/requirements/api_specs.md](api_specs.md) | API v1.1 | 3014 | `fb88536ea171d16e6b53b19ec105b4c950daa3e266756add92777f35ccf980cc` |
+| [docs/requirements/database.md](database.md) | Database v5.1 | 1027 | `668ca6ec7aadcb6330e06606e0a77fd56edee9ea6826648aa5b6979b286c2a07` |
+
+Tham chiếu mới không xác nhận đã rà soát lại 377 clause, các bảng hiệu chỉnh,
+thuật ngữ/quyền hoặc implementation theo ba phiên bản này. Các dẫn `Lx–y`
+trong phần truy vết dưới đây thuộc snapshot cũ, không chuyển nguyên số dòng
+sang nguồn mới. Đặc biệt, quy tắc tài khoản riêng/đăng nhập giới hạn trong
+nguồn mới khác mô hình User dùng chung của hồ sơ cũ; phần xung đột cần được
+đối chiếu theo authority trước khi triển khai, không suy diễn từ hash hay ngày sửa.
+
 ## UC và điều khoản đã chuyển
 
 37 UC có đích: 32 UC Must/mixed được chuyển thành 377 clause gồm mục tiêu, điều kiện, bước chính, ngoại lệ, hậu điều kiện và ghi chú; 3 UC Should/Could chỉ ranh giới; 2 UC loại bỏ giữ mã. Google trong A01/A03, in-app trong G01 và phần mở rộng E08 không thành Must chỉ vì nằm cùng UC.

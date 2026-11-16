@@ -4,7 +4,10 @@
 
 Ngày 11/11/2026, người dùng chấp nhận SAD v1.1 §7.1 và quy tắc ưu tiên D.1
 làm baseline, đồng thời duyệt cây tài liệu này. Đây là tổ chức lại tài liệu,
-không xác nhận code đã đáp ứng yêu cầu. Năm nguồn trong `business/` được giữ nguyên.
+không xác nhận code đã đáp ứng yêu cầu. Ba nguồn chi tiết mới trong
+`docs/requirements/` là [FRD](FRD.md), [API](api_specs.md) và
+[Database](database.md). Thêm tham chiếu không thay đổi baseline hoặc
+phê duyệt thêm các đề xuất kỹ thuật.
 
 Theo [SAD D.1](../../business/Software-Architecture.md): quyết định xác nhận và
 phụ lục hiệu chỉnh được áp dụng trước nội dung cũ cùng chủ đề; FRD sở hữu nghiệp
@@ -12,6 +15,20 @@ vụ, Database sở hữu cấu trúc/bất biến, API sở hữu contract. SAD
 đã chấp nhận; chi tiết đề xuất trong phụ lục A hoặc DELTA vẫn cần review contract.
 Baseline chấp nhận không tự phê duyệt mọi tên bảng/job/header/endpoint trong SAD.
 Xung đột còn lại vào [coverage](coverage.md#cau-hoi), không chọn nguồn thuận tiện.
+
+## Nguồn chi tiết ngày 16/11/2026
+
+| Tài liệu | Phiên bản | Tra cứu |
+|---|---|---|
+| [FRD](FRD.md) | v5.5 | Actor, use case, luồng chính/ngoại lệ, AC và quyết định |
+| [API](api_specs.md) | v1.1 | Quy ước giao tiếp, quyền, endpoint, DTO, lỗi, API nội bộ và sự kiện |
+| [Database](database.md) | v5.1 | Entity/field, ownership, ràng buộc, G/WD, state machine và dòng tiền |
+
+Các hồ sơ theo task, thuật ngữ/quyền bên dưới và bảng truy vết trong coverage
+còn dựa trên baseline 11/11/2026, chưa được xác nhận đồng bộ với ba phiên bản
+mới. Ví dụ, nguồn mới tách tài khoản Customer/Seller/Admin trong khi bản tóm
+tắt cũ mô tả User dùng chung. Khi chạm phần khác nhau, đối chiếu nguồn và ghi
+nhận xung đột, không tự chọn policy hoặc coi code đã được cập nhật.
 
 | Trục | Nhãn | Ý nghĩa |
 |---|---|---|

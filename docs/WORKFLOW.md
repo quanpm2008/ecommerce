@@ -8,6 +8,8 @@ runtime signals are the system of record.
 - `AGENTS.md`: entry map and authority boundary.
 - `README.md`, `docs/requirements/`, architecture, and decisions: current intent and
   constraints.
+  Business and contract sources: [FRD](requirements/FRD.md),
+  [API](requirements/api_specs.md), and [Database](requirements/database.md).
 - `docs/plans/`: durable work; `docs/templates/`: optional structures.
 - Code, tests, CI, and runtime signals: executable and observable truth.
 
