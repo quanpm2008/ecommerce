@@ -9,7 +9,7 @@ CREATE TABLE payments (
     checkout_session_id     UUID         NOT NULL,
     customer_id             UUID         NOT NULL,
     amount_vnd              BIGINT       NOT NULL,
-    currency                CHAR(3)      NOT NULL DEFAULT 'VND',
+    currency                VARCHAR(3)      NOT NULL DEFAULT 'VND',
     provider                VARCHAR(50)  NOT NULL DEFAULT 'SIMULATOR',
     environment             VARCHAR(50)  NOT NULL DEFAULT 'DEV',
     idempotency_key         VARCHAR(128) NOT NULL,

@@ -1,4 +1,4 @@
-# Checklist Triển khai payment-service
+addd# Checklist Triển khai payment-service
 
 Tài liệu theo dõi tiến độ chi tiết từng hạng mục công việc bên trong `payment-service`.
 
@@ -28,7 +28,7 @@ Tài liệu theo dõi tiến độ chi tiết từng hạng mục công việc b
   - [x] Bảng `payments` (PK, UQ `checkout_session_id`, UQ `idempotency_key`, CHECK status/amount/currency)
   - [x] Bảng `refunds` (PK, FK `payment_id`, UQ `order_id` cho ORDER scope, UQ `idempotency_key`, CHECK scope/status)
   - [x] Bảng `outbox_events` (lưu event id, aggregate type/id, type, payload jsonb, created_at, processed_at)
-- [ ] Xây dựng domain entities trong package `com.example.payment_service.domain`:
+- [ ] Xây dựng domain entities trong package `com.example.payment_service.entity`:
   - [ ] `Payment`, `PaymentStatus`
   - [ ] `Refund`, `RefundScope`, `RefundReason`, `RefundStatus`
   - [ ] `OutboxEvent`
