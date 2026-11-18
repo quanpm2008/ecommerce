@@ -2,10 +2,12 @@
 
 ## Authority và phạm vi
 
-Baseline được người dùng chấp nhận: [SAD v1.1 §7.1/D.1](../business/Software-Architecture.md).
+Baseline được người dùng chấp nhận: [SAD v1.1 §7.1/D.1](requirements/software-architecture.md).
 Đây là tài liệu hướng dẫn thực hiện yêu cầu; không thêm guard, CI, dependency,
 hook hoặc policy mới. Khi làm invariant, đọc [encoding-invariants](patterns/encoding-invariants.md)
 và tìm accepted authority trước; các check tài liệu dưới đây không là merge protection.
+
+Phần ban/J7, rút số dư nhỏ, provision Product và trigger sau thu được hiệu chỉnh bởi [quyết định Thẻ 15](requirements/coverage.md#the-15). Contract Order/Finance obligations tại [API §7.1–7.3](requirements/api_specs.md) thay phụ thuộc has-paid-order; không dùng snapshot lịch sử để xác định quyền. Đây là đặc tả, không xác nhận code đã theo contract mới.
 
 ## Công nghệ/library đã chốt và hiện trạng
 
@@ -52,7 +54,7 @@ kỹ thuật chi tiết trong phụ lục SAD là đề xuất, không bắt cod
 
 ## API, bảo mật và quản lý thay đổi
 
-- [API §3.3–3.10](../business/api.md): success envelope `data`, list thêm meta,
+- [API §3.3–3.10](requirements/api_specs.md): success envelope `data`, list thêm meta,
   error envelope `error`; status/error code/field validation/version/idempotency
   phải lấy đúng contract. JWKS riêng không bọc data (SAD §6.1).
 - `X-Request-Id` hợp lệ được Identity echo/MDC/error; thiếu hoặc unsafe thì
@@ -122,8 +124,8 @@ Không tuyên bố check tài liệu local là enforcement CI.
 
 | Mã | Tình huống | Bằng chứng cần có | Nguồn |
 |---|---|---|---|
-| <a id="at-21"></a>AT-21 | Event lặp ID và khác ID cùng nghĩa vụ | Một mutation kho/Settlement/ledger; không chỉ dựa eventId | [B.2](../business/Software-Architecture.md), L1002 |
-| <a id="at-24"></a>AT-24 | Restart và migration/restore diễn tập | Key và giao dịch còn dùng được; không mất ý định hoặc tác động lặp | [B.2](../business/Software-Architecture.md), L1005 |
+| <a id="at-21"></a>AT-21 | Event lặp ID và khác ID cùng nghĩa vụ | Một mutation kho/Settlement/ledger; không chỉ dựa eventId | [B.2](requirements/software-architecture.md), L1002 |
+| <a id="at-24"></a>AT-24 | Restart và migration/restore diễn tập | Key và giao dịch còn dùng được; không mất ý định hoặc tác động lặp | [B.2](requirements/software-architecture.md), L1005 |
 
 Kiểm tra tài liệu có thể chạy độc lập, không Maven/Docker: dùng block Python
 trong [coverage](requirements/coverage.md#kiem-tra). Lượt chuyển đổi chỉ chạy kiểm tra

@@ -9,7 +9,7 @@ không xác nhận code đã đáp ứng yêu cầu. Ba nguồn chi tiết mới
 [Database](database.md). Thêm tham chiếu không thay đổi baseline hoặc
 phê duyệt thêm các đề xuất kỹ thuật.
 
-Theo [SAD D.1](../../business/Software-Architecture.md): quyết định xác nhận và
+Theo [SAD D.1](software-architecture.md): quyết định xác nhận và
 phụ lục hiệu chỉnh được áp dụng trước nội dung cũ cùng chủ đề; FRD sở hữu nghiệp
 vụ, Database sở hữu cấu trúc/bất biến, API sở hữu contract. SAD §7.1 ghi ADR-01…06
 đã chấp nhận; chi tiết đề xuất trong phụ lục A hoặc DELTA vẫn cần review contract.
@@ -24,11 +24,7 @@ Xung đột còn lại vào [coverage](coverage.md#cau-hoi), không chọn ngu�
 | [API](api_specs.md) | v1.1 | Quy ước giao tiếp, quyền, endpoint, DTO, lỗi, API nội bộ và sự kiện |
 | [Database](database.md) | v5.1 | Entity/field, ownership, ràng buộc, G/WD, state machine và dòng tiền |
 
-Các hồ sơ theo task, thuật ngữ/quyền bên dưới và bảng truy vết trong coverage
-còn dựa trên baseline 11/11/2026, chưa được xác nhận đồng bộ với ba phiên bản
-mới. Ví dụ, nguồn mới tách tài khoản Customer/Seller/Admin trong khi bản tóm
-tắt cũ mô tả User dùng chung. Khi chạm phần khác nhau, đối chiếu nguồn và ghi
-nhận xung đột, không tự chọn policy hoặc coi code đã được cập nhật.
+Phần ban theo nghĩa vụ/J7, rút số dư nhỏ, HIDDEN/provision và trigger Order sau thu đã được hiệu chỉnh theo [Thẻ 15](coverage.md#the-15), quyết định được duyệt ngày 17/11/2026. Các phần còn lại của hồ sơ và bảng truy vết vẫn có nguồn/số dòng baseline 11/11/2026, chưa xác nhận đồng bộ toàn bộ; không tự suy ra code đã được cập nhật.
 
 | Trục | Nhãn | Ý nghĩa |
 |---|---|---|
@@ -43,23 +39,24 @@ nhận xung đột, không tự chọn policy hoặc coi code đã được cậ
 
 | Task | Đọc | Biên có thể phải đọc thêm |
 |---|---|---|
-| Auth, Seller, quyền, hồ sơ, địa chỉ, ban | [identity](identity.md) | Order.has-paid-order, Notification, Finance tạo ví |
+| Auth, Seller, quyền, hồ sơ, địa chỉ, ban | [identity](identity.md) | Order/Finance obligations, Notification |
 | Product, search, media, tồn hiển thị | [catalog](catalog.md) | Identity G-06, Order Inventory, checkout |
 | Cart/BUY_NOW, preview/pay, tồn, hủy/giao/nhận, deadline | [checkout-orders](checkout-orders.md) | Payment, Finance, Identity, Notification |
 | Charge/refund/simulator, Admin retry | [payments](payments.md) | Order CLOSED/PAID, Finance pending, Notification |
 | Settlement, ví, rounding, withdrawal, đối soát | [finance](finance.md) | Payment/Order nguồn, Identity, Notification |
 | Email demo/event/delivery | [notifications](notifications.md) | Event producer, Identity contact/secret |
 | Library, package, ownership, validation | [engineering](../engineering.md) | POM/config/test thực tế; không dùng thiết kế làm hiện trạng |
+| Kiến trúc phần mềm/hệ thống, quyết định và boundary | [SAD](software-architecture.md), [System Architecture](system-architecture.md) | SAD §7.1/D.1 và coverage khi có xung đột |
 
 ## Thuật ngữ chung
 
 Nguồn: FRD “Từ điển định danh” và “Giải nghĩa công thức”, Database §3/8,
-[SAD D.3](../../business/Software-Architecture.md).
+[SAD D.3](software-architecture.md).
 
 | Thuật ngữ | Ý nghĩa cần giữ |
 |---|---|
-| User | Một danh tính/credential chung; JWT sub=user_id; Admin là role |
-| Customer / Seller | Hồ sơ cùng shared PK=User.id, có thể chồng lấp; có hồ sơ không tự có mọi quyền |
+| User | Một tài khoản/credential thuộc đúng accountType CUSTOMER/SELLER/ADMIN; JWT sub=user_id, tối đa một role hiệu lực |
+| Customer / Seller | Hồ sơ shared PK=User.id của tài khoản đúng loại, không chồng lấp trên cùng User; Admin là tài khoản riêng |
 | Role / Permission / ownership | Quyền hiện hành của role, điều kiện trạng thái và tài nguyên thuộc sub cùng cần hợp lệ |
 | CheckoutSession | Một lần thu chung, có N Order theo Seller; không là một Order lớn |
 | Order / OrderItem | Đơn của một Seller / dòng hàng snapshot; không FulfillmentGroup, SellerOrder, ParentOrder |
@@ -80,22 +77,19 @@ Nguồn: FRD “Từ điển định danh” và “Giải nghĩa công thức�
 
 ## Quyền chung
 
-Nguồn: [API §3.2.1](../../business/api.md), [Database §3.1.9/5.7](../../business/database.md),
-[SAD §6.1–6.4](../../business/Software-Architecture.md).
-Một SPA có vùng Customer/Seller/Admin theo ADR-02, không tạo tài khoản riêng
-theo vùng UI. Không tin owner/permission/header do browser tự khai.
+Nguồn: [API §3.2.1](api_specs.md), [Database §3.1/5.7/G-14](database.md),
+[SAD §6.1–6.4](software-architecture.md), [Thẻ 15](coverage.md#the-15).
+Một SPA có vùng Customer/Seller/Admin; tài khoản và phiên độc lập theo accountType, không hợp quyền nhiều vai trò. Không tin owner/permission/header do browser tự khai.
 API internal phải xác thực service và allowlist; user token không thay service credential.
 Idempotency replay cũng phải kiểm tra quyền hiện hành trước khi trả dữ liệu.
 
 | Vai trò | Permission được seed | Điều kiện |
 | :---- | :---- | :---- |
-| CUSTOMER | customer:profile:own; cart:manage:own; checkout:create:own; payment:create:own; order:read:own; order:cancel:own; order:confirm:own; review:write:own; notification:read:own | User ACTIVE, hồ sơ của sub; Customer ACTIVE khi mua mới, G-14 cho đơn cũ. |
-| SELLER | seller:profile:own; product:manage:own; inventory:manage:own; order:fulfill:own; wallet:read:own; withdrawal:create:own; notification:read:own | Chỉ cấp khi duyệt; User ACTIVE, Seller APPROVED/ACTIVE, sellerId=sub. |
+| CUSTOMER | customer:profile:own; cart:manage:own; checkout:create:own; payment:create:own; order:read:own; order:cancel:own; order:confirm:own; review:write:own; notification:read:own | Đúng accountType/owner; ACTIVE mua bình thường, BANNED chỉ nghĩa vụ hiện tại theo G-14, DISABLED không truy cập API bảo vệ. |
+| SELLER | seller:profile:own; product:manage:own; inventory:manage:own; order:fulfill:own; wallet:read:own; withdrawal:create:own; notification:read:own | Chỉ cấp khi duyệt; đúng accountType/owner, APPROVED/ACTIVE bán bình thường; BANNED chỉ đơn/tiền nghĩa vụ theo allowlist, không rút pending; DISABLED chặn truy cập. |
 | ADMIN | seller:approve; account:moderate; product:moderate; category:manage; operations:read:any; refund:retry; notification:read:own | Admin nội bộ; không tự duyệt; audit mọi thao tác, không sửa số dư hoặc xác nhận tay đã hoàn. |
 
-User ACTIVE chưa có role có policy self-service và tạo Customer lần đầu theo
-API §3.2.1; ADMIN/SELLER không ngầm có CUSTOMER. Xem G-14 ở identity.md cho ban
-từng phạm vi, đặc biệt đơn đã trả tiền và snapshot tại thời điểm cấm.
+Seller PENDING/REJECTED không login; chỉ Seller APPROVED được cấm. Xem [G-14](identity.md#g-14) và [WD-09](finance.md#wd-09) về nghĩa vụ hiện tại, hạn khôi phục và ngoại lệ rút toàn bộ available dưới 10.000đ. J7/login/refresh kiểm tra lại nghĩa vụ, không dùng snapshot lịch sử đã thanh toán; nguồn lỗi không suy ra đã hết nghĩa vụ.
 
 ## Quy tắc xuyên hồ sơ
 

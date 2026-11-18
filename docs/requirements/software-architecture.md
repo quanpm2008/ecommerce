@@ -74,7 +74,7 @@ Không sao chép toàn bộ DTO/data dictionary vào SAD. Các phần bổ sung 
 
 ### 1.2. Phạm vi phiên bản MVP
 
-Bao gồm tài khoản LOCAL, đăng nhập/đăng xuất, đổi/đặt lại mật khẩu, hồ sơ và địa chỉ; đăng ký/duyệt Seller, cấm/gỡ cấm theo phạm vi; xem/tìm Product và Seller; quản lý sản phẩm và tồn kho; giỏ, Mua ngay, checkout, thanh toán giả lập; xử lý/hủy/từ chối/xác nhận đơn; hoàn tiền và đối soát; quyết toán, ví và rút tiền giả lập; email demo và các tác vụ nền bắt buộc.
+Bao gồm tài khoản LOCAL, đăng nhập/đăng xuất, đổi/đặt lại mật khẩu, hồ sơ và địa chỉ; đăng ký/duyệt Seller, cấm/gỡ cấm theo nghĩa vụ hiện tại ([Thẻ 15](coverage.md#the-15)); xem/tìm Product và Seller; quản lý sản phẩm và tồn kho; giỏ, Mua ngay, checkout, thanh toán giả lập; xử lý/hủy/từ chối/xác nhận đơn; hoàn tiền và đối soát; quyết toán, ví và rút tiền giả lập; email demo và các tác vụ nền bắt buộc.
 
 Theo S6, phần D04/E02 được giới hạn ở tra cứu vận hành: danh sách và chi tiết đơn, Payment/Refund, Settlement, Wallet, WalletTransaction, Withdrawal và đối soát tiền. Không đưa biểu đồ doanh thu, top sản phẩm, export phân tích hay Reporting Service vào MVP.
 
@@ -88,7 +88,7 @@ Should/Could chỉ có ranh giới mở rộng: Google login; Review; quản lý
 | Java 21, Spring Boot, Maven | Mỗi service có module build và Dockerfile riêng |
 | Package by Layer | Controller → Service → Repository; package phụ trợ theo vai trò kỹ thuật |
 | Spring Cloud Gateway WebFlux | Gateway không dùng starter Gateway MVC; không thực hiện nghiệp vụ hoặc JDBC/OpenFeign blocking trên event loop |
-| Một React SPA | TypeScript, Vite, Tailwind CSS; các vùng Customer/Seller/Admin dùng chung phiên |
+| Một React SPA | TypeScript, Vite, Tailwind CSS; vùng Customer/Seller/Admin dùng tài khoản và phiên độc lập theo accountType, không hợp quyền nhiều vai trò |
 | PostgreSQL 16, dữ liệu thuộc từng service | Không đọc/ghi bảng service khác; không join xuyên quyền sở hữu |
 | REST/OpenFeign và Kafka | Đồng bộ cho thông tin cần ngay; sự kiện cho hệ quả sau commit |
 | Local transaction, Outbox/Inbox | Không 2PC, transaction xuyên service hay framework Saga riêng |
@@ -200,18 +200,18 @@ Mỗi hồ sơ dưới đây có cùng cấu trúc: trách nhiệm, module ứng
 
 ### 3.1. Identity — tài khoản, hồ sơ và quyền
 
-**Trách nhiệm.** Identity là nguồn danh tính và quyền duy nhất. Một User có thể đồng thời có Customer/Seller và nhiều vai trò; không có ba hệ đăng nhập riêng.
+**Trách nhiệm.** Identity là nguồn danh tính/quyền duy nhất, phục vụ các tài khoản Customer/Seller/Admin độc lập theo accountType và tối đa một role hiệu lực. Hạ tầng Auth chung không gộp tài khoản hoặc phiên.
 
 | Module ứng dụng | Trách nhiệm |
 |---|---|
 | Xác thực và phiên | Đăng ký LOCAL, login, refresh rotation, logout, đổi/đặt lại mật khẩu. |
 | RBAC và authorization context | Cấp/thu hồi role; trả trạng thái User, hồ sơ, session và quyền hiện hành cho service. |
-| Hồ sơ và xét duyệt Seller | Đăng ký/nộp lại/approve/reject; cấm theo scope USER/CUSTOMER/SELLER; ghi audit. |
+| Hồ sơ và xét duyệt Seller | Đăng ký/nộp lại/approve/reject; ban/unban tài khoản theo nghĩa vụ hiện tại và §6.2, không chọn scope; ghi audit. |
 | Địa chỉ và RegionCatalog | Quản lý địa chỉ Customer; cung cấp dataset địa giới hai cấp nội bộ có version. |
 
-**Kết nối.** Nhận API tài khoản/hồ sơ và internal authorization/status/contact. Gọi Order qua REST khi đánh giá Customer có đơn đã trả tiền lúc cấm. Phát seller.* và user.* sau commit; không dùng event thay việc kiểm tra quyền hiện hành.
+**Kết nối.** Nhận API tài khoản/hồ sơ và internal authorization/status/contact. Hỏi Order về nghĩa vụ hiện tại của Customer/Seller, Seller thêm Finance; dùng ở ban/login/refresh/J7. Phát seller.*, customer.* và user.* sau commit; event không thay kiểm tra quyền hiện hành.
 
-**Ranh giới nhất quán.** Tạo User/Customer/role hoặc approve Seller/role/authzVersion/audit/Outbox trong transaction Identity. Hồ sơ Customer/Seller dùng shared PK User; role và trạng thái hồ sơ đều phải được kiểm tra. Cấm Seller không đồng nghĩa disable User.
+**Ranh giới nhất quán.** Tạo User/Customer/role hoặc approve Seller/role/authzVersion/audit/Outbox trong transaction Identity. Shared PK chỉ nối hồ sơ với User đúng accountType, không hồ sơ chồng lấp. Ban cập nhật cặp User/profile theo §6.2: BANNED giữ User ACTIVE; DISABLED đặt User DISABLED khi xác minh hết nghĩa vụ. Không có lệnh scope độc lập.
 
 **Tra cứu tiếp.** Mục 6.1–6.3; địa chỉ/địa giới ở mục 6.7; chi tiết đăng ký, token và khóa quyền ở phụ lục A.3.
 
@@ -360,7 +360,7 @@ flowchart TB
 | Payment → Order/Identity | Kiểm tra payable, owner và eligibility trước charge mới; phối hợp đóng/đối soát | Không giữ transaction Payment trong HTTP |
 | Product → Order/Identity | Khởi tạo/đọc tồn, kiểm tra Seller | Product không ghi Inventory; cùng productId qua retry |
 | Cart → Product/Order/Identity | Giá/tồn/trạng thái Seller để hiển thị giỏ | Không giữ hàng hoặc chốt giá |
-| Identity → Order | has-paid-order khi cấm Customer | Lưu policy snapshot tại thời điểm cấm; không cấm một phần nếu nguồn lỗi |
+| Identity → Order/Finance | Nghĩa vụ hiện tại của tài khoản khi ban/login/refresh và J7 | `GET /internal/v1/orders/accounts/{userId}/obligations?accountType=CUSTOMER\|SELLER`, Seller thêm `GET /internal/v1/finance/sellers/{sellerId}/obligations`; không snapshot lịch sử trả tiền, không cấm một phần hoặc suy ra hết nghĩa vụ khi nguồn lỗi |
 | Finance → Payment/Identity | Đối soát thu/hoàn, kiểm tra quyền rút hiện hành | Không đọc trực tiếp DB nguồn |
 | Notification → Identity | Contact của người nhận được xác định từ nghiệp vụ | Allowlist, không cho client tùy ý gửi email đích |
 
@@ -494,7 +494,7 @@ sequenceDiagram
 
 Không tự gán PAID chỉ từ response Payment. HTTP có thể trả 200 nếu O3 đã hoàn tất khi đọc lại; nếu chưa thì trả 202. Đối soát được phép gọi cùng handler áp dụng kết quả tin cậy, luôn có business dedupe; không viết một đường cập nhật kho riêng cho job. Trong O3, paid_at lấy completedAt chính thức của Payment, không lấy thời điểm consumer nhận event, để hạn Seller không bị kéo dài bởi Kafka lag.
 
-Nếu kiểm tra hiện hành phát hiện Seller/sản phẩm mất điều kiện ngay sau thu, áp dụng policy hủy sau thu của S4 §8.2B: Order liên quan được hủy/hoàn đúng phạm vi; không đổi Payment SUCCESS thành FAILED. Kiểm tra API diễn ra ngoài transaction giữ khóa; xử lý tiếp qua transition idempotent và công việc bền vững, không làm rơi toàn bộ event chỉ vì Identity/Product tạm lỗi. Phải giữ các hiệu ứng checkout.paid và order.cancelled để Finance ghi chờ rồi chờ hoàn, kể cả chúng được nhận sai thứ tự. Không hủy các Order hợp lệ của Seller khác hoặc các đơn đã DELIVERED/CONFIRMED.
+Order Service là owner xác minh khi áp dụng Payment SUCCESS qua payment.succeeded hoặc đối soát dùng chung O3. Nếu có bằng chứng Seller/sản phẩm không hợp lệ tại giao dịch, áp dụng [Database §8.2B](database.md): chỉ Order đủ điều kiện PAID/PACKING liên quan bị hủy/hoàn; Payment vẫn SUCCESS. Ban Seller sau thanh toán không tự hủy đơn, kể cả event đến chậm; không suy ra thời điểm ban từ status hiện tại. Thiếu bằng chứng hoặc Identity/Product tạm lỗi thì giữ công việc xác minh/retry bền vững, không coi là invalid. API chạy ngoài transaction giữ khóa; transition idempotent giữ đủ checkout.paid và order.cancelled để Finance ghi chờ rồi PENDING_REFUND kể cả nhận sai thứ tự. Pending chỉ giảm sau Refund SUCCESS; không hủy Order của Seller khác hoặc DELIVERED/CONFIRMED.
 
 ### 5.2. Giá thay đổi, timeout và các kết quả không rõ ràng
 
@@ -571,9 +571,9 @@ Không có thời gian tạm giữ thêm sau CONFIRMED trong MVP; không tự ch
 
 ### 5.6. Seller rút tiền giả lập
 
-Finance xác minh quyền hiện hành, User ACTIVE, Seller APPROVED/ACTIVE và owner. A nguyên, `10.000 <= A <= available`; mức tối thiểu đã chốt; không giới hạn số lần/ngày. Cùng transaction khóa idempotency/Wallet, kiểm tra available, ghi Withdrawal và bút toán. Thất bại rollback, không tạo Withdrawal lỗi/chờ. Không có Payout, duyệt Admin, ngăn reserved tiền hoặc provider chi trả.
+Finance xác minh quyền hiện hành, User ACTIVE, Seller APPROVED có accountStatus ACTIVE hoặc BANNED với allowlist hợp lệ và đúng owner. A là số nguyên dương không vượt available; hợp lệ nếu A >= 10000 hoặc (accountStatus=BANNED và 0<available<10000 và A=available). Seller ACTIVE giữ ngưỡng chung 10.000đ; không rút một phần dưới ngưỡng hoặc rút pending. Không giới hạn số lần/ngày. Cùng transaction khóa idempotency/Wallet, kiểm tra available, ghi Withdrawal/bút toán; lỗi rollback không tạo Withdrawal lỗi/chờ. Không có Payout, duyệt Admin, reserved tiền hoặc provider chi trả.
 
-Đích nhận là ví ngoài giả lập. Seller bị cấm không rút, số dư giữ nguyên; tiền chờ của đơn hủy không được chuyển available. Hoàn tiền chỉ giảm pending đúng Order sau Refund SUCCESS, không giảm available/withdrawn.
+Đích nhận là ví ngoài giả lập. Ban không tự đóng băng available; Wallet giữ minWithdrawalVnd=10000 và trả allowBelowMinimumFullWithdrawal/canWithdraw đúng ngoại lệ. Tiền chờ đơn hủy không chuyển available. Hoàn tiền chỉ giảm pending đúng Order sau Refund SUCCESS, không giảm available/withdrawn.
 
 Finance trả kết quả rút ngay sau local commit. Notification gửi biên nhận qua sự kiện sau đó, không nằm trong transaction rút. Nếu response HTTP bị mất, cùng key trả Withdrawal đã lưu; không tạo bản ghi rút khác. Hai tab rút cùng số dư phải được tuần tự hóa bằng cập nhật có điều kiện/khóa ví.
 
@@ -601,17 +601,22 @@ Gateway xóa header danh tính do client gửi, không tin X-User-Id/X-Actor-Typ
 
 ### 6.2. Chính sách cấm và thu hồi phiên
 
-| Thay đổi | Tác động |
-|---|---|
-| User DISABLED | Thu hồi phiên và chặn mọi API bảo vệ của User |
-| Seller BANNED | Chặn bán/rút; CUSTOMER hợp lệ vẫn hoạt động; Order PAID/PACKING thuộc Seller được xử lý hủy/hoàn theo policy |
-| Customer BANNED đã có đơn trả tiền tại lúc cấm | Chặn checkout/thu mới; giữ quyền hợp lệ trên đơn cũ |
-| Customer BANNED chưa có đơn trả tiền tại lúc cấm | Chặn phạm vi Customer; giữ vai trò khác hợp lệ |
-| Logout/reset/đổi mật khẩu | Thu hồi phiên theo S3; reset/đổi mật khẩu thu hồi toàn bộ phiên |
+Authority hiện hành: [Thẻ 15](coverage.md#the-15), [FRD UC-E03](FRD.md), [Database G-14/§8.2D](database.md), [API ban/unban/§7.1–7.3](api_specs.md). Tài khoản Customer/Seller/Admin độc lập, không chọn scope khi cấm; không cấm Admin và chỉ cấm Seller APPROVED.
 
-Khi cấm Customer, Identity đọc has-paid-order từ Order và lưu policy snapshot banMode/hasPaidOrderBeforeBan cùng audit, kiểm tra version hồ sơ. Không lấy kết quả phát sinh sau lúc cấm để tự đổi policy. Order không sẵn sàng thì trả 503, không cấm một phần. Callback/job phục hồi dùng danh tính service, không yêu cầu người dùng còn đăng nhập.
+| accountStatus suy ra | User.status / hồ sơ.status | Tác động |
+|---|---|---|
+| ACTIVE | ACTIVE / ACTIVE | Quyền bình thường theo accountType, approval và ownership |
+| BANNED | ACTIVE / BANNED | Chỉ nghĩa vụ hiện tại: đơn/Payment/Refund chưa kết thúc; Seller thêm Settlement/hiệu ứng tài chính pending, pending hoặc available. Không mua/bán mới, giỏ, checkout, review hoặc thống kê chung |
+| DISABLED | DISABLED / BANNED | Đã xác minh hết nghĩa vụ: thu hồi phiên, chặn API bảo vệ; không xóa dữ liệu/tiền |
+| Logout/reset/đổi mật khẩu | Không đổi đợt cấm | Thu hồi phiên theo API; reset/đổi mật khẩu thu hồi toàn bộ phiên |
 
-Không có transaction chung Identity–Finance. Lệnh đã vượt kiểm tra trước khi Identity commit cấm có thể hoàn tất; các lệnh kiểm tra sau commit phải bị chặn. Không tuyên bố khóa tài khoản tạo tính nguyên tử xuyên service. [S4 §5.7]
+Order chưa kết thúc gồm AWAITING_PAYMENT/PAID/PACKING/DELIVERED. Order terminal vẫn có thể còn Payment PENDING/SUCCESS chưa apply, Refund PENDING/FAILED hoặc FULL_CHECKOUT chưa giải quyết. Seller chỉ còn pending dùng OBLIGATIONS_READ_ONLY; chỉ available dùng WITHDRAWAL_ONLY, chỉ đơn dùng OPEN_ORDERS_ONLY, cả đơn và available dùng ORDERS_AND_WITHDRAWAL. Không rút pending; Seller BANNED được rút toàn bộ available dương dưới 10.000đ, không rút một phần dưới ngưỡng; Seller ACTIVE giữ ngưỡng chung. Phiên chỉ đọc/ xử lý đúng dữ liệu nghĩa vụ thuộc chủ, không toàn bộ lịch sử.
+
+J7 — Đối soát trạng thái tài khoản bị cấm do Identity sở hữu đánh giá định kỳ BANNED/DISABLED và dùng cùng policy với login/refresh: hết nghĩa vụ đã xác minh → DISABLED; nghĩa vụ đến muộn → BANNED giới hạn, không tự unban. Nguồn lỗi/404 đáng lẽ tồn tại không phải số 0: giữ trạng thái và retry, request cần xác minh trả 503. Không đặt chu kỳ/backoff hay SLA mới. HTTP ngoài transaction giữ khóa; kiểm tra version và đợt cấm trước commit để không ghi đè Admin unban. Chuyển trạng thái cùng authzVersion, audit và Outbox trong transaction Identity.
+
+`banned_at` mở đợt cấm; `disabled_at` là lần đầu DISABLED trong đợt, `restore_until=disabled_at+30 ngày` UTC. Ban/job lặp và DISABLED→BANNED→DISABLED không gia hạn. BANNED gỡ bất kỳ lúc nào; DISABLED gỡ khi now <= restore_until, sau hạn 409 ACCOUNT_RESTORE_WINDOW_EXPIRED. Unban xóa mốc/lý do hiệu lực nhưng giữ audit, không phục hồi đơn hủy hoặc Product HIDDEN/REMOVED. Đợt cấm mới sau unban có mốc mới.
+
+Không có transaction chung Identity–Finance. Request phải kiểm tra quyền hiện tại/ownership/state, không tin token hoặc preview. user.enabled do nghĩa vụ muộn vẫn accountStatus BANNED, không khôi phục FULL; chỉ Admin unban phát *.unbanned. user.disabled không tự hủy đơn; Payment/Refund/job dùng service identity vẫn chạy. Các nghĩa vụ/hiệu ứng đến trễ phải được lưu bền vững và phục hồi quyền giới hạn, không làm mất tiền.
 
 ### 6.3. Phiên frontend, cookie và bí mật
 
@@ -843,9 +848,9 @@ Không tạo thư viện common chứa toàn bộ quy tắc hệ thống. Trư�
 
 #### A.3.1. Vòng đời tài khoản và hồ sơ
 
-Identity là nguồn User/RBAC duy nhất. Customer.customer_id và Seller.seller_id cùng bằng User.user_id. Một User có thể có nhiều vai trò; ADMIN/SELLER không mặc nhiên có CUSTOMER. Seller PENDING/REJECTED đăng nhập được nhưng chưa có quyền bán. Approve cập nhật trạng thái, cấp SELLER, tăng authzVersion, ghi audit/outbox trong cùng transaction; chặn tự duyệt.
+Identity là nguồn User/RBAC duy nhất. Customer.customer_id hoặc Seller.seller_id bằng User.user_id của đúng accountType; Customer/Seller/Admin là tài khoản độc lập, tối đa một role hiệu lực. Seller PENDING/REJECTED không login. Approve cập nhật trạng thái, cấp SELLER, tăng authzVersion, ghi audit/outbox cùng transaction; chặn tự duyệt. Vòng đời ban/J7 theo §6.2, không áp dụng policy snapshot/đa vai trò cũ.
 
-Đăng ký Customer LOCAL tạo User + Customer + CUSTOMER trong một transaction; đăng ký Seller mới tạo User + Seller PENDING, không tự có CUSTOMER/SELLER. User có sẵn nộp hồ sơ Seller trên cùng tài khoản. Reject giữ User và cho nộp lại cùng sellerId; approvalStatus độc lập status BANNED. Email không đổi; tên cửa hàng dùng users.full_name và liên hệ dùng users.phone_number, không thêm bản sao trong Seller. Khóa đổi full_name khi Seller PENDING/APPROVED và kiểm tra trùng tên shop theo S4 §3.1, có bảo vệ đồng thời. Seed ADMIN có kiểm soát, không mở đăng ký hay tự nâng quyền qua public API.
+Đăng ký Customer LOCAL tạo User + Customer + CUSTOMER nguyên tử; đăng ký Seller riêng tạo User + Seller PENDING, không cấp CUSTOMER/SELLER trước duyệt. Reject giữ User/email; nộp lại sau xác minh email tạo SellerApplication MỚI, không ghi đè hồ sơ REJECTED cũ. Tên cửa hàng dùng users.full_name, liên hệ users.phone_number; không thêm bản sao trong Seller. Khóa đổi full_name khi Seller PENDING/APPROVED và kiểm tra trùng tên shop theo Database §3.1, có bảo vệ đồng thời. Seed ADMIN có kiểm soát, không mở đăng ký/tự nâng quyền qua public API.
 
 #### A.3.2. Phương án credential service đề xuất
 
@@ -934,7 +939,7 @@ Identity quản lý logo Seller, Product quản lý media sản phẩm và mở 
 
 #### A.6.4. Notification và email demo
 
-Nhận event, xác định recipientUserId/context và template allowlist, lưu delivery với dedupe `(eventId, channel, recipientUserId, audienceContext)`. Một User đa vai trò vẫn nhận đúng hai ngữ cảnh nếu nghiệp vụ cần. Worker gửi qua EmailAdapter ngoài transaction; lưu trạng thái kết quả sau gửi. DemoEmailAdapter lưu/hiển thị nội dung demo và trạng thái mô phỏng, không tuyên bố email thật đã được giao.
+Nhận event, xác định recipientUserId/accountType và template allowlist, lưu delivery với dedupe `(eventId, channel, recipientUserId, audienceContext)`. Customer/Seller là tài khoản độc lập; không gộp thông báo/quyền giữa tài khoản cùng người. USER_ENABLED với accountStatus BANNED chỉ thông báo mở quyền nghĩa vụ, không unban; USER_DISABLED nêu restoreUntil khi có. Worker gửi EmailAdapter ngoài transaction rồi lưu kết quả. DemoEmailAdapter hiển thị nội dung/trạng thái mô phỏng, không tuyên bố email thật đã giao.
 
 Secret reset mật khẩu chỉ đi đường nội bộ hạn chế quyền; log và màn vận hành chung không chứa token/link đầy đủ. Demo cần cách xem email reset giới hạn cho môi trường demo để kiểm thử, không mở endpoint công khai đọc mọi email. Sau này đổi email adapter thật không đồng nghĩa có exactly-once email: crash sau nhà cung cấp nhận nhưng trước lưu SENT có thể gửi lại; cần provider idempotency nếu có hoặc chấp nhận at-least-once delivery được nêu rõ.
 
@@ -996,7 +1001,7 @@ Không cần một microservice test riêng. Kiểm thử failure injection tạ
 | AT-15 | Hai Order cùng Payment, một hủy một xác nhận | Refund riêng đơn hủy; đơn kia SETTLED; không đổi tổng gốc hoặc hoàn chồng |
 | AT-16 | Customer xác nhận cùng J3 | Một CONFIRMED và một SETTLEMENT_RELEASED; due_at đúng 7 ngày |
 | AT-17 | Hai tab rút toàn bộ; replay cùng key | Chỉ một trừ ví; key lặp trả cùng Withdrawal; không âm |
-| AT-18 | Ban từng scope, token stale, logout/reset, IDOR | Policy đúng G-14; 401/403/404/503 theo contract; không lộ đơn/ví người khác |
+| AT-18 | Ban/unban tài khoản theo nghĩa vụ, J7/deadline, token stale, logout/reset, IDOR | Đúng G-14/Thẻ 15: không scope/snapshot lịch sử, không gia hạn đợt cấm; 401/403/404/409/503 theo contract, không lộ đơn/ví người khác |
 | AT-19 | Giỏ thay đổi/xóa-thêm lại, BUY_NOW | Giảm đúng dòng snapshot còn tồn tại; giữ dòng mới; BUY_NOW không gọi/đổi Cart |
 | AT-20 | Tạo Product nhưng Inventory timeout | Product HIDDEN, retry cùng ID, không bán trước khi tồn sẵn sàng |
 | AT-21 | Event lặp ID và khác ID cùng nghĩa vụ | Một mutation kho/Settlement/ledger; không chỉ dựa eventId |
@@ -1110,7 +1115,7 @@ Backup PostgreSQL và object storage, thử restore theo RPO/RTO sẽ chốt. Kh
 | S6 | Quyết định trong trao đổi ngày 10/11/2026 | quoteToken có chữ ký; chỉ đặc tả đầy đủ Must; tra cứu vận hành và đối soát trong MVP, hoãn dashboard phân tích |
 | S7 | Mã nguồn và compose.yaml tại thời điểm rà soát | Chỉ dùng xác định hiện trạng và chênh lệch, không thay thế quyết định TO-BE |
 
-Quyết định mới được xác nhận trong S6 và nội dung chốt tại S1 được áp dụng trước. Trong mỗi tài liệu S2–S5, phụ lục hiệu chỉnh được áp dụng trước nội dung cũ cùng chủ đề. Nghiệp vụ lấy từ S2; cấu trúc dữ liệu/bất biến lấy từ S4; giao tiếp lấy từ S3. Nếu còn xung đột không được hiệu chỉnh hoặc xác nhận, ghi thành vấn đề cần chốt, không tự chọn nguồn thuận tiện.
+[Quyết định Thẻ 15](coverage.md#the-15) được duyệt ngày 17/11/2026 áp dụng trước các đoạn cũ về tài khoản/ban, nghĩa vụ/J7, rút số dư nhỏ, provision và trigger sau thu. Ngoài phạm vi này, quyết định xác nhận S6/nội dung chốt S1 và phụ lục hiệu chỉnh S2–S5 vẫn theo thứ tự cũ. Nghiệp vụ tra FRD hiện hành, dữ liệu/bất biến tra Database, giao tiếp tra API; nguồn lịch sử bên dưới là provenance, không được dùng để khôi phục policy đã thay. Xung đột chưa có quyết định phải ghi vấn đề, không tự chọn nguồn thuận tiện.
 
 BRD, Parameter Register và UI/Figma được nhắc trong hồ sơ nhưng không được cung cấp trong thư mục docs. Tài liệu không khẳng định đã kiểm tra các nguồn này. Không gán giá trị cho P-xx/N-xx còn TBD chỉ vì code hoặc ví dụ dev đang có giá trị.
 
