@@ -3,6 +3,8 @@
 Baseline: SAD v1.1 §7.1/D.1, được người dùng chấp nhận ngày 11/11/2026.
 [Quy ước/thuật ngữ](README.md) · [Coverage và câu hỏi](coverage.md) · [Kỹ thuật/validation](../engineering.md).
 
+Các điều khoản tài khoản đơn vai trò và vòng đời cấm dưới đây theo nguồn hiệu lực 16/11 và [quyết định Thẻ 15](coverage.md#the-15), thay các policy đa vai trò/cấm theo scope/snapshot lịch sử tương ứng của baseline; không thay thế toàn bộ SAD hoặc chứng minh implementation.
+
 Đọc đúng UC dưới đây, quy tắc bổ sung và hàng AC liên quan; chỉ mở mục contract nguồn khi cần DTO/cột/endpoint chi tiết. Yêu cầu TO-BE không chứng minh code đã làm đúng.
 
 [UC-A01](#uc-a01) · [UC-A02](#uc-a02) · [UC-A03](#uc-a03) · [UC-A04](#uc-a04) · [UC-A05](#uc-a05) · [UC-A06](#uc-a06) · [UC-A07](#uc-a07) · [UC-B02](#uc-b02) · [UC-E01](#uc-e01) · [UC-E03](#uc-e03) · [UC-E06](#uc-e06)
@@ -21,24 +23,24 @@ Khảo sát tĩnh ngày 11/11/2026; mọi test nêu dưới đây **chưa chạy
 | A06 Region | [identity-service/src/main/java/com/example/identity_service/region/RegionCatalog.java](../../identity-service/src/main/java/com/example/identity_service/region/RegionCatalog.java) | [identity-service/src/test/java/com/example/identity_service/region/RegionEndpointsTests.java](../../identity-service/src/test/java/com/example/identity_service/region/RegionEndpointsTests.java) | Test endpoint dùng fake provider; provider hiện trạng ngoài khác baseline dataset nội bộ. |
 | B02 Public Seller | [identity-service/src/main/java/com/example/identity_service/seller/SellerDirectory.java](../../identity-service/src/main/java/com/example/identity_service/seller/SellerDirectory.java) | [identity-service/src/test/java/com/example/identity_service/seller/PublicSellerEndpointsTests.java](../../identity-service/src/test/java/com/example/identity_service/seller/PublicSellerEndpointsTests.java) | Eligibility/public view; không suy ra frontend search đã hoàn tất. |
 | E01/E03/E06 | [identity-service/src/main/java/com/example/identity_service/admin](../../identity-service/src/main/java/com/example/identity_service/admin) | [identity-service/src/test/java/com/example/identity_service/admin/SellerReviewEndpointsTests.java](../../identity-service/src/test/java/com/example/identity_service/admin/SellerReviewEndpointsTests.java) | ModerationEndpointsTests dùng FakeOrderClient, chưa chứng minh tích hợp Order thật. |
-| E03 ban/unban | [identity-service/src/main/java/com/example/identity_service/admin/ModerationService.java](../../identity-service/src/main/java/com/example/identity_service/admin/ModerationService.java) | [identity-service/src/test/java/com/example/identity_service/admin/ModerationEndpointsTests.java](../../identity-service/src/test/java/com/example/identity_service/admin/ModerationEndpointsTests.java) | Snapshot has-paid-order; Order lỗi có test fake, chưa integration thật. |
+| E03 ban/unban | [identity-service/src/main/java/com/example/identity_service/admin/ModerationService.java](../../identity-service/src/main/java/com/example/identity_service/admin/ModerationService.java) | [identity-service/src/test/java/com/example/identity_service/admin/ModerationEndpointsTests.java](../../identity-service/src/test/java/com/example/identity_service/admin/ModerationEndpointsTests.java) | Hiện trạng khảo sát dùng snapshot has-paid-order; khác đặc tả [Thẻ 15](coverage.md#the-15). Order lỗi có test fake, chưa kiểm chứng implementation theo contract nghĩa vụ/J7 mới. |
 | Schema | [identity-service/src/main/resources/db/migration](../../identity-service/src/main/resources/db/migration) | [identity-service/src/test/java/com/example/identity_service/IdentityServiceApplicationTests.java](../../identity-service/src/test/java/com/example/identity_service/IdentityServiceApplicationTests.java) | V1–V5; có assertion versions/tables, chưa chạy; không sửa migration đã áp dụng. |
 
 Khi lập task, lần theo caller/consumer và artifacts trong cùng hàng, rồi xem dependency liên service dưới đây; không đổi các source gốc để che lệch implementation.
 
 ## Contract và dữ liệu cần tra cứu
 
-- [§3.1, §5.1/5.7/5.8, §6](../../business/database.md): field, required/conditional, unique/FK/CHECK và ownership. Bảng nguồn là thiết kế, không khẳng định migration tồn tại.
-- [§7.1–7.3](../../business/api.md): provider/consumer allowlist, event payload và jobs. [§7.2](../../business/Software-Architecture.md): DELTA cần review.
+- [Database §3.1, §5.1/5.7/5.8, §6, §8.2D](database.md): field, trạng thái suy ra, timestamp, RBAC và ownership. Bảng nguồn là thiết kế, không khẳng định migration tồn tại.
+- [API §6.1, §7.1–7.3](api_specs.md): DTO, provider/consumer allowlist, sự kiện và J7; [FRD UC-A03/E03/G03](FRD.md) và [Thẻ 15](coverage.md#the-15) là policy hiệu lực cho các clause tài khoản được cập nhật.
 - Public paths bên dưới là phần sau `/api/v1`; internal dùng `/internal/v1`. Base URL mẫu trong nguồn không chứng minh cổng service hiện tại. Tên path là khóa contract ổn định; quyền ở bảng vẫn phải kết hợp trạng thái/ownership.
 - **Bảng contract nguồn, chưa phải bằng chứng triển khai.** Endpoint Should vẫn giữ tham chiếu; luồng checkout cũ và stats/dashboard bị baseline hiệu chỉnh không được triển khai nguyên xi. DTO, body/error examples và required/optional giữ tại đúng mục nguồn, không suy ra từ tên endpoint.
 
-[§6.1 / danh sách endpoint](../../business/api.md), L508–543
+[API §6.1 / danh sách endpoint](api_specs.md)
 
 | \# | Method | Path | Mô tả | Quyền | UC |
 | :---- | :---- | :---- | :---- | :---- | :---- |
 | 1 | POST | /identity/auth/register | Đăng ký Customer bằng email | PUBLIC | A01 |
-| 2 | POST | /identity/auth/login | Đăng nhập chung User (một SPA theo ADR-02) | PUBLIC | A03 |
+| 2 | POST | /identity/auth/login | Đăng nhập đúng accountType CUSTOMER/SELLER/ADMIN, tài khoản độc lập | PUBLIC | A03 |
 | 3 | POST | /identity/auth/google | Đăng ký / đăng nhập Customer bằng Google (Should) | PUBLIC | A01, A03 |
 | 4 | POST | /identity/auth/register-seller | Đăng ký bán hàng | PUBLIC | A02 |
 | 5 | POST | /identity/auth/refresh | Làm mới access token | PUBLIC | A03 |
@@ -46,7 +48,7 @@ Khi lập task, lần theo caller/consumer và artifacts trong cùng hàng, rồ
 | 7 | POST | /identity/auth/password/forgot | Yêu cầu đặt lại mật khẩu | PUBLIC | A05 |
 | 8 | POST | /identity/auth/password/reset | Đặt mật khẩu mới bằng liên kết | PUBLIC | A05 |
 | 9 | PUT | /identity/users/me/password | Đổi mật khẩu | account:update:own (LOCAL) | A04 |
-| 10 | GET | /identity/users/me | Hồ sơ User và các vai trò hiện hành | account:read:own | A06 |
+| 10 | GET | /identity/users/me | Hồ sơ tài khoản, accountType, accountStatus/mốc và accessMode hiện hành | account:read:own | A06 |
 | 11 | PATCH | /identity/users/me | Cập nhật thông tin chung của User | account:update:own | A06 |
 | 12 | PATCH | /identity/sellers/me | Seller cập nhật hồ sơ người bán | seller:profile:own | A06 |
 | 13 | POST | /identity/media/upload-urls | Xin URL upload logo Seller | seller:profile:own | A06 |
@@ -64,35 +66,35 @@ Khi lập task, lần theo caller/consumer và artifacts trong cùng hàng, rồ
 | 25 | GET | /identity/admin/sellers/{sellerId} | Chi tiết Seller | operations:read:any | E01, E06 |
 | 26 | POST | /identity/admin/sellers/{sellerId}/approve | Duyệt hồ sơ Seller | seller:approve | E06 |
 | 27 | POST | /identity/admin/sellers/{sellerId}/reject | Từ chối hồ sơ Seller | seller:approve | E06 |
-| 28 | POST | /identity/admin/ban/{userId} | Cấm User hoặc hồ sơ theo scope bắt buộc | account:moderate | E03 |
-| 29 | POST | /identity/admin/unban/{userId} | Gỡ cấm theo scope | account:moderate | E03 |
-| 30 | POST | /identity/users/me/seller-application | Nộp hoặc nộp lại hồ sơ Seller | seller:application:own | A02 |
-| 31 | GET | /identity/users/me/seller-application | Xem tiến độ hồ sơ của mình | seller:application:own | A02 |
-| 32 | POST | /identity/users/me/customer-profile | Bổ sung hồ sơ Customer cho User hiện tại | ANY_AUTH (policy nền) | A01 |
+| 28 | POST | /identity/admin/ban/{userId} | Cấm tài khoản theo nghĩa vụ, body {reason}, không scope | account:moderate | E03 |
+| 29 | POST | /identity/admin/unban/{userId} | Gỡ cấm tài khoản theo thời hạn, body {reason?}, không scope | account:moderate | E03 |
+| 30 | POST | /identity/auth/seller-reapplication/challenge | Yêu cầu email xác minh đăng ký lại Seller | PUBLIC (email verification) | A02 |
+| 31 | POST | /identity/auth/seller-reapplication | Nộp SellerApplication mới sau REJECTED | PUBLIC (verificationToken) | A02 |
+| 32 | GET | /identity/admin/sellers/{sellerId}/applications | Lịch sử các lần đăng ký Seller | operations:read:any | E06 |
 
 ## Quy tắc bổ sung và source hiệu lực
 
 | Mã nguồn | Quy tắc đã xác nhận | Nguồn |
 |---|---|---|
-| <a id="g-01"></a>G-01 | Email chuẩn hóa duy nhất trong User; một User có nhiều hồ sơ/vai trò. Không tự liên kết GOOGLE/LOCAL trùng email. Seller REJECTED giữ User/email và nộp lại cùng seller_id; tên cửa hàng (users.full_name) chỉ bị kiểm tra trùng với Seller PENDING/APPROVED. | [§8.1](../../business/database.md), L953 |
+| <a id="g-01"></a>G-01 | Email chuẩn hóa duy nhất trong User; mỗi tài khoản có một accountType và tối đa một role hiện hành, Customer/Seller/Admin dùng tài khoản độc lập. Không tự liên kết GOOGLE/LOCAL trùng email. Seller REJECTED đăng ký application mới qua xác minh email, giữ lịch sử application cũ; không nộp lại hồ sơ cũ. Tên cửa hàng (users.full_name) chỉ kiểm tra trùng với Seller PENDING/APPROVED. | [Database §3.1/§8.1](database.md); [FRD UC-A01/A02](FRD.md) |
 | <a id="g-02"></a>G-02 | Không đổi User.email; User có Seller PENDING/APPROVED không đổi full_name (tên cửa hàng). Tên chung và mật khẩu chỉ cập nhật tại User qua API tự phục vụ. | [§8.1](../../business/database.md), L954 |
 | <a id="g-05"></a>G-05 | Quên mật khẩu: luôn trả cùng một thông báo dù email có tồn tại hay không. | [§8.1](../../business/database.md), L957 |
 | <a id="g-07"></a>G-07 | Mật khẩu: tối thiểu 8 ký tự, có chữ hoa, chữ thường và chữ số. | [§8.1](../../business/database.md), L959 |
 | <a id="g-12"></a>G-12 | Mọi hành động của Admin ghi AdminAuditLog (mục 6). | [§8.1](../../business/database.md), L964 |
-| <a id="g-14"></a>G-14 | Khóa có phạm vi: User DISABLED khóa toàn bộ vai trò, thu hồi phiên. Seller BANNED chỉ chặn quyền bán, đóng băng quyền rút, xử lý Order theo UC-E03; không chặn CUSTOMER hợp lệ. Customer BANNED có đơn đã trả tiền vẫn đăng nhập, xem hồ sơ/giỏ/đơn, hủy đủ điều kiện, xác nhận và review đơn cũ; cấm checkout và mọi thanh toán mới. Chưa có đơn trả tiền thì chặn API nghiệp vụ Customer, vẫn cho đăng nhập để dùng vai trò khác hoặc xem trạng thái tài khoản. Không dùng disable User để thay hạn chế Customer và không tự hủy đơn đã trả tiền. | [§8.1](../../business/database.md), L966 |
+| <a id="g-14"></a>G-14 | Một vòng đời cấm cho tài khoản đã chọn, không scope, không ảnh hưởng tài khoản khác cùng người; không cấm ADMIN hoặc Seller chưa APPROVED. Còn nghĩa vụ hiện tại → BANNED với allowlist đúng chủ; mọi nguồn xác minh hết → DISABLED, thu hồi phiên. J7/login/refresh đánh giá nghĩa vụ đến muộn, giữ mốc đợt cấm, không tự unban. Nguồn lỗi không coi là zero; request cần xác minh trả 503. Không giỏ/thu mới/review/bán mới; không tự hủy Order hoặc đóng băng available. Unban BANNED bất kỳ lúc nào, DISABLED khi now ≤ restoreUntil; quá hạn không xóa dữ liệu/tiền. Chi tiết [UC-E03](#uc-e03). | [Database §8.1 G-14/§8.2D](database.md); [API §3.2](api_specs.md); [Thẻ 15](coverage.md#the-15) |
 
 Quy tắc chung G-09/G-11 ở [engineering](../engineering.md); G-10/G-13/G-15 ở [quy ước chung](README.md).
 
 | Mã | Điều khoản | Nguồn / phân loại |
 |---|---|---|
-| <a id="req-idn-001"></a>REQ-IDN-001 | User là nguồn danh tính; Customer/Seller dùng shared PK=FK tới user_id, có thể đồng thời tồn tại; ADMIN không mặc nhiên có CUSTOMER/SELLER. User ACTIVE chưa có role vẫn có policy self-service theo API; tạo Customer bổ sung không phục hồi role đã bị Admin thu hồi. | Yêu cầu baseline; [§3.1, §5.7](../../business/database.md), L90–153; [§3.2.1](../../business/api.md), L176–192 |
+| <a id="req-idn-001"></a>REQ-IDN-001 | User là nguồn danh tính với accountType CUSTOMER/SELLER/ADMIN cố định. Customer/Seller dùng shared PK=FK tới user_id nhưng không đồng thời tồn tại; ADMIN không có hai hồ sơ đó, tối đa một role hiệu lực. Không bổ sung/chuyển vai trò trên tài khoản có sẵn; mỗi tài khoản có credential/session riêng, không hợp quyền giữa các tài khoản. Seller PENDING/REJECTED không login. | Nguồn hiệu lực: [Database §3.1/§5.7](database.md); [API §3.2.1](api_specs.md); [FRD UC-A01/A02](FRD.md) |
 | <a id="req-idn-002"></a>REQ-IDN-002 | Tên shop = users.full_name, liên hệ = users.phone_number. Chặn trùng tên với User có Seller PENDING/APPROVED trong transaction có bảo vệ đồng thời; Customer trùng họ tên vẫn hợp lệ. REJECTED không giữ tên shop; phone vẫn unique ở User. | Yêu cầu baseline; [§3.1.1–3.1.3](../../business/database.md), L96–153 |
 | <a id="req-idn-003"></a>REQ-IDN-003 | Địa chỉ thuộc Customer; province/ward hai cấp, ward phải thuộc province; số địa chỉ tối đa P-09 chưa chốt. Địa chỉ mặc định suy ra từ last_used_at mới nhất; chưa dùng địa chỉ nào thì created_at nhỏ nhất. Hard-delete không đổi snapshot Order; không tạo cờ is_default mới. | Yêu cầu baseline; [§3.1.4](../../business/database.md), L154–173 |
-| <a id="req-idn-004"></a>REQ-IDN-004 | Baseline RegionCatalog nội bộ có version thay adapter địa giới ngoài trong API §6.1/10.4. Nguồn dataset/version/ngày nhập còn cần review; không tự chọn nhà cung cấp hoặc chấp nhận mã khi nguồn không sẵn sàng. | Yêu cầu baseline; [§3.1, §6.7, DELTA-09](../../business/Software-Architecture.md), L201–216; [§6.7](../../business/Software-Architecture.md), L687–704 |
-| <a id="req-idn-005"></a>REQ-IDN-005 | Khi cấm Customer, đọc Order.has-paid-order và lưu snapshot policy banMode/hasPaidOrderBeforeBan cùng audit; Order lỗi trả 503 và không cấm một phần. Không tự thay snapshot khi có đơn phát sinh sau; không có transaction chung với Order. | Yêu cầu baseline; [§6.2](../../business/Software-Architecture.md), L602–614 |
-| <a id="req-idn-006"></a>REQ-IDN-006 | Access token chỉ ở memory; refresh qua HttpOnly Secure Cookie, thuộc tính SameSite/Path/Origin/CORS/CSRF được review theo môi trường; không trả refresh token JSON theo mẫu API cũ. Logout thu hồi phiên rồi clear đúng cookie. Local phải có profile tường minh, không tắt Secure toàn cục. | Yêu cầu baseline; [§6.3, AT-25](../../business/Software-Architecture.md), L616–622 |
-| <a id="req-idn-007"></a>REQ-IDN-007 | RS256/JWKS, iss/aud/exp, session và authzVersion hiện hành; permission+trạng thái+ownership đều bắt buộc. Thiếu quyền 403, tài nguyên người khác 404; token stale 401 TOKEN_STALE; không lấy được context cần thiết 503. Không cache quyết định quyền; cache public key là vấn đề khác. | Yêu cầu baseline; [§6.1](../../business/Software-Architecture.md), L596–600 |
-| <a id="req-idn-008"></a>REQ-IDN-008 | Admin bootstrap/nội bộ có kiểm soát; không public CRUD role/permission hay tự gán ADMIN. RolePermission đổi bằng migration phải tăng authzVersion User liên quan; auth session bị thu hồi không dùng lại được. | Yêu cầu baseline; [§3.2.1](../../business/api.md), L176–192 |
+| <a id="req-idn-004"></a>REQ-IDN-004 | Baseline RegionCatalog nội bộ có version thay adapter địa giới ngoài trong API §6.1/10.4. Nguồn dataset/version/ngày nhập còn cần review; không tự chọn nhà cung cấp hoặc chấp nhận mã khi nguồn không sẵn sàng. | Yêu cầu baseline; [§3.1, §6.7, DELTA-09](software-architecture.md), L201–216; [§6.7](software-architecture.md), L687–704 |
+| <a id="req-idn-005"></a>REQ-IDN-005 | Ban/login/refresh/J7 đánh giá nghĩa vụ hiện tại từ Order và (Seller) Finance theo [dependencies](#nguon-nghia-vu-va-j7), không snapshot lịch sử đã trả tiền. Ban đọc lại sau preview, lỗi nguồn trả 503 không ghi ban một phần; unban hợp lệ không cần Order/Finance. HTTP ngoài transaction giữ khóa; trước commit kiểm tra version/đợt cấm để không ghi đè unban. Cặp trạng thái, authzVersion, audit và Outbox cùng transaction Identity, không transaction xuyên service. | [FRD UC-E03/G03](FRD.md); [API §7.1/7.1.2/7.3](api_specs.md); [Database §3.1.1/§8.2D](database.md); [Thẻ 15](coverage.md#the-15) |
+| <a id="req-idn-006"></a>REQ-IDN-006 | Access token chỉ ở memory; refresh qua HttpOnly Secure Cookie, thuộc tính SameSite/Path/Origin/CORS/CSRF được review theo môi trường; không trả refresh token JSON theo mẫu API cũ. Logout thu hồi phiên rồi clear đúng cookie. Local phải có profile tường minh, không tắt Secure toàn cục. | Yêu cầu baseline; [§6.3, AT-25](software-architecture.md), L616–622 |
+| <a id="req-idn-007"></a>REQ-IDN-007 | RS256/JWKS, iss/aud/exp, session và authzVersion hiện hành; permission+trạng thái+ownership đều bắt buộc. Thiếu quyền 403, tài nguyên người khác 404; token stale 401 TOKEN_STALE; không lấy được context cần thiết 503. Không cache quyết định quyền; cache public key là vấn đề khác. | Yêu cầu baseline; [§6.1](software-architecture.md), L596–600 |
+| <a id="req-idn-008"></a>REQ-IDN-008 | Admin bootstrap/nội bộ có kiểm soát; không public CRUD role/permission hay tự gán ADMIN hoặc bổ sung vai trò khác vào tài khoản. RolePermission đổi bằng migration phải tăng authzVersion User liên quan; auth session bị thu hồi không dùng lại được. | [API §3.2.1](api_specs.md) |
 
 ## Acceptance criteria để triển khai/kiểm chứng
 
@@ -101,14 +103,16 @@ Các AC sau là diễn giải kiểm chứng từ điều khoản cùng mã UC/R
 | Mã AC | Liên kết yêu cầu | Given | When | Then |
 |---|---|---|---|---|
 | <a id="ac-idn-001"></a>AC-IDN-001 | UC-A01; G-01/07 | Email/phone hợp lệ chưa dùng; LOCAL | Đăng ký rồi login | Tạo User+Customer+CUSTOMER; không lộ password hash; email/phone trùng không tạo User thứ hai. |
-| <a id="ac-idn-002"></a>AC-IDN-002 | UC-A02; G-01/02 | User chưa Seller hoặc REJECTED | Nộp/nộp lại; thử tên trùng PENDING/APPROVED | Một seller_id=User.id; REJECTED tái nộp cùng ID; tên/phone thuộc User; hồ sơ PENDING/APPROVED không nộp thêm. |
-| <a id="ac-idn-003"></a>AC-IDN-003 | UC-A03; G-14 | User đa vai trò, Seller PENDING/REJECTED/BANNED | Login và gọi thao tác từng vai trò | Một danh tính; giữ vai trò hợp lệ; Seller chưa đủ điều kiện không bán; USER DISABLED không dùng API bảo vệ. |
+| <a id="ac-idn-002"></a>AC-IDN-002 | UC-A02; G-01/02 | Tài khoản Customer/Admin hoặc Seller REJECTED | Đăng ký Seller; thử tên trùng PENDING/APPROVED | Customer/Admin phải dùng tài khoản Seller độc lập; REJECTED xác minh email rồi tạo application mới, giữ hồ sơ cũ; PENDING/APPROVED không nộp thêm; tên/phone thuộc User. |
+| <a id="ac-idn-003"></a>AC-IDN-003 | UC-A03; G-14; B1/B2/B3 | Tài khoản đúng/sai kênh; Customer chỉ CONFIRMED không còn nghĩa vụ, có PAID/DELIVERED hoặc CANCELLED kèm Refund FAILED | Ban, login/refresh và gọi API | Sai kênh không hợp quyền; chỉ CONFIRMED → DISABLED/ACCOUNT_DISABLED; PAID/DELIVERED → BANNED chỉ đơn đúng chủ, hủy/xác nhận theo state; CANCELLED/Refund FAILED → OBLIGATIONS_READ_ONLY đến khi hết nghĩa vụ. Không giỏ/thu mới/review/toàn bộ lịch sử; AWAITING_PAYMENT không thanh toán, J1/J2/J2b vẫn chạy; Order người khác 404. Seller PENDING/REJECTED không login. |
 | <a id="ac-idn-004"></a>AC-IDN-004 | UC-A04/A05/A07; G-05/07 | LOCAL có nhiều session | Đổi/reset mật khẩu, logout một session, thử token cũ | Đổi/reset thu hồi mọi session; logout chỉ session hiện tại; forgot email không tồn tại/Google vẫn cùng 202; link reset dùng một lần và có hạn P-05. |
 | <a id="ac-idn-005"></a>AC-IDN-005 | UC-A06; G-13 | Có địa chỉ đã được Order snapshot | Sửa/xóa địa chỉ của mình rồi xem đơn cũ | Hard-delete địa chỉ; snapshot Order không đổi; ward thuộc province; owner khác 404; không nhận quá P-09 sau khi tham số được chốt. |
 | <a id="ac-idn-006"></a>AC-IDN-006 | UC-B02; G-06 | Seller khác trạng thái User/role/approval | Search/list/detail công khai | Chỉ trả Seller đủ điều kiện; không lộ dữ liệu xét duyệt/credential; kết quả rỗng hợp lệ. |
 | <a id="ac-idn-007"></a>AC-IDN-007 | UC-E01 | Admin và User thường | Tra cứu Customer/Seller, thử khóa Admin | Admin chỉ xem dữ liệu được phép; không tự sửa hồ sơ, không màn lịch sử ban; User thường bị từ chối. |
-| <a id="ac-idn-008"></a>AC-IDN-008 | UC-E03; G-14 | Customer từng trả tiền tại thời điểm cấm; Order nguồn lỗi | Cấm CUSTOMER; thử checkout, xem/xử lý đơn cũ; cấm lại khi nguồn lỗi | Chặn mua mới, giữ quyền đơn cũ; không thay snapshot sau cấm; nguồn lỗi 503 không ghi ban một phần; SELLER ban không disable User. |
-| <a id="ac-idn-009"></a>AC-IDN-009 | UC-E06 | Seller PENDING và Admin đủ quyền | Approve/reject đồng thời; tự duyệt; approve hồ sơ BANNED | Một quyết định; state/role/authzVersion/audit/Outbox cùng transaction Identity; ví tạo qua Finance idempotent; tự duyệt bị chặn, BANNED vẫn không bán. |
+| <a id="ac-idn-008"></a>AC-IDN-008 | UC-E03; REQ-IDN-005; B9/B11 | Admin preview; Order/Finance timeout, ví đáng lẽ tồn tại trả 404; Seller PENDING/REJECTED hoặc target ADMIN | Preview/ban; J7 đồng thời Admin unban; gửi scope cũ | Không zero giả/không cho xác nhận khi preview lỗi; ban nguồn lỗi 503 không ghi một phần; job giữ trạng thái/retry, không ghi đè ACTIVE sau unban. Preview có thể khác kết quả POST thực tế; scope → 400; không cấm ADMIN, Seller chưa APPROVED → 409 INVALID_STATE_TRANSITION. |
+| <a id="ac-idn-009"></a>AC-IDN-009 | UC-E06; REQ-IDN-001 | Seller PENDING và Admin độc lập đủ quyền | Approve/reject đồng thời; thử ban trước duyệt | Một quyết định; approval/role/authzVersion/audit/Outbox cùng transaction Identity; Finance tạo ví idempotent. Trước duyệt không login/không ban; REJECTED chỉ đăng ký application mới qua xác minh email. |
+| <a id="ac-idn-010"></a>AC-IDN-010 | UC-E03; G-14; B6/B7/B8 | BANNED chưa từng DISABLED quá 30 ngày; hoặc lần đầu hết nghĩa vụ | J7 hai lần; unban tại restoreUntil và sau đó 1 giây | BANNED vẫn được unban, chưa bắt đầu cửa sổ. Hết nghĩa vụ → DISABLED một lần, lập disabledAt/restoreUntil UTC +30 ngày, không reset/phát duplicate. Đúng hạn → 200 ACTIVE, xóa mốc/lý do hiện tại giữ audit; sau hạn → 409 ACCOUNT_RESTORE_WINDOW_EXPIRED, không xóa dữ liệu/tiền/đổi đơn. ACTIVE unban idempotent; không phục hồi đơn hủy/Product HIDDEN/REMOVED/quyền chưa duyệt. |
+| <a id="ac-idn-011"></a>AC-IDN-011 | UC-E03; REQ-IDN-005; B4/B10 | Seller DISABLED xuất hiện available muộn; hoặc chỉ pending/Settlement/hiệu ứng chưa apply kể cả bằng 0 | Login/refresh/J7 đánh giá lại, rồi xử lý hết nghĩa vụ | Nghĩa vụ muộn → BANNED giới hạn không unban, chỉ available → WITHDRAWAL_ONLY; chỉ pending/hiệu ứng → OBLIGATIONS_READ_ONLY, không rút pending. Giữ mốc cùng đợt cấm khi quay DISABLED, không gia hạn; nguồn lỗi không mở rộng quyền. user.enabled mang BANNED không phát *.unbanned; tiền/ledger được giữ. |
 
 ### AT nguồn thuộc hồ sơ này
 
@@ -116,8 +120,8 @@ Các AT bao phủ nhiều service; hồ sơ này là đầu mối đọc, không
 
 | Mã | Tình huống | Bằng chứng cần có | Nguồn |
 |---|---|---|---|
-| <a id="at-18"></a>AT-18 | Ban từng scope, token stale, logout/reset, IDOR | Policy đúng G-14; 401/403/404/503 theo contract; không lộ đơn/ví người khác | [B.2](../../business/Software-Architecture.md), L999 |
-| <a id="at-25"></a>AT-25 | Cookie/CORS/CSRF và service allowlist | Sai origin/audience/caller bị chặn; internal không public; không lộ refresh token JSON | [B.2](../../business/Software-Architecture.md), L1006 |
+| <a id="at-18"></a>AT-18 | Ban/unban theo nghĩa vụ, J7, token stale, logout/reset, IDOR | Policy đúng G-14/AC-IDN-003/008/010/011; 401/403/404/409/503 theo contract, scope cũ 400; không lộ đơn/ví người khác | [Thẻ 15](coverage.md#the-15); [API §3.2/§6.1/§7](api_specs.md); AT baseline [B.2](software-architecture.md) |
+| <a id="at-25"></a>AT-25 | Cookie/CORS/CSRF và service allowlist | Sai origin/audience/caller bị chặn; internal không public; không lộ refresh token JSON | [B.2](software-architecture.md), L1006 |
 
 ## Chênh lệch, đề xuất và câu hỏi còn mở
 
@@ -125,7 +129,7 @@ Các AT bao phủ nhiều service; hồ sơ này là đầu mối đọc, không
 - **GAP-IDN-002 — khác yêu cầu:** AddressService soft-delete địa chỉ đã dùng; `AddressEndpointsTests.unusedAddressIsDeletedAndAUsedOneIsOnlyHidden` bảo vệ hành vi này. Baseline G-13 hard-delete; cần rà touch/reference và snapshot Order trước sửa.
 - **GAP-IDN-003 — khác baseline:** RegionProvider hiện gọi API ngoài; baseline RegionCatalog nội bộ, dataset cụ thể còn mở. Không gọi provider dev là quyết định nghiệp vụ.
 - **GAP-IDN-004 — khác baseline:** AuthTokens/Session trả refresh token trong JSON; baseline §6.3 cookie/memory. Cần task riêng về HTTP/session/security/test/FE; không chỉ đổi tài liệu OpenAPI sinh ra.
-- **Chưa xác minh:** approve có test audit/outbox nhưng chưa có consumer Finance tạo ví. Admin/read views chưa chứng minh có số đơn/ví từ service thật. Google Should và Customer bổ sung cần đối chiếu contract cụ thể trước task.
+- **Chưa xác minh:** approve có test audit/outbox nhưng chưa có consumer Finance tạo ví. Admin/read views chưa chứng minh có số đơn/ví từ service thật. Google Should cần đối chiếu contract cụ thể trước task. Đặc tả tài khoản đơn vai trò/ban theo nghĩa vụ và J7 đã đổi theo [Thẻ 15](coverage.md#the-15); không coi endpoint bổ sung hoặc AC là runtime proof.
 - Cấu hình TTL 15m/7d, reset 30m, địa chỉ 5, media 2MB, rate-limit chỉ là hiện trạng; xem câu hỏi tham số trong coverage.
 
 ## Đặc tả UC và ngoại lệ
@@ -134,13 +138,13 @@ Các AT bao phủ nhiều service; hồ sơ này là đầu mối đọc, không
 <a id="uc-a01"></a>
 ## UC-A01 — Đăng ký tài khoản khách hàng
 
-Nguồn: [§6 / UC-A01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L303–336. Vai trò: Khách hàng · Ưu tiên: M (đăng ký bằng Google: S).
+Nguồn hiệu lực: [FRD UC-A01](FRD.md), [API §3.2.1/§6.1](api_specs.md). Vai trò: Khách hàng · Ưu tiên: M (Google: S).
 
 Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
-| <a id="uc-a01.goal-01"></a>UC-A01.GOAL-01 | Mục tiêu | Khách hàng tạo tài khoản để mua sắm và quản lý đơn hàng. | [UC-A01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L307 |
+| <a id="uc-a01.goal-01"></a>UC-A01.GOAL-01 | Mục tiêu | Tạo tài khoản Customer riêng để mua sắm/quản lý đơn, không dùng tài khoản Seller/Admin. | [FRD UC-A01](FRD.md) |
 | <a id="uc-a01.pre-01"></a>UC-A01.PRE-01 | Điều kiện | Khách chưa có tài khoản với email hoặc số điện thoại đăng ký. | [UC-A01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L309 |
 | <a id="uc-a01.main-01"></a>UC-A01.MAIN-01 | Luồng chính | Khách chọn “Đăng ký”, nhập email, họ tên, số điện thoại và mật khẩu; xác nhận lại mật khẩu. | [UC-A01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L313 |
 | <a id="uc-a01.main-02"></a>UC-A01.MAIN-02 | Luồng chính | Hệ thống kiểm tra thông tin bắt buộc, định dạng, độ mạnh mật khẩu và việc trùng thông tin. | [UC-A01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L315 |
@@ -148,57 +152,57 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 | <a id="uc-a01.main-04"></a>UC-A01.MAIN-04 | Luồng chính | Khách có thể đăng nhập ngay để sử dụng các chức năng mua sắm. | [UC-A01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L319 |
 | <a id="uc-a01.alt-01"></a>UC-A01.ALT-01 | Ngoại lệ | Đăng ký bằng Google (Should): khách cho phép sử dụng tài khoản Google; hệ thống lấy email và họ tên, tạo tài khoản. Khách phải bổ sung số điện thoại trong hồ sơ trước khi đặt hàng. | [UC-A01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L323 |
 | <a id="uc-a01.alt-02"></a>UC-A01.ALT-02 | Ngoại lệ | Email hoặc số điện thoại đã được sử dụng: hệ thống chỉ rõ thông tin trùng và không tạo tài khoản mới. | [UC-A01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L325 |
-| <a id="uc-a01.alt-03"></a>UC-A01.ALT-03 | Ngoại lệ | Tài khoản đã có nhưng chưa có hồ sơ khách hàng (ví dụ chỉ đăng ký bán hàng): đăng nhập rồi bổ sung hồ sơ khách hàng ngay trên tài khoản đó; không đăng ký lại email. | [UC-A01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L327 |
+| <a id="uc-a01.alt-03"></a>UC-A01.ALT-03 | Ngoại lệ | Người có tài khoản Seller/Admin muốn mua hàng phải đăng ký Customer độc lập bằng email khác; không bổ sung hồ sơ Customer vào tài khoản đó. | [FRD UC-A01](FRD.md); [API §3.2.1](api_specs.md) |
 | <a id="uc-a01.alt-04"></a>UC-A01.ALT-04 | Ngoại lệ | Khách chọn phương thức Google cho email đã đăng ký bằng mật khẩu hoặc ngược lại: hệ thống hướng dẫn đăng nhập bằng phương thức đã dùng; không tự gộp tài khoản. | [UC-A01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L329 |
 | <a id="uc-a01.alt-05"></a>UC-A01.ALT-05 | Ngoại lệ | Google không xác minh được email hoặc khách không đồng ý: hệ thống dừng đăng ký và quay lại màn hình ban đầu. | [UC-A01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L331 |
 | <a id="uc-a01.alt-06"></a>UC-A01.ALT-06 | Ngoại lệ | Khách gửi yêu cầu nhiều lần do mất kết nối: hệ thống không tạo tài khoản trùng. | [UC-A01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L333 |
-| <a id="uc-a01.post-01"></a>UC-A01.POST-01 | Hậu điều kiện | Mỗi email chỉ gắn với một tài khoản trong toàn nền tảng; thông tin mật khẩu được bảo vệ. Xem quy tắc G-01 và G-07 (Database RBAC v5.0 mục 8.1). | [UC-A01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L335 |
+| <a id="uc-a01.post-01"></a>UC-A01.POST-01 | Hậu điều kiện | Mỗi email gắn một tài khoản, mỗi tài khoản một accountType Customer/Seller/Admin; nhiều vai trò dùng tài khoản độc lập, không hợp quyền. Mật khẩu bảo vệ theo G-07. | [FRD UC-A01](FRD.md); [Database §3.1/§8.1](database.md) |
 
 <a id="uc-a02"></a>
 ## UC-A02 — Đăng ký trở thành người bán
 
-Nguồn: [§6 / UC-A02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L337–370. Vai trò: Người bán · Ưu tiên: M.
+Nguồn hiệu lực: [FRD UC-A02](FRD.md), [API §6.1](api_specs.md), [Database §3.1.3](database.md). Vai trò: Seller · Ưu tiên: M.
 
 Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
-| <a id="uc-a02.goal-01"></a>UC-A02.GOAL-01 | Mục tiêu | Người dùng gửi hồ sơ để xin quyền kinh doanh trên nền tảng, bằng tài khoản mới hoặc tài khoản đã có. | [UC-A02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L341 |
-| <a id="uc-a02.pre-01"></a>UC-A02.PRE-01 | Điều kiện | Tài khoản chưa có hồ sơ người bán, hoặc hồ sơ trước đó đã bị từ chối. Tên cửa hàng không trùng hồ sơ đang chờ duyệt hoặc đã duyệt; email và số điện thoại không trùng tài khoản khác. | [UC-A02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L343 |
-| <a id="uc-a02.main-01"></a>UC-A02.MAIN-01 | Luồng chính | Người chưa có tài khoản chọn “Đăng ký bán hàng”, nhập email, tên cửa hàng, số điện thoại và mật khẩu. Tên cửa hàng được lưu làm họ tên của tài khoản; số điện thoại là số của tài khoản, dùng làm số liên hệ của cửa hàng. | [UC-A02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L347 |
-| <a id="uc-a02.main-02"></a>UC-A02.MAIN-02 | Luồng chính | Người đã có tài khoản (kể cả tài khoản Google) đăng nhập rồi chọn “Đăng ký bán hàng”; hệ thống điền sẵn họ tên làm tên cửa hàng (có thể sửa trước khi gửi) và yêu cầu bổ sung số điện thoại nếu tài khoản chưa có. | [UC-A02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L349 |
+| <a id="uc-a02.goal-01"></a>UC-A02.GOAL-01 | Mục tiêu | Tạo tài khoản Seller độc lập và hồ sơ kinh doanh; không chuyển/bổ sung vai trò trên tài khoản Customer/Admin. | [FRD UC-A02](FRD.md) |
+| <a id="uc-a02.pre-01"></a>UC-A02.PRE-01 | Điều kiện | Đăng ký Seller riêng hoặc application mới sau REJECTED qua xác minh email; tên shop không trùng PENDING/APPROVED, credential không dùng chung tài khoản khác. | [FRD UC-A02](FRD.md); [API §6.1](api_specs.md) |
+| <a id="uc-a02.main-01"></a>UC-A02.MAIN-01 | Luồng chính | Đăng ký tài khoản Seller riêng với email, tên shop, điện thoại và mật khẩu. Tên/phone lưu ở users.full_name/phone_number. | [FRD UC-A02](FRD.md) |
+| <a id="uc-a02.main-02"></a>UC-A02.MAIN-02 | Luồng chính | Người có Customer/Admin vẫn đăng ký Seller độc lập; không dùng tài khoản có sẵn để thêm vai trò Seller. | [FRD UC-A02](FRD.md); [API §3.2.1](api_specs.md) |
 | <a id="uc-a02.main-03"></a>UC-A02.MAIN-03 | Luồng chính | Hệ thống kiểm tra thông tin và cho người dùng xác nhận gửi hồ sơ. | [UC-A02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L351 |
 | <a id="uc-a02.main-04"></a>UC-A02.MAIN-04 | Luồng chính | Hệ thống tiếp nhận hồ sơ ở trạng thái “Chờ duyệt”, gửi email xác nhận đã nhận hồ sơ và hiển thị thông báo. | [UC-A02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L353 |
 | <a id="uc-a02.main-05"></a>UC-A02.MAIN-05 | Luồng chính | Quản trị viên xem xét hồ sơ (UC-E06); hệ thống gửi kết quả duyệt hoặc từ chối qua email. | [UC-A02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L355 |
-| <a id="uc-a02.alt-01"></a>UC-A02.ALT-01 | Ngoại lệ | Email đã có tài khoản: hệ thống không tạo tài khoản mới, hướng dẫn đăng nhập rồi đăng ký bán hàng từ tài khoản đó. | [UC-A02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L359 |
+| <a id="uc-a02.alt-01"></a>UC-A02.ALT-01 | Ngoại lệ | Email thuộc Customer/Admin hoặc Seller PENDING/APPROVED: không tạo trùng, dùng email khác khi đăng ký mới. Seller REJECTED xác minh sở hữu email rồi nộp SellerApplication mới qua public reapplication, không login/nộp lại hồ sơ cũ. | [FRD UC-A02](FRD.md); [API §6.1](api_specs.md) |
 | <a id="uc-a02.alt-02"></a>UC-A02.ALT-02 | Ngoại lệ | Tên cửa hàng trùng hồ sơ đang chờ duyệt hoặc đã duyệt, hoặc số điện thoại đã thuộc tài khoản khác: hệ thống chỉ rõ thông tin trùng và không nhận hồ sơ. | [UC-A02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L361 |
-| <a id="uc-a02.alt-03"></a>UC-A02.ALT-03 | Ngoại lệ | Đăng nhập khi hồ sơ đang chờ duyệt: được đăng nhập; kênh người bán hiển thị trạng thái “Chờ duyệt”, chưa dùng được chức năng bán. Nếu tài khoản có vai trò khách hàng thì vẫn mua sắm bình thường. | [UC-A02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L363 |
-| <a id="uc-a02.alt-04"></a>UC-A02.ALT-04 | Ngoại lệ | Hồ sơ bị từ chối: email nêu lý do; người bán đăng nhập, xem lý do, sửa thông tin và nộp lại trên chính hồ sơ cũ (cùng tài khoản và email); hồ sơ quay về “Chờ duyệt”. | [UC-A02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L365 |
-| <a id="uc-a02.alt-05"></a>UC-A02.ALT-05 | Ngoại lệ | Hồ sơ đang chờ duyệt hoặc đã duyệt: không nộp thêm hồ sơ. | [UC-A02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L367 |
-| <a id="uc-a02.post-01"></a>UC-A02.POST-01 | Hậu điều kiện | Mỗi tài khoản có tối đa một hồ sơ người bán; chỉ hồ sơ đã được duyệt và không bị cấm mới dùng được chức năng bán và hiển thị công khai. Tài khoản Google được đăng ký bán hàng từ tài khoản đã có. Xem Database RBAC v5.0 mục 3.1.3, 5.1. | [UC-A02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L369 |
+| <a id="uc-a02.alt-03"></a>UC-A02.ALT-03 | Ngoại lệ | PENDING không login/thao tác bán; kết quả xét duyệt gửi email, không có vai trò Customer dùng chung. | [FRD UC-A02](FRD.md) |
+| <a id="uc-a02.alt-04"></a>UC-A02.ALT-04 | Ngoại lệ | REJECTED không login; email nêu lý do. Đăng ký lại qua public xác minh email, tạo application_id mới và giữ lịch sử REJECTED; không sửa/nộp lại hồ sơ cũ. | [FRD UC-A02](FRD.md); [Database §3.1.3/§8.2C](database.md) |
+| <a id="uc-a02.alt-05"></a>UC-A02.ALT-05 | Ngoại lệ | PENDING/APPROVED không nộp thêm; REJECTED chỉ thay bằng lần đăng ký mới theo ALT-04. | [FRD UC-A02](FRD.md) |
+| <a id="uc-a02.post-01"></a>UC-A02.POST-01 | Hậu điều kiện | Seller độc lập, chỉ APPROVED/ACTIVE mới bán/hiển thị công khai; PENDING/REJECTED không login. BANNED chỉ quyền nghĩa vụ UC-E03, không bán hoặc dùng tài khoản Customer Google để đăng ký Seller. | [FRD UC-A02/E03](FRD.md); [API §3.2](api_specs.md) |
 
 <a id="uc-a03"></a>
 ## UC-A03 — Đăng nhập
 
-Nguồn: [§6 / UC-A03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L371–404. Vai trò: Khách hàng, Người bán, Quản trị viên · Ưu tiên: M (Google: S).
+Nguồn hiệu lực: [FRD UC-A03](FRD.md), [API §3.2/§6.1](api_specs.md), [Thẻ 15](coverage.md#the-15). Vai trò: Customer/Seller/Admin độc lập · Ưu tiên: M (Google: S).
 
 Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
-| <a id="uc-a03.goal-01"></a>UC-A03.GOAL-01 | Mục tiêu | Người dùng đăng nhập đúng quyền để truy cập hệ thống. | [UC-A03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L375 |
-| <a id="uc-a03.pre-01"></a>UC-A03.PRE-01 | Điều kiện | Người dùng đã có tài khoản và nhập thông tin đăng nhập phù hợp. | [UC-A03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L377 |
-| <a id="uc-a03.main-01"></a>UC-A03.MAIN-01 | Luồng chính | Người dùng nhập email/mật khẩu, hoặc chọn Google nếu tài khoản được tạo bằng Google. | [UC-A03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L381 |
-| <a id="uc-a03.main-02"></a>UC-A03.MAIN-02 | Luồng chính | Hệ thống xác minh tài khoản, phương thức và tình trạng quyền truy cập. | [UC-A03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L383 |
-| <a id="uc-a03.main-03"></a>UC-A03.MAIN-03 | Luồng chính | Một lần đăng nhập dùng chung mọi vai trò; một React SPA hiển thị vùng Customer/Seller/Admin theo permission và trạng thái hiện hành. Không có ba phiên hay ba tài khoản độc lập. | [UC-A03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L385; **baseline thay thế/hiệu chỉnh:** [§1.3, ADR-02](../../business/Software-Architecture.md), L83–98 |
-| <a id="uc-a03.main-04"></a>UC-A03.MAIN-04 | Luồng chính | Khách hàng đang bị hạn chế thanh toán nhưng đã có đơn thanh toán thành công trước khi bị cấm vẫn xem và xử lý các đơn cũ; nút “Thanh toán” bị khóa. | [UC-A03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L387 |
+| <a id="uc-a03.goal-01"></a>UC-A03.GOAL-01 | Mục tiêu | Xác thực đúng kênh Customer/Seller/Admin và chỉ cấp quyền của tài khoản đó. | [FRD UC-A03](FRD.md) |
+| <a id="uc-a03.pre-01"></a>UC-A03.PRE-01 | Điều kiện | Tài khoản đúng kênh, Seller APPROVED; login/refresh đánh giá nghĩa vụ UC-E03, kể cả nghĩa vụ muộn của DISABLED. | [FRD UC-A03](FRD.md); [API §3.2](api_specs.md) |
+| <a id="uc-a03.main-01"></a>UC-A03.MAIN-01 | Luồng chính | Chọn kênh, gửi email/mật khẩu/accountType tương ứng; Google chỉ cho Customer dùng Google. | [FRD UC-A03](FRD.md); [API §6.1](api_specs.md) |
+| <a id="uc-a03.main-02"></a>UC-A03.MAIN-02 | Luồng chính | Xác minh credential, accountType, approval và quyền/nghĩa vụ hiện hành; đúng mật khẩu không cấp quyền kênh khác. | [FRD UC-A03](FRD.md); [API §3.2](api_specs.md) |
+| <a id="uc-a03.main-03"></a>UC-A03.MAIN-03 | Luồng chính | Cấp phiên đúng một tài khoản/kênh; không login dùng chung/hợp quyền Customer/Seller/Admin. | [FRD UC-A03](FRD.md); [API §3.2.1](api_specs.md) |
+| <a id="uc-a03.main-04"></a>UC-A03.MAIN-04 | Luồng chính | BANNED nhận phiên giới hạn theo nghĩa vụ/accessMode UC-E03; Customer không giỏ/thu mới/review/toàn bộ lịch sử terminal; AWAITING_PAYMENT không thanh toán. | [FRD UC-A03/E03](FRD.md); [API §3.2](api_specs.md) |
 | <a id="uc-a03.alt-01"></a>UC-A03.ALT-01 | Ngoại lệ | Sai thông tin: thông báo chung, không tiết lộ tài khoản có tồn tại. | [UC-A03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L391 |
-| <a id="uc-a03.alt-02"></a>UC-A03.ALT-02 | Ngoại lệ | Hồ sơ người bán đang chờ duyệt, bị từ chối hoặc bị cấm: vẫn đăng nhập; kênh người bán hiển thị trạng thái hồ sơ (chờ duyệt; bị từ chối kèm lý do và nút nộp lại; bị cấm kèm lý do) và chặn thao tác bán. Seller bị cấm vẫn xem được ví ở trạng thái đóng băng. | [UC-A03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L393 |
-| <a id="uc-a03.alt-03"></a>UC-A03.ALT-03 | Ngoại lệ | Tài khoản chưa có hồ sơ người bán mở kênh người bán: hướng dẫn đăng ký bán hàng (UC-A02). Tài khoản không có vai trò quản trị mở trang quản trị: thông báo không có quyền. | [UC-A03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L395 |
-| <a id="uc-a03.alt-04"></a>UC-A03.ALT-04 | Ngoại lệ | Tài khoản bị vô hiệu hóa: không đăng nhập được; mọi phiên bị thu hồi. | [UC-A03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L397 |
-| <a id="uc-a03.alt-05"></a>UC-A03.ALT-05 | Ngoại lệ | Khách bị cấm sau khi đã có đơn thanh toán: khóa nút “Thanh toán”, vẫn được xem và xử lý các đơn hàng cũ. Khách bị cấm khi chưa có đơn thanh toán: vẫn đăng nhập, xem trạng thái tài khoản và dùng vai trò khác; chức năng mua sắm bị chặn (G-14). | [UC-A03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L399 |
+| <a id="uc-a03.alt-02"></a>UC-A03.ALT-02 | Ngoại lệ | PENDING/REJECTED không login. Seller APPROVED/BANNED chỉ xử lý nghĩa vụ đơn/tiền của mình, không sản phẩm/tồn kho/đơn mới/thống kê; available không đóng băng vì ban. | [FRD UC-A03/E03](FRD.md) |
+| <a id="uc-a03.alt-03"></a>UC-A03.ALT-03 | Ngoại lệ | Sai loại tài khoản của kênh dù đúng credential: thông báo chung “Thông tin đăng nhập không chính xác”, không gợi ý đăng ký Seller/tiết lộ vai trò. | [FRD UC-A03](FRD.md); [API §3.2](api_specs.md) |
+| <a id="uc-a03.alt-04"></a>UC-A03.ALT-04 | Ngoại lệ | DISABLED chỉ từ chối ACCOUNT_DISABLED sau kiểm tra nghĩa vụ muộn; có nghĩa vụ → BANNED giới hạn không tự unban; lỗi nguồn cần xác minh →503. Thu hồi phiên theo trạng thái hiện hành. | [FRD UC-A03/E03](FRD.md); [API §3.2](api_specs.md) |
+| <a id="uc-a03.alt-05"></a>UC-A03.ALT-05 | Ngoại lệ | Không còn đơn thao tác nhưng Payment/Refund dở vẫn có OBLIGATIONS_READ_ONLY đúng chủ, kể cả CANCELLED/Refund FAILED hoặc FULL_CHECKOUT phiên đóng. Lịch sử từng trả tiền không giữ phiên. | [FRD UC-A03/E03](FRD.md); [API §3.2](api_specs.md) |
 | <a id="uc-a03.alt-06"></a>UC-A03.ALT-06 | Ngoại lệ | Đăng nhập bằng Google khác phương thức đăng ký: hướng dẫn dùng phương thức đúng; không tự liên kết tài khoản. | [UC-A03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L401 |
-| <a id="uc-a03.post-01"></a>UC-A03.POST-01 | Hậu điều kiện | Một tài khoản đăng nhập dùng chung các vai trò hợp lệ. Customer BANNED chỉ giữ quyền xem/xử lý đơn cũ theo G-14 nếu snapshot tại thời điểm cấm cho biết đã từng có đơn thanh toán thành công; không có lịch sử đó thì chặn phạm vi Customer nhưng giữ vai trò khác hợp lệ. Cấm Customer không tự disable User. | [UC-A03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L403; **baseline thay thế/hiệu chỉnh:** [§6.2, G-14](../../business/Software-Architecture.md), L602–614 |
+| <a id="uc-a03.post-01"></a>UC-A03.POST-01 | Hậu điều kiện | Auth/self/authorization-context có accountType/accountStatus, accessMode, bannedAt/disabledAt/restoreUntil nullable và authzVersion phù hợp. Login/refresh cùng policy; mỗi request tính allowlist/ownership/state hiện hành. Ngoài allowlist →ACCOUNT_BANNED; public browsing không cấp quyền mua sắm authenticated. | [API §3.2/§6.1/§7.1](api_specs.md); [FRD UC-A03/E03](FRD.md) |
 
 <a id="uc-a04"></a>
 ## UC-A04 — Đổi mật khẩu
@@ -233,7 +237,7 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 | <a id="uc-a05.main-03"></a>UC-A05.MAIN-03 | Luồng chính | Nếu tài khoản đủ điều kiện (email tồn tại và tài khoản dùng mật khẩu, không phải Google), người dùng nhận liên kết đặt lại mật khẩu qua email. | [UC-A05](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L441 |
 | <a id="uc-a05.main-04"></a>UC-A05.MAIN-04 | Luồng chính | Người dùng mở liên kết còn hiệu lực, đặt mật khẩu mới (đáp ứng các điều kiện) và nhận thông báo thành công. | [UC-A05](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L443 |
 | <a id="uc-a05.main-05"></a>UC-A05.MAIN-05 | Luồng chính | Hệ thống yêu cầu các phiên đăng nhập trước đó đăng nhập lại. | [UC-A05](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L445 |
-| <a id="uc-a05.alt-01"></a>UC-A05.ALT-01 | Ngoại lệ | Email không tồn tại hoặc thuộc tài khoản Google: không gửi liên kết nhưng vẫn hiển thị thông báo chung. Tài khoản có hồ sơ người bán chờ duyệt hoặc bị từ chối vẫn đặt lại mật khẩu bình thường vì mật khẩu thuộc tài khoản chung. | [UC-A05](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L449 |
+| <a id="uc-a05.alt-01"></a>UC-A05.ALT-01 | Ngoại lệ | Email không tồn tại/GOOGLE không gửi liên kết, vẫn thông báo chung. Seller PENDING/REJECTED dùng LOCAL vẫn reset mật khẩu, nhưng reset không thay approval hoặc cấp login/quyền bán. | [FRD UC-A05](FRD.md); [API §3.2/§6.1](api_specs.md) |
 | <a id="uc-a05.alt-02"></a>UC-A05.ALT-02 | Ngoại lệ | Liên kết đã sử dụng hoặc hết hạn (P-05): yêu cầu người dùng gửi lại yêu cầu mới. | [UC-A05](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L451 |
 | <a id="uc-a05.post-01"></a>UC-A05.POST-01 | Hậu điều kiện | Liên kết chỉ dùng một lần và không làm lộ thông tin tài khoản. | [UC-A05](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L453 |
 
@@ -247,7 +251,7 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
 | <a id="uc-a06.goal-01"></a>UC-A06.GOAL-01 | Mục tiêu | Người dùng cập nhật thông tin cá nhân và địa chỉ nhận hàng. | [UC-A06](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L459 |
-| <a id="uc-a06.pre-01"></a>UC-A06.PRE-01 | Điều kiện | Đã đăng nhập vào tài khoản của mình. | [UC-A06](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L461 |
+| <a id="uc-a06.pre-01"></a>UC-A06.PRE-01 | Điều kiện | Có phiên/quyền tự phục vụ hiện hành. BANNED chỉ allowlist nghĩa vụ UC-E03, không mở cập nhật hồ sơ/sổ địa chỉ vì có phiên giới hạn. | [FRD UC-A06/E03](FRD.md); [API §3.2](api_specs.md) |
 | <a id="uc-a06.main-01"></a>UC-A06.MAIN-01 | Luồng chính | Người dùng mở “Hồ sơ”, xem các thông tin hiện có và chọn nội dung được phép cập nhật. | [UC-A06](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L465 |
 | <a id="uc-a06.main-02"></a>UC-A06.MAIN-02 | Luồng chính | Người dùng sửa họ tên và số điện thoại của tài khoản; khách hàng thêm/sửa/xóa địa chỉ nhận hàng; người bán sửa mô tả và logo cửa hàng; quản trị viên sửa họ tên. MVP không lưu ảnh đại diện; giao diện dùng ảnh mặc định. | [UC-A06](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L467 |
 | <a id="uc-a06.main-03"></a>UC-A06.MAIN-03 | Luồng chính | Hệ thống kiểm tra các trường bắt buộc, sự trùng lặp và giới hạn thông tin. | [UC-A06](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L469 |
@@ -305,8 +309,8 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 | <a id="uc-e01.goal-01"></a>UC-E01.GOAL-01 | Mục tiêu | Quản trị viên tra cứu khách hàng, người bán và trạng thái tài khoản. | [UC-E01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1053 |
 | <a id="uc-e01.pre-01"></a>UC-E01.PRE-01 | Điều kiện | Quản trị viên đã đăng nhập. | [UC-E01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1055 |
 | <a id="uc-e01.main-01"></a>UC-E01.MAIN-01 | Luồng chính | Quản trị viên mở mục “Người dùng”. | [UC-E01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1059 |
-| <a id="uc-e01.main-02"></a>UC-E01.MAIN-02 | Luồng chính | Hệ thống liệt kê khách hàng và người bán (một tài khoản có cả hai hồ sơ xuất hiện ở cả hai danh sách), hỗ trợ tìm theo tên, email, số điện thoại và lọc trạng thái. | [UC-E01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1061 |
-| <a id="uc-e01.main-03"></a>UC-E01.MAIN-03 | Luồng chính | Quản trị viên chọn tài khoản để xem hồ sơ, số đơn, tóm tắt ví (với Seller), trạng thái và lý do khóa hiện tại của từng phạm vi. Lịch sử khóa/mở khóa chỉ lưu trong nhật ký nội bộ; MVP không có màn xem nhật ký. | [UC-E01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1063 |
+| <a id="uc-e01.main-02"></a>UC-E01.MAIN-02 | Luồng chính | Liệt kê Customer/Seller theo accountType độc lập, tìm tên/email/phone và lọc trạng thái; không có hai hồ sơ trên cùng tài khoản. | [FRD UC-E01](FRD.md); [API §6.1](api_specs.md) |
+| <a id="uc-e01.main-03"></a>UC-E01.MAIN-03 | Luồng chính | Detail có accountType/accountStatus, lý do, bannedAt/disabledAt/restoreUntil, số đơn/ví Seller. CustomerAdminView/SellerAdminView có banImpact UC-E03; lỗi nguồn không zero giả/cho xác nhận. Audit nội bộ, không thêm màn lịch sử ban. | [FRD UC-E01/E03](FRD.md); [API §6.1](api_specs.md) |
 | <a id="uc-e01.main-04"></a>UC-E01.MAIN-04 | Luồng chính | Từ hồ sơ, quản trị viên có thể mở chức năng duyệt người bán hoặc cấm/gỡ cấm tài khoản. | [UC-E01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1065 |
 | <a id="uc-e01.alt-01"></a>UC-E01.ALT-01 | Ngoại lệ | Danh sách không có kết quả: hệ thống hiển thị trạng thái trống. | [UC-E01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1069 |
 | <a id="uc-e01.alt-02"></a>UC-E01.ALT-02 | Ngoại lệ | Tài khoản quản trị viên không xuất hiện trong danh sách có thể thao tác khóa. | [UC-E01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1071 |
@@ -315,31 +319,42 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 <a id="uc-e03"></a>
 ## UC-E03 — Cấm và gỡ cấm tài khoản
 
-Nguồn: [§6 / UC-E03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1105–1140. Vai trò: Quản trị viên · Ưu tiên: M.
+Nguồn hiệu lực: [FRD UC-E03](FRD.md), [API §3.2/§6.1/§7](api_specs.md), [Database §3.1/§8.2D](database.md), [Thẻ 15](coverage.md#the-15). Vai trò: Admin · Ưu tiên: M.
 
-Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
+Các clause sau thay policy scope/snapshot lịch sử tương ứng; mã clause giữ ổn định. Đây là đặc tả, chưa là bằng chứng triển khai.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
-| <a id="uc-e03.goal-01"></a>UC-E03.GOAL-01 | Mục tiêu | Quản trị viên cấm/gỡ cấm khách hoặc Seller, bảo vệ các quyền lợi đã phát sinh. | [UC-E03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1109 |
-| <a id="uc-e03.pre-01"></a>UC-E03.PRE-01 | Điều kiện | Đã đăng nhập Admin; không cấm Admin. | [UC-E03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1111 |
-| <a id="uc-e03.main-01"></a>UC-E03.MAIN-01 | Luồng chính | Quản trị viên chọn tài khoản, chọn phạm vi cấm — toàn tài khoản (vô hiệu hóa), chỉ vai trò khách hàng, hoặc chỉ vai trò người bán — nhập lý do bắt buộc và xác nhận. | [UC-E03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1115 |
-| <a id="uc-e03.main-02"></a>UC-E03.MAIN-02 | Luồng chính | Với phạm vi khách hàng, hệ thống kiểm tra khách đã từng có đơn thanh toán thành công trước thời điểm cấm hay chưa. | [UC-E03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1117 |
-| <a id="uc-e03.main-03"></a>UC-E03.MAIN-03 | Luồng chính | Nếu khách đã thanh toán trước khi bị cấm, hệ thống CHỈ vô hiệu chức năng thanh toán mới; khách vẫn đăng nhập, xem hồ sơ/giỏ/đơn, hủy đơn hợp lệ và xác nhận đã nhận. | [UC-E03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1119 |
-| <a id="uc-e03.main-04"></a>UC-E03.MAIN-04 | Luồng chính | Nếu khách chưa từng thanh toán thành công, hệ thống chặn mọi chức năng mua sắm của vai trò khách hàng; tài khoản vẫn đăng nhập để xem trạng thái và dùng vai trò khác. Với phạm vi người bán, hệ thống chặn chức năng bán (không khóa đăng nhập chung), xử lý các đơn của Seller đó và đóng băng ví theo WD-09. Với phạm vi toàn tài khoản, hệ thống chặn đăng nhập và mọi vai trò, thu hồi các phiên; các tác vụ hoàn tiền của hệ thống vẫn chạy. | [UC-E03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1121 |
-| <a id="uc-e03.main-05"></a>UC-E03.MAIN-05 | Luồng chính | Hệ thống gửi thông báo, lưu nhật ký. Gỡ cấm theo đúng phạm vi đã cấm và khôi phục quyền tương ứng (kể cả quyền rút tiền), không tự khôi phục đơn đã hủy. | [UC-E03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1123 |
-| <a id="uc-e03.alt-01"></a>UC-E03.ALT-01 | Ngoại lệ | Seller bị cấm trước khi xác nhận đã giao: các đơn chưa giao của Seller được hủy/hoàn riêng (Settlement chờ_hoàn, trừ số dư chờ khi hoàn thành công); đơn của cửa hàng khác cùng lần thanh toán vẫn xử lý bình thường. | [UC-E03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1127 |
-| <a id="uc-e03.alt-02"></a>UC-E03.ALT-02 | Ngoại lệ | Seller đã xác nhận “Đã giao”: giữ đơn ở trạng thái chờ khách xác nhận, không tự hủy vì cấm Seller; khi đơn đã_xác_nhận, tiền vào số dư khả dụng nhưng bị đóng băng đến khi gỡ cấm. | [UC-E03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1129 |
-| <a id="uc-e03.alt-03"></a>UC-E03.ALT-03 | Ngoại lệ | Đơn đang có khoản hoàn chờ kết quả: tiếp tục đối soát; không xóa nghĩa vụ. | [UC-E03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1131 |
-| <a id="uc-e03.alt-04"></a>UC-E03.ALT-04 | Ngoại lệ | Cấm/gỡ cấm lặp an toàn; mọi thao tác có nhật ký, không tự hoàn tiền trùng. | [UC-E03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1133 |
-| <a id="uc-e03.alt-05"></a>UC-E03.ALT-05 | Ngoại lệ | Cấm vai trò người bán không ảnh hưởng vai trò khách hàng của cùng tài khoản, và ngược lại. | [UC-E03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1135 |
-| <a id="uc-e03.alt-06"></a>UC-E03.ALT-06 | Ngoại lệ | Cấm người bán áp dụng được cho hồ sơ đang chờ duyệt, đã duyệt hoặc bị từ chối; nếu hồ sơ đang bị cấm sau đó được duyệt, người bán vẫn không hoạt động cho đến khi được gỡ cấm. | [UC-E03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1137 |
-| <a id="uc-e03.post-01"></a>UC-E03.POST-01 | Hậu điều kiện | Khách đã trả tiền trước khi bị cấm chỉ bị chặn thanh toán mới; việc cấm Seller không ảnh hưởng đơn của cửa hàng khác và không xóa số dư Seller đã được quyết toán. | [UC-E03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1139 |
+| <a id="uc-e03.goal-01"></a>UC-E03.GOAL-01 | Mục tiêu | Cấm/gỡ một tài khoản Customer/Seller, bảo toàn nghĩa vụ hiện tại và tiền. | [FRD UC-E03](FRD.md); [Thẻ 15](coverage.md#the-15) |
+| <a id="uc-e03.pre-01"></a>UC-E03.PRE-01 | Điều kiện | Admin có account:moderate; không cấm ADMIN, chỉ Seller APPROVED. Không scope/khóa khẩn cấp vượt nghĩa vụ hoặc tác động tài khoản khác cùng người. | [FRD UC-E03](FRD.md); [API §6.1](api_specs.md) |
+| <a id="uc-e03.main-01"></a>UC-E03.MAIN-01 | Luồng chính | Detail có banImpact={evaluatedAt,resultingAccountStatus,obligations}. Popup không scope, hiển thị accountType, nghĩa vụ đơn/Payment/Refund, pending/available Seller, trạng thái/quyền dự kiến; lý do 1..1000 ký tự, nút Hủy/Xác nhận cấm. Lỗi nguồn không zero giả/không xác nhận. BANNED chưa bắt đầu hạn; DISABLED giải thích 30 ngày từ chuyển trạng thái. | [FRD UC-E03](FRD.md); [API §6.1](api_specs.md) |
+| <a id="uc-e03.main-02"></a>UC-E03.MAIN-02 | Luồng chính | POST /identity/admin/ban/{userId} body {reason} đọc lại nghĩa vụ trước commit; còn →BANNED, mọi nguồn xác minh hết →DISABLED/thu hồi phiên. Preview không khóa liên service; hiển thị kết quả POST thực tế nếu khác. Lỗi dependency →503 không ghi ban một phần; scope cũ →400. | [FRD UC-E03](FRD.md); [API §6.1/§7.1](api_specs.md) |
+| <a id="uc-e03.main-03"></a>UC-E03.MAIN-03 | Luồng chính | accountStatus suy ra không cột mới: ACTIVE=(users ACTIVE,hồ sơ ACTIVE); BANNED=(users ACTIVE,hồ sơ BANNED); DISABLED=(users DISABLED,hồ sơ BANNED). Chỉ Identity chuyển cặp trạng thái cùng authzVersion/audit/Outbox trong local transaction; approval riêng. BANNED chỉ allowlist nghĩa vụ dưới đây. | [Database §3.1.1–3.1.3/§8.2D](database.md); [API §3.2](api_specs.md) |
+| <a id="uc-e03.main-04"></a>UC-E03.MAIN-04 | Luồng chính | banned_at ở đầu đợt; lần đầu DISABLED ghi disabled_at, restore_until=disabled_at+30 ngày UTC. disabled_reason/ban_reason cùng lý do đợt, không hai lệnh khóa độc lập. Giữ mốc qua ban/job lặp và DISABLED→BANNED→DISABLED. | [Database §3.1.1/§8.2D](database.md); [FRD UC-E03](FRD.md) |
+| <a id="uc-e03.main-05"></a>UC-E03.MAIN-05 | Luồng chính | Admin thấy trạng thái/mốc/deadline/Gỡ cấm; quá hạn DISABLED khóa nút kèm lý do. POST /identity/admin/unban/{userId} body {reason?: string ≤1000}: BANNED bất kỳ lúc nào, DISABLED khi now≤restoreUntil; ACTIVE thành công idempotent. Không cần Order/Finance, vẫn kiểm tra tài khoản/Seller. Thành công →ACTIVE, xóa mốc/lý do hiện tại giữ audit; đợt cấm mới tạo mốc mới. | [FRD UC-E03](FRD.md); [API §6.1](api_specs.md) |
+| <a id="uc-e03.alt-01"></a>UC-E03.ALT-01 | Ngoại lệ | Ban Seller sau thu không tự hủy/hoàn Order; vẫn xử lý đơn tồn đúng state/J4. Invalid giao dịch do Order chứng minh khi apply Payment SUCCESS là trigger riêng §8.2B, không suy từ status hiện tại lúc event trễ. | [FRD UC-E03/B06](FRD.md); [Database §8.2B](database.md) |
+| <a id="uc-e03.alt-02"></a>UC-E03.ALT-02 | Ngoại lệ | Seller chỉ pending/hiệu ứng hệ thống chỉ đọc tiến độ, không rút pending; available vẫn rút theo WD-03/09, kể cả toàn bộ dưới 10.000 khi thỏa ngoại lệ. Không đóng băng vì ban; quyết toán hợp lệ tiếp tục. | [FRD UC-D05/E03](FRD.md); [Database §8.3](database.md); [finance](finance.md#wd-03) |
+| <a id="uc-e03.alt-03"></a>UC-E03.ALT-03 | Ngoại lệ | Payment/Refund/Finance chưa xong vẫn giữ nghĩa vụ kể cả Order terminal; nguồn lỗi/thiếu/không nhất quán không chứng minh hết. Request cần xác minh →503; job giữ trạng thái/retry bền vững. | [FRD UC-E03](FRD.md); [API §7.1.2](api_specs.md) |
+| <a id="uc-e03.alt-04"></a>UC-E03.ALT-04 | Ngoại lệ | Ban/job lặp không reset mốc/phát duplicate/tạo đợt mới. Quá hạn DISABLED →409 ACCOUNT_RESTORE_WINDOW_EXPIRED, không xóa tài khoản/dữ liệu/tiền/đổi đơn. Unban không phục hồi đơn hủy/Product HIDDEN/REMOVED/quyền Seller chưa duyệt. | [FRD UC-E03](FRD.md); [API §6.1](api_specs.md) |
+| <a id="uc-e03.alt-05"></a>UC-E03.ALT-05 | Ngoại lệ | Một accountType/tài khoản, ban/unban chỉ target không ảnh hưởng tài khoản khác cùng người. DISABLED có nghĩa vụ muộn chỉ quay BANNED giới hạn, không tự unban/gia hạn mốc. | [FRD UC-E03](FRD.md); [Database §8.2D](database.md) |
+| <a id="uc-e03.alt-06"></a>UC-E03.ALT-06 | Ngoại lệ | Seller PENDING/REJECTED không được ban: 409 INVALID_STATE_TRANSITION, không đổi approval/role; ADMIN không là target. Giữ 401/403/404 theo contract. | [FRD UC-E03/E06](FRD.md); [API §6.1](api_specs.md) |
+| <a id="uc-e03.post-01"></a>UC-E03.POST-01 | Hậu điều kiện | Ban/unban 200 envelope data: {userId,accountType,accountStatus,userStatus,customerStatus nullable,sellerStatus nullable,accessMode,bannedAt nullable,disabledAt nullable,restoreUntil nullable,authzVersion}; ban thêm obligations. Admin detail/auth/self/authorization-context có trạng thái/mốc phù hợp; thông báo phân biệt quyền giới hạn/unban, nêu deadline nếu có. | [API §6.1/§7.1/§7.2](api_specs.md); [FRD UC-E03](FRD.md) |
+
+<a id="nguon-nghia-vu-va-j7"></a>
+### Nguồn nghĩa vụ và J7
+
+- `obligations={hasOpenOrders,hasPendingPayment,hasUnresolvedRefund,hasPendingFinance,pendingBalanceVnd,availableBalanceVnd}`; Customer có hasPendingFinance=false, hai số dư 0. Order AWAITING_PAYMENT/PAID/PACKING/DELIVERED chưa kết thúc; CONFIRMED/CANCELLED/PAYMENT_FAILED/EXPIRED không tự giữ phiên. Payment PENDING/SUCCESS chưa apply, thu muộn chưa hoàn xong, Refund PENDING/FAILED chưa giải quyết vẫn giữ nghĩa vụ kể cả FULL_CHECKOUT/phiên đóng. Seller thêm Settlement PENDING/PENDING_REFUND/hiệu ứng chưa apply kể cả 0, pending>0 hoặc available>0.
+- Identity là consumer duy nhất của `GET /internal/v1/orders/accounts/{userId}/obligations?accountType=CUSTOMER|SELLER` → `{hasOpenOrders,openOrderIds,hasPendingPayment,hasUnresolvedRefund,evaluatedAt,orderStateVersion}`. Order tổng hợp đúng owner, xác minh Payment/Refund qua internal API Payment, không join DB. Seller thêm `GET /internal/v1/finance/sellers/{sellerId}/obligations` → `{hasPendingFinance,pendingBalanceVnd,availableBalanceVnd,evaluatedAt,financeStateVersion}`; Finance kiểm tra Settlement/hiệu ứng pending, không chỉ wallet. Đây là bổ sung đặc tả, không tuyên bố endpoint code có sẵn. 404 tài khoản/ví đáng lẽ tồn tại không là zero.
+- BANNED Customer chỉ đơn/phiên/Payment/Refund gắn nghĩa vụ đúng chủ, hủy/xác nhận theo state. Seller chỉ đơn tồn/thông tin tiền/biên nhận liên quan, không bán/sửa sản phẩm/tồn kho/đơn mới/thống kê. AccessMode ACTIVE=FULL; Customer có đơn=OPEN_ORDERS_ONLY; Seller có đơn+available=ORDERS_AND_WITHDRAWAL, chỉ đơn=OPEN_ORDERS_ONLY, chỉ available=WITHDRAWAL_ONLY; chỉ nghĩa vụ hệ thống/pending không có thao tác đơn/rút=OBLIGATIONS_READ_ONLY; DISABLED=LOGIN_BLOCKED. Đây là nhãn truy cập, không trạng thái cấm mới; mỗi request tính allowlist/ownership/state, không mở toàn bộ lịch sử.
+- **J7 — Đối soát trạng thái tài khoản bị cấm**, owner Identity, định kỳ đánh giá BANNED/DISABLED: hết nghĩa vụ đã xác minh →DISABLED; nghĩa vụ muộn →BANNED giới hạn. Không chuyển ACTIVE/tự unban/đặt chu kỳ, backoff hoặc SLA mới; login/refresh cùng policy kể cả trước từ chối DISABLED. HTTP ngoài transaction giữ khóa; kiểm tra version/đợt cấm trước commit để không ghi đè Admin unban. Snapshot các nguồn không nguyên tử; hiệu ứng đến trễ giữ bền vững/retry an toàn, không mất tiền/mở rộng quyền khi lỗi nguồn.
+- Tái sử dụng `customer.banned/unbanned`, `seller.banned/unbanned`, `user.disabled/enabled` và envelope/version/dedupe; payload liên quan thêm accountStatus/accessMode/bannedAt/disabledAt/restoreUntil. user.enabled vì nghĩa vụ muộn mang BANNED, không phải unban; chỉ lệnh unban phát *.unbanned. Consumer không tự hủy Order/đóng băng available; Payment/Refund/jobs tiếp tục.
+
+Nguồn: [FRD UC-E03/G03](FRD.md), [API §3.2/§7.1–7.3](api_specs.md), [Database §3.1.1/§8.2D](database.md), [Thẻ 15](coverage.md#the-15).
 
 <a id="uc-e06"></a>
 ## UC-E06 — Duyệt Seller mới đăng ký
 
-Nguồn: [§6 / UC-E06](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1173–1202. Vai trò: Quản trị viên · Ưu tiên: M.
+Nguồn hiệu lực: [FRD UC-E06](FRD.md), [API §6.1](api_specs.md), [Database §3.1.3/§8.2C](database.md). Vai trò: Admin · Ưu tiên: M.
 
 Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
 
@@ -350,9 +365,9 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 | <a id="uc-e06.main-01"></a>UC-E06.MAIN-01 | Luồng chính | Quản trị viên vào danh sách “Người bán chờ duyệt”. | [UC-E06](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1183 |
 | <a id="uc-e06.main-02"></a>UC-E06.MAIN-02 | Luồng chính | Hệ thống hiển thị hồ sơ đăng ký: tên cửa hàng, email, số điện thoại, mô tả và ngày nộp. | [UC-E06](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1185 |
 | <a id="uc-e06.main-03"></a>UC-E06.MAIN-03 | Luồng chính | Quản trị viên chọn “Duyệt” hoặc “Từ chối”; khi từ chối phải nhập lý do. | [UC-E06](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1187 |
-| <a id="uc-e06.main-04"></a>UC-E06.MAIN-04 | Luồng chính | Hệ thống ghi nhận quyết định và gửi email kết quả; khi duyệt, hệ thống cấp vai trò người bán cho tài khoản và tạo ví giả lập của Seller với mọi số dư bằng 0. | [UC-E06](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1189 |
+| <a id="uc-e06.main-04"></a>UC-E06.MAIN-04 | Luồng chính | Approve kích hoạt SELLER trên tài khoản Seller độc lập, authzVersion/audit/Outbox cùng transaction Identity; Finance tạo ví số dư 0 idempotent qua seller.approved, không transaction chung. Gửi email quyết định. | [FRD UC-E06](FRD.md); [API §7.2](api_specs.md) |
 | <a id="uc-e06.alt-01"></a>UC-E06.ALT-01 | Ngoại lệ | Hồ sơ đã được người khác xử lý: hệ thống thông báo đã xử lý, không nhận quyết định thứ hai. | [UC-E06](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1193 |
-| <a id="uc-e06.alt-02"></a>UC-E06.ALT-02 | Ngoại lệ | Hồ sơ bị từ chối: không cấp vai trò người bán, không tạo ví; người bán vẫn đăng nhập, xem lý do và nộp lại trên chính hồ sơ cũ (UC-A02). | [UC-E06](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1195 |
-| <a id="uc-e06.alt-03"></a>UC-E06.ALT-03 | Ngoại lệ | Hồ sơ đang bị cấm: vẫn duyệt được, nhưng người bán không hoạt động cho đến khi được gỡ cấm (UC-E03). | [UC-E06](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1197 |
-| <a id="uc-e06.alt-04"></a>UC-E06.ALT-04 | Ngoại lệ | Quản trị viên không được duyệt hồ sơ người bán của chính tài khoản mình. | [UC-E06](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1199 |
-| <a id="uc-e06.post-01"></a>UC-E06.POST-01 | Hậu điều kiện | Chỉ người bán đã được duyệt và không bị cấm mới dùng được chức năng bán và hiển thị trong tìm kiếm người bán; mọi hồ sơ được duyệt đều có ví. | [UC-E06](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1201 |
+| <a id="uc-e06.alt-02"></a>UC-E06.ALT-02 | Ngoại lệ | REJECTED không login/bán/tạo ví; gửi lý do email. Đăng ký lại qua public xác minh email và application mới UC-A02, giữ lịch sử. | [FRD UC-E06/A02](FRD.md); [API §6.1](api_specs.md) |
+| <a id="uc-e06.alt-03"></a>UC-E06.ALT-03 | Ngoại lệ | Chỉ APPROVED mới bị ban; không có nhánh approve PENDING đang BANNED. Ban/unban không đổi approval/cấp quyền chưa duyệt. | [FRD UC-E06/E03](FRD.md); [Database §8.2C/D](database.md) |
+| <a id="uc-e06.alt-04"></a>UC-E06.ALT-04 | Ngoại lệ | ADMIN không có Seller profile; duyệt bằng tài khoản Admin độc lập, không tự cấp thêm vai trò Seller. | [FRD UC-E06](FRD.md); [API §3.2.1](api_specs.md) |
+| <a id="uc-e06.post-01"></a>UC-E06.POST-01 | Hậu điều kiện | Chỉ Seller APPROVED/ACTIVE mới bán/hiển thị công khai; BANNED chỉ nghĩa vụ UC-E03. APPROVED có ví qua Finance idempotent; PENDING/REJECTED không login. | [FRD UC-E06](FRD.md); [API §3.2/§7.2](api_specs.md) |

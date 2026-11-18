@@ -69,7 +69,7 @@ Kiến trúc phải hỗ trợ hành trình mua bán nhiều cửa hàng và b�
 
 | Yêu cầu | Ảnh hưởng đến kiến trúc |
 |---|---|
-| Một tài khoản có thể có nhiều vai trò | Identity quản lý danh tính và quyền tập trung; service nghiệp vụ kiểm tra thêm trạng thái hồ sơ và quyền sở hữu tài nguyên. |
+| Customer/Seller/Admin dùng tài khoản độc lập | Identity quản lý accountType, tối đa một role hiệu lực và phiên riêng; service nghiệp vụ kiểm tra trạng thái/nghĩa vụ hiện tại và ownership theo [Thẻ 15](coverage.md#the-15). |
 | Một checkout chứa sản phẩm của nhiều người bán | Order quản lý CheckoutSession và các Order theo cửa hàng; kết quả thanh toán chung phải được áp dụng nhất quán cho các đơn liên quan. |
 | Nhiều khách hàng mua cùng một sản phẩm | Cơ chế giữ tồn và cập nhật có điều kiện phải ngăn bán vượt tồn khi có yêu cầu đồng thời. |
 | Request hoặc sự kiện có thể được gửi lặp | Các thao tác checkout, thanh toán, hoàn tiền và quyết toán cần kiểm soát idempotency để tránh tạo giao dịch hoặc bút toán trùng. |
@@ -360,7 +360,7 @@ Gateway và Discovery không quản lý trạng thái đơn hàng, thanh toán h
 
 | Service | Trách nhiệm chính | Dữ liệu sở hữu | Tích hợp tiêu biểu |
 |---|---|---|---|
-| Identity | Đăng ký, xác thực, phiên đăng nhập, RBAC, hồ sơ Customer/Seller, địa chỉ và xét duyệt Seller. | User, Customer, Seller, CustomerAddress, Role, Permission, UserRole, RolePermission; dữ liệu phiên và audit của Identity. | Cung cấp authorization context; hỏi Order về đơn đã thanh toán khi cấm Customer; phát event vòng đời tài khoản và Seller. |
+| Identity | Đăng ký/xác thực, phiên, RBAC, hồ sơ Customer/Seller, địa chỉ, xét duyệt và ban/unban theo nghĩa vụ. | User, Customer, Seller, CustomerAddress, Role, Permission, UserRole, RolePermission; phiên/audit/Outbox Identity. | Cung cấp authorization context; hỏi Order/Finance về nghĩa vụ hiện tại ở ban/login/refresh/J7; phát event vòng đời tài khoản và Seller. |
 | Product | Danh mục, sản phẩm, tìm kiếm và đánh giá; xử lý API media thuộc sản phẩm. | Category, Product, Review. | Kiểm tra Seller qua Identity; lấy và cập nhật tồn kho qua Order; kiểm tra điều kiện đánh giá từ Order. |
 | Cart | Thêm, sửa, xóa và cung cấp nội dung giỏ hàng. | Cart, CartItem. | Lấy sản phẩm từ Product, tồn khả dụng từ Order; nhận `checkout.paid` để cập nhật các mục đã mua. |
 | Order | Checkout nhiều cửa hàng, tách đơn, giữ tồn, chuyển trạng thái đơn và xử lý các mốc hết hạn. | CheckoutSession, Order, OrderItem, Inventory, Reservation, StockMovement. | Lấy thông tin từ Identity, Product và Finance; nhận kết quả từ Payment; phát event đơn hàng và checkout. |
@@ -408,7 +408,8 @@ Các bước cần kết quả ngay sử dụng HTTP/JSON. Theo lựa chọn cô
 | Order | Identity | Kiểm tra điều kiện checkout, Seller và lấy snapshot địa chỉ. |
 | Order | Finance | Lấy tỷ lệ hoa hồng để snapshot khi tạo đơn. |
 | Payment | Order | Xác minh chủ checkout, số tiền và điều kiện thanh toán. |
-| Identity | Order | Kiểm tra khách có đơn đã thanh toán khi áp dụng chính sách cấm. |
+| Identity | Order | Nghĩa vụ hiện tại của đúng Customer/Seller qua `/internal/v1/orders/accounts/{userId}/obligations?accountType=...`; dùng ban/login/refresh/J7, không lịch sử đã trả tiền. |
+| Identity | Finance | Nghĩa vụ Seller qua `/internal/v1/finance/sellers/{sellerId}/obligations`, gồm hiệu ứng/Settlement pending và số dư; lỗi nguồn không suy ra hết nghĩa vụ. |
 | Notification | Identity | Lấy thông tin liên hệ phục vụ gửi thông báo. |
 
 Ví dụ sau minh họa một request đã có token, cần xác thực và kiểm tra quyền:
@@ -453,7 +454,7 @@ Kafka được sử dụng để truyền kết quả nghiệp vụ đến các 
 | `seller.approved` | Identity | Finance, Notification | Khởi tạo ví theo nghiệp vụ và thông báo kết quả duyệt. |
 | `withdrawal.completed` | Finance | Notification | Thông báo kết quả rút tiền giả lập. |
 
-Tên trên là **event type**, không mặc định mỗi event tương ứng một Kafka topic. Việc chia topic, partition, key và consumer group sẽ được xác định trong hợp đồng tích hợp. Danh sách đầy đủ tham chiếu [API — mục 7.2](api.md).
+Tên trên là **event type**, không mặc định mỗi event tương ứng một Kafka topic. Việc chia topic, partition, key và consumer group sẽ được xác định trong hợp đồng tích hợp. Danh sách đầy đủ tham chiếu [API — mục 7.2](../../business/api.md).
 
 Luồng phát và nhận event được thiết kế như sau:
 
@@ -565,6 +566,8 @@ flowchart LR
 - `OrderClient` hiện được thực hiện bằng `HttpOrderClient` dùng RestClient; chuyển sang OpenFeign là thiết kế đã chọn nhưng chưa sửa code. Region và S3 sử dụng adapter riêng theo giao thức tương ứng.
 - `OutboxRelay` đã có; `EventPublisher` hiện là `UnconfiguredEventPublisher`, chưa phát Kafka. Region API, Order API và object storage được gom thành một khối bên ngoài để giản lược các đường kết nối.
 
+Thiết kế quyền hiện hành theo [SAD §6.2](software-architecture.md): ban không chọn scope; Identity suy ra accountStatus từ User/profile, hỏi Order và Finance qua API nghĩa vụ khi ban/login/refresh và J7. Chỉ DISABLED khi xác minh hết nghĩa vụ; nguồn lỗi giữ trạng thái/retry, không giả zero. Nghĩa vụ đến muộn mở lại BANNED giới hạn, không unban; timestamp của đợt cấm không được gia hạn. J7 do Identity sở hữu, không tự hủy đơn hoặc sửa số dư; đây là đặc tả chưa phải bằng chứng component hiện tại đã triển khai.
+
 ### 3.8.2. Product Service
 
 Thiết kế đề xuất tách quản lý sản phẩm/danh mục, tìm kiếm, đánh giá và media. Tồn kho vẫn thuộc Order; Product chỉ gọi API, không tự ghi Inventory.
@@ -609,7 +612,7 @@ flowchart LR
     OutboxP -->|"Publish"| KafkaP
 ```
 
-Catalog Management phối hợp Order để tạo tồn ban đầu và giữ `productId` ổn định khi retry. Review Management hỏi Order về điều kiện đánh giá. Search dùng truy vấn database của Product trong MVP; không có search engine hoặc Search Service riêng. Việc kiểm tra Seller hiện hành và bổ sung tồn khả dụng được thực hiện khi use case cần, không mặc định một kết quả tìm kiếm là cam kết giữ hàng.
+Catalog Management phối hợp Order theo [SAD §5.7/A.6.1](software-architecture.md): Product ghi HIDDEN và công việc provision bền vững cùng transaction, gọi khởi tạo Inventory sau commit, giữ `productId` qua retry. Chỉ áp dụng trạng thái Seller yêu cầu khi Inventory xác nhận và Seller/Product còn hợp lệ; timeout giữ HIDDEN, ban/REMOVED trong lúc đợi không tự bật SELLING. Review Management hỏi Order về điều kiện đánh giá. Search dùng truy vấn database Product, không có Search Service riêng; trạng thái/tồn hiện hành không là cam kết giữ hàng.
 
 ### 3.8.3. Cart Service
 
@@ -797,6 +800,8 @@ flowchart LR
 
 Settlement Management quyết định khoản tiền ở trạng thái nào; Wallet/Ledger thực hiện cập nhật số dư và bút toán tương ứng trong cùng transaction do application điều phối. Withdrawal không gọi cổng chi trả bên ngoài trong MVP. Consumer phải ghi Inbox cùng tác động nghiệp vụ; nếu thiếu ví hoặc Settlement thì giữ để xử lý tiếp, không đánh dấu thành công hoặc tự tạo bút toán sai thứ tự. Reconciliation phát hiện và hỗ trợ xử lý sai lệch, không tự sửa số dư khi chưa có căn cứ.
 
+Withdrawal kiểm tra quyền hiện hành từ Identity theo [API Wallet/withdrawals](api_specs.md), không suy ra đóng băng available chỉ từ BANNED. Seller BANNED chỉ rút available; được rút toàn bộ số dư dương dưới 10.000đ, không rút một phần dưới ngưỡng/pending. Finance cung cấp API nghĩa vụ gồm Settlement/hiệu ứng đang chờ và số dư cho Identity/J7; không join DB Identity/Order. Pending chỉ giảm khi Refund SUCCESS, không tự hủy/hoàn vì ban sau thanh toán.
+
 ### 3.8.7. Notification Service
 
 Notification dùng chung luồng tạo thông báo cho event và internal API. Việc ghi nhận thông báo được tách khỏi gửi email để một lỗi gửi không làm mất thông báo hoặc rollback nghiệp vụ nguồn.
@@ -975,9 +980,9 @@ Các ràng buộc chính gồm:
 - Một checkout có tối đa một Payment; một Payment có thể có nhiều Refund theo quy tắc hoàn tiền.
 - Mỗi Order có tối đa một Settlement. Finance cũng có ví nền tảng, không thể hiện trong sơ đồ rút gọn.
 - Mỗi OrderItem có một Reservation khi checkout được tạo thành công.
-- Customer và Seller dùng ID chung với User; quan hệ hồ sơ không tự cấp vai trò hoặc quyền.
+- Customer hoặc Seller dùng shared PK với User đúng accountType, tối đa một hồ sơ; hai cạnh tùy chọn trong sơ đồ là loại trừ nhau, không phải một User nhiều vai trò. ADMIN không có hai hồ sơ này; hồ sơ không tự cấp quyền.
 
-Chi tiết Category, Review, RBAC, Notification và các field được dẫn chiếu trong [thiết kế dữ liệu](database.md).
+Chi tiết Category, Review, RBAC, Notification và các field được dẫn chiếu trong [thiết kế dữ liệu](../../business/database.md).
 
 ## 4.3. Snapshot và quy ước lưu trữ
 

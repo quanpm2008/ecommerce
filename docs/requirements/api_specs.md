@@ -155,7 +155,7 @@ Thay đổi không tương thích ngược (đổi tên field, đổi kiểu, b�
 
 * Refresh: POST /identity/auth/refresh. Refresh token được xoay vòng (rotation): mỗi lần refresh trả token mới và vô hiệu token cũ.
 
-* Refresh token thuộc đúng một tài khoản/accountType. Mỗi refresh kiểm tra trạng thái duyệt/cấm và nghĩa vụ chưa hoàn tất; không mở lại Seller PENDING/REJECTED. Hết điều kiện phiên giới hạn thì từ chối refresh/thu hồi phiên. USER DISABLED thu hồi toàn bộ phiên của chính tài khoản.
+* Refresh token thuộc đúng một tài khoản/accountType; login/refresh áp dụng cùng đánh giá nghĩa vụ G-14 bên dưới, kể cả DISABLED phải kiểm tra nghĩa vụ đến muộn trước khi từ chối. Seller PENDING/REJECTED không login; không hợp quyền giữa các tài khoản.
 
 * JWT gồm sub, iss, aud, iat, exp, jti, sessionId, authzVersion, accountType và snapshot tối đa một role. Backend phải kiểm tra Identity hiện hành và allowlist phiên giới hạn, không tin claims để tự nâng quyền.
 
@@ -163,12 +163,20 @@ Thay đổi không tương thích ngược (đổi tên field, đổi kiểu, b�
 
 | Trường hợp | Đăng nhập | Hành vi API |
 | :---- | :---- | :---- |
-| Customer BANNED còn Order chưa hoàn tất | Có, chỉ phiên giới hạn xử lý Order đang dở | Chỉ cho xem/hủy/xác nhận những Order chưa hoàn tất đúng customerId=sub theo state machine; không được sử dụng giỏ, checkout, thanh toán mới, review mới hoặc truy cập dữ liệu đơn đã hoàn tất ngoài phạm vi ngoại lệ. |
-| Customer BANNED không còn Order chưa hoàn tất | Không | Từ chối đăng nhập/refresh; chỉ từng có đơn đã thanh toán không tạo quyền truy cập. Job và hoàn tiền hệ thống vẫn chạy. |
-| Seller APPROVED/BANNED | Có, chỉ khi còn Order chưa hoàn tất hoặc available\>0 | Chỉ phiên giới hạn khi còn đơn chưa hoàn tất hoặc availableBalanceVnd \> 0: chỉ xử lý Order đang dở của mình và/hoặc rút available; không bán mới, không rút pending, không tự hủy Order do bị cấm. |
-| Seller PENDING / REJECTED | Không | Seller PENDING/REJECTED không được đăng nhập; gửi lý do qua email. Sau REJECTED phải tạo SellerApplication mới bằng luồng xác minh email PUBLIC; không sửa hồ sơ bị từ chối. |
-| User DISABLED | Không | USER DISABLED chặn đăng nhập và thu hồi mọi phiên của tài khoản đó, không áp dụng ngoại lệ đơn/rút. |
+| Customer BANNED có nghĩa vụ đơn | Có, OPEN_ORDERS_ONLY | Chỉ xem đơn/phiên và Payment/Refund gắn nghĩa vụ đúng chủ; hủy/xác nhận theo state machine. AWAITING_PAYMENT không được thanh toán; không giỏ, checkout, review hoặc toàn bộ lịch sử terminal. |
+| Customer BANNED chỉ còn Payment/Refund cần xử lý | Có, OBLIGATIONS_READ_ONLY | Chỉ xem tiến độ nghĩa vụ của mình; Order CANCELLED có Refund FAILED vẫn giữ quyền này. |
+| Seller APPROVED/BANNED | Có khi còn nghĩa vụ | Có đơn và available: ORDERS_AND_WITHDRAWAL; chỉ đơn: OPEN_ORDERS_ONLY; chỉ available: WITHDRAWAL_ONLY; chỉ pending/hiệu ứng hệ thống: OBLIGATIONS_READ_ONLY. Chỉ xử lý đơn tồn/thông tin tiền, không sản phẩm, tồn kho, đơn mới hoặc thống kê chung; không rút pending. |
+| Seller PENDING / REJECTED | Không | Không login dù chưa bị cấm; sau REJECTED đăng ký SellerApplication mới qua xác minh email PUBLIC. |
+| DISABLED, đã xác minh không còn nghĩa vụ | Không, LOGIN_BLOCKED | Thu hồi phiên, ACCOUNT_DISABLED. Nghĩa vụ đến muộn mở lại BANNED giới hạn, không tự unban; lỗi nguồn trả 503, không đoán không có nghĩa vụ. |
 | Một người sử dụng nhiều vai trò | Dùng các tài khoản độc lập | Mỗi tài khoản User chỉ một accountType và một role hiện hành; nhiều vai trò cần nhiều user\_id/email/session, không hợp quyền. |
+
+Authority cho các clause Thẻ 15: [coverage §the-15](coverage.md#the-15), thay các quy tắc cũ tương ứng; đây là đặc tả, chưa xác minh implementation.
+
+`accountStatus` suy ra, không thêm cột: ACTIVE = users.status ACTIVE + profile ACTIVE; BANNED = ACTIVE + BANNED; DISABLED = DISABLED + BANNED. Chỉ Identity chuyển cặp trạng thái trong cùng transaction với authzVersion, audit và Outbox; approvalStatus độc lập.
+
+Nghĩa vụ hiện tại gồm Order AWAITING_PAYMENT/PAID/PACKING/DELIVERED; Payment PENDING, SUCCESS chưa apply vào Order hoặc hoàn muộn chưa kết thúc; Refund PENDING/FAILED chưa giải quyết kể cả Order/CheckoutSession đã đóng. CONFIRMED/CANCELLED/PAYMENT_FAILED/EXPIRED không tự giữ quyền nhưng nghĩa vụ Payment/Refund/Finance vẫn tính riêng. Seller thêm Settlement PENDING/PENDING_REFUND, hiệu ứng chưa apply (kể cả số tiền 0), pendingBalanceVnd > 0 hoặc availableBalanceVnd > 0. Không dùng lịch sử đã thanh toán.
+
+Mọi request tính lại allowlist và ownership/state hiện hành; accessMode không cấp quyền trên Order người khác. Public browsing chỉ là công khai, không mở quyền mua sắm authenticated. J1/J2/J2b và Refund tiếp tục chạy.
 
 #### 3.2.1 Mô hình RBAC và hợp đồng kiểm tra quyền
 
@@ -178,21 +186,21 @@ Policy nền theo accountType, không cấp seller:application:own cho mọi Use
 
 | Vai trò | Permission được seed | Điều kiện |
 | :---- | :---- | :---- |
-| CUSTOMER | customer:profile:own; cart:manage:own; checkout:create:own; payment:create:own; order:read:own; order:cancel:own; order:confirm:own; review:write:own; notification:read:own | User ACTIVE accountType CUSTOMER, role CUSTOMER; Customer ACTIVE mua bình thường, BANNED chỉ xử lý Order chưa hoàn tất theo G-14. |
-| SELLER | seller:profile:own; product:manage:own; inventory:manage:own; order:fulfill:own; wallet:read:own; withdrawal:create:own; notification:read:own | Seller APPROVED/ACTIVE truy cập đầy đủ; Seller APPROVED/BANNED chỉ được order:fulfill:own và wallet:read:own / withdrawal:create:own giới hạn, khi còn đơn đang dở hoặc available; Seller PENDING/REJECTED không login. |
+| CUSTOMER | customer:profile:own; cart:manage:own; checkout:create:own; payment:create:own; order:read:own; order:cancel:own; order:confirm:own; review:write:own; notification:read:own | ACTIVE đầy đủ; BANNED chỉ allowlist nghĩa vụ §3.2, gồm Payment/Refund cần xem, không cấp mọi permission seed. |
+| SELLER | seller:profile:own; product:manage:own; inventory:manage:own; order:fulfill:own; wallet:read:own; withdrawal:create:own; notification:read:own | APPROVED/ACTIVE đầy đủ; BANNED theo accessMode §3.2: chỉ đơn/ví/biên nhận gắn nghĩa vụ, pending-only chỉ đọc; PENDING/REJECTED không login. |
 | ADMIN | seller:approve; account:moderate; product:moderate; category:manage; operations:read:any; refund:retry; notification:read:own | Admin nội bộ; không tự duyệt; audit mọi thao tác, không sửa số dư hoặc xác nhận tay đã hoàn. |
 
 Với các API đọc checkout/payment của chính Customer, dùng order:read:own; API hủy checkout dùng order:cancel:own. Với Notification, notification:read:own bao gồm đọc/đánh dấu/xóa phần hiển thị của chính mình. API media kiểm tra purpose và quyền tương ứng. Không mở CRUD Role/Permission hoặc endpoint tự gán ADMIN trong MVP.
 
 Mỗi đổi UserRole/trạng thái truy cập tăng authzVersion trong transaction Identity và ghi audit/outbox. Thay RolePermission bằng migration phải tăng version mọi User liên quan. Phiên đã thu hồi và token version cũ bị chặn; refresh luôn tải lại quyền, không phát lại quyền từ token cũ.
 
-G-14 được áp dụng đúng phạm vi: khóa Seller không khóa CUSTOMER; khóa Customer không khóa SELLER. Khi USER bị disable, mọi quyền bảo vệ bị chặn. Trước yêu cầu nhạy cảm phải lấy trạng thái mới; thao tác đã được chấp thuận trước khi Identity commit khóa có thể hoàn tất, không hứa transaction nguyên tử xuyên service. Job hoàn tiền và xử lý sự kiện vẫn dùng danh tính service độc lập.
+G-14 chỉ tác động tài khoản đã chọn, không các tài khoản khác của cùng người. Quyền hiện hành theo §3.2; không hứa transaction nguyên tử xuyên service. Job Payment/Refund tiếp tục bằng danh tính service.
 
-#### 3.2.2 Ví dụ response đăng nhập đa vai trò
+#### 3.2.2 Ví dụ đăng nhập đơn vai trò
 
-POST /api/v1/identity/auth/login với { "email": "user@example.test", "password": "\<password\>" }.
+POST /api/v1/identity/auth/login với `{email,password,accountType:"CUSTOMER"}`.
 
-200 data: { accessToken, accessTokenExpiresIn, refreshToken, tokenType: "Bearer", profile: { userId, userStatus: "ACTIVE", roles: \["CUSTOMER", "SELLER"\], permissions: \[...\], authzVersion, customerProfile: { customerId: userId, status: "ACTIVE", paymentBlocked: false }, sellerProfile: { sellerId: userId, approvalStatus: "APPROVED", status: "ACTIVE", ... } } }. Ký hiệu ... là viết tắt DTO, không phải JSON mẫu hoàn chỉnh. FE chọn giao diện theo permission; lựa chọn giao diện không đổi sub hay cấp thêm quyền.
+200 data AuthTokens, profile có accountType CUSTOMER, roles ["CUSTOMER"], customerProfile và sellerProfile=null; accountStatus/mốc/accessMode theo DTO hiện hành, không hợp quyền.
 
 ### 3.3 Format response chuẩn (envelope)
 
@@ -349,10 +357,10 @@ Mỗi service chỉ trả mã trong bảng này. Thêm mã mới phải cập nh
 | INVALID\_CREDENTIALS | 401 | Sai email/mật khẩu hoặc accountType không đúng kênh: luôn báo lỗi đăng nhập chung, không tiết lộ loại tài khoản. |
 | INVALID\_REFRESH\_TOKEN | 401 | Refresh token sai, hết hạn hoặc đã bị thu hồi → FE đưa về trang đăng nhập. |
 | FORBIDDEN | 403 | Actor không có quyền với endpoint/tài nguyên. |
-| ACCOUNT\_BANNED | 403 | Tài khoản bị cấm theo scope; phiên giới hạn chỉ truy cập allowlist đúng Order/ví. USER DISABLED và không còn điều kiện nghĩa vụ thì chặn login. |
+| ACCOUNT\_BANNED | 403 | Thao tác ngoài allowlist nghĩa vụ hiện hành của tài khoản BANNED. |
 | SELLER\_PENDING\_APPROVAL | 403 | Seller PENDING bị từ chối login và toàn bộ API Seller bảo vệ. |
 | SELLER\_REJECTED | 403 | Seller REJECTED không được login; lý do từ chối qua email. Nộp lại phải là SellerApplication mới sau xác minh email. |
-| CUSTOMER\_PAYMENT\_BLOCKED | 403 | Customer BANNED không checkout/thanh toán mới; chỉ được login giới hạn khi còn Order chưa hoàn tất; nếu không còn thì chặn login. |
+| CUSTOMER\_PAYMENT\_BLOCKED | 403 | Customer BANNED không checkout/thanh toán mới, kể cả AWAITING_PAYMENT; chỉ quyền nghĩa vụ G-14. |
 | WRONG\_AUTH\_METHOD | 409 | Email đã đăng ký bằng phương thức khác (Google ↔ mật khẩu). details\[0\].authMethod \= phương thức đúng. |
 | GOOGLE\_AUTH\_FAILED | 401 | Google không xác minh được email hoặc người dùng từ chối. |
 | NOT\_FOUND | 404 | Tài nguyên không tồn tại hoặc không thuộc quyền xem. details\[0\].resource \= tên tài nguyên. |
@@ -390,7 +398,7 @@ Mỗi service chỉ trả mã trong bảng này. Thêm mã mới phải cập nh
 | SELLER\_DEADLINE\_PASSED | 409 | Đã quá hạn 7 ngày phản hồi; hệ thống đang/đã tự hủy (J4). |
 | REVIEW\_NOT\_ALLOWED | 403 | Không phải người mua, đơn chưa xác nhận nhận hàng hoặc đã hủy. |
 | REVIEW\_ALREADY\_EXISTS | 409 | Đã có review cho cặp Customer–Product; không cho tạo lại hay sửa qua API trong MVP. |
-| WITHDRAWAL\_BELOW\_MINIMUM | 422 | Số tiền rút \< 10.000 VND (P-WD-01). |
+| WITHDRAWAL\_BELOW\_MINIMUM | 422 | Rút dưới 10000 trừ BANNED rút toàn bộ available dương dưới 10000; rút một phần dưới ngưỡng vẫn lỗi. |
 | INSUFFICIENT\_AVAILABLE\_BALANCE | 409 | Số tiền rút lớn hơn số dư khả dụng tại thời điểm xử lý. |
 | WALLET\_FROZEN | 403 | WALLET\_FROZEN không được suy ra chỉ từ Seller BANNED; Seller APPROVED/BANNED vẫn được rút available khi đủ quyền WD-09. Ví lệch bút toán trả WALLET\_INCONSISTENT. |
 | WALLET\_INCONSISTENT | 409 | Phát hiện lệch giữa số dư và tổng bút toán; tạm chặn rút, chờ Admin. |
@@ -400,6 +408,7 @@ Mỗi service chỉ trả mã trong bảng này. Thêm mã mới phải cập nh
 | SERVICE\_UNAVAILABLE | 503 | Service phụ thuộc không phản hồi; có thể thử lại. |
 | TOKEN\_STALE | 401 | authzVersion token không còn hiện hành; refresh lấy quyền mới. |
 | ACCOUNT\_DISABLED | 403 | User DISABLED chặn mọi endpoint bảo vệ và login của tài khoản, thu hồi phiên. Các tài khoản vai trò khác không bị tác động tự động. |
+| ACCOUNT_RESTORE_WINDOW_EXPIRED | 409 | Unban DISABLED khi now > restoreUntil; không xóa dữ liệu/tiền hoặc đổi đơn. Không phải lỗi khôi phục Product. |
 | PROFILE\_REQUIRED | 403 | Có permission nhưng thiếu hồ sơ nghiệp vụ tương ứng. |
 | SELF\_APPROVAL\_FORBIDDEN | 403 | Admin không được duyệt hồ sơ Seller của chính mình. |
 | NOTIFICATION\_TYPE\_NOT\_ALLOWED | 403 | Service producer không được tạo loại thông báo hoặc kênh này. |
@@ -436,7 +445,7 @@ Mỗi service chỉ trả mã trong bảng này. Thêm mã mới phải cập nh
 | NotificationType | CHECKOUT\_PAID, NEW\_ORDER, ORDER\_DELIVERED, ORDER\_REJECTED, ORDER\_CANCELLED, ORDER\_AUTO\_CANCELLED, ORDER\_CONFIRMED, ORDER\_AUTO\_CONFIRMED, REFUND\_SUCCEEDED, FUNDS\_AVAILABLE, WITHDRAWAL\_COMPLETED, SELLER\_REGISTERED, SELLER\_APPROVED, SELLER\_REJECTED, ACCOUNT\_BANNED, ACCOUNT\_UNBANNED, USER\_DISABLED, USER\_ENABLED, PRODUCT\_REMOVED, PAYMENT\_FAILED, CHECKOUT\_EXPIRED | UC-G01; enum mới phải đồng bộ producer và Notification |
 | AuditAction | APPROVE\_SELLER, REJECT\_SELLER, BAN, UNBAN, DISABLE\_USER, ENABLE\_USER, GRANT\_ROLE, REVOKE\_ROLE, REMOVE\_PRODUCT, RESTORE\_PRODUCT, RETRY\_REFUND, QUERY\_REFUND, MARK\_HANDLED, MANAGE\_CATEGORY | DB mục 6; audit nội bộ, không mở endpoint xem log |
 | UserStatus | ACTIVE / DISABLED | DB 3.1.1 |
-| ModerationScope | USER / CUSTOMER / SELLER; bắt buộc khi ban/unban | G-14 |
+| AccountStatus / AccessMode | ACTIVE / BANNED / DISABLED (suy ra); FULL / OPEN_ORDERS_ONLY / ORDERS_AND_WITHDRAWAL / WITHDRAWAL_ONLY / OBLIGATIONS_READ_ONLY / LOGIN_BLOCKED | G-14, coverage §the-15 |
 | AudienceContext | CUSTOMER / SELLER / ACCOUNT; ngữ cảnh thông báo, không cấp quyền | DB 3.7 |
 
 #### Tab trạng thái đơn trên giao diện (gợi ý cho FE)
@@ -485,7 +494,7 @@ Mỗi use case có **một service owner** (service sở hữu dữ liệu chín
 | F01 | Gợi ý sản phẩm liên quan (C) | Public | Product | Order (loại sản phẩm hết hàng) |  |
 | G01 | Thông báo | System | Notification | Mọi service (event) |  |
 | G02 | Hoàn tiền | System | Payment | Order (event hủy), Finance |  |
-| G03 | Job quá hạn (J1–J6) | System | Order (J1, J3, J4), Payment (J2, J2b, J5), Notification (J6) | — |  |
+| G03 | Job quá hạn/đối soát (J1–J7) | System | Order (J1,J3,J4), Payment (J2,J2b,J5), Notification (J6), Identity (J7) | — | |
 | G04 | Quyết toán, ghi có ví | System | Finance | Order (event CONFIRMED) |  |
 
 ### 5.1 Ownership dữ liệu (theo Database RBAC v5.0)
@@ -506,7 +515,7 @@ Mỗi service gồm: phạm vi, bảng endpoint, DTO và chi tiết endpoint. C�
 
 ### 6.1 Identity & Seller Service
 
-**Identity giữ một Auth API hạ tầng nhưng tách tài khoản CUSTOMER/SELLER/ADMIN. SellerApplication lưu từng lần đăng ký; đăng ký lại sau từ chối qua xác minh email, ban theo scope và nghĩa vụ còn dở; avatar User \= logo Seller. ADMIN là tài khoản riêng; audit nội bộ.**
+**Identity tách tài khoản CUSTOMER/SELLER/ADMIN; vòng đời ban theo §3.2, không cấm theo scope. SellerApplication mới sau từ chối; avatar User = logo Seller; audit nội bộ.**
 
 #### Danh sách endpoint
 
@@ -539,8 +548,8 @@ Mỗi service gồm: phạm vi, bảng endpoint, DTO và chi tiết endpoint. C�
 | 25 | GET | /identity/admin/sellers/{sellerId} | Chi tiết Seller | operations:read:any | E01, E06 |
 | 26 | POST | /identity/admin/sellers/{sellerId}/approve | Duyệt hồ sơ Seller | seller:approve | E06 |
 | 27 | POST | /identity/admin/sellers/{sellerId}/reject | Từ chối hồ sơ Seller | seller:approve | E06 |
-| 28 | POST | /identity/admin/ban/{userId} | Cấm User hoặc hồ sơ theo scope bắt buộc | account:moderate | E03 |
-| 29 | POST | /identity/admin/unban/{userId} | Gỡ cấm theo scope | account:moderate | E03 |
+| 28 | POST | /identity/admin/ban/{userId} | Cấm tài khoản theo nghĩa vụ | account:moderate | E03 |
+| 29 | POST | /identity/admin/unban/{userId} | Gỡ cấm tài khoản theo thời hạn | account:moderate | E03 |
 | 30 | POST | /identity/auth/seller-reapplication/challenge | Yêu cầu email xác minh để đăng ký lại Seller | PUBLIC (email verification) | A02 |
 | 31 | POST | /identity/auth/seller-reapplication | Nộp SellerApplication mới sau REJECTED | PUBLIC (verificationToken) | A02 |
 | 32 | GET | /identity/admin/sellers/{sellerId}/applications | Admin xem lịch sử các lần đăng ký Seller (SellerApplication) | operations:read:any (ADMIN) | E06 |
@@ -549,14 +558,18 @@ Mỗi service gồm: phạm vi, bảng endpoint, DTO và chi tiết endpoint. C�
 
 | DTO | Field |
 | :---- | :---- |
-| CustomerProfile | customerId (= userId của tài khoản CUSTOMER), status, banReason, accessMode (FULL \| OPEN\_ORDERS\_ONLY \| LOGIN\_BLOCKED), hasUnfinishedOrder, profileComplete, createdAt. |
+| CustomerProfile | customerId (=userId CUSTOMER),status,banReason,accessMode (enum §4.2),profileComplete,createdAt |
 | SellerSelfProfile | sellerId (= userId tài khoản SELLER), description, logoUrl và avatarUrl (cùng ảnh users.avatar\_object\_key), approvalStatus, status, rejectionReason, banReason, registeredAt, reviewedAt, latestApplicationId. |
-| UserSelfProfile | userId, accountType, email, authMethod, fullName, phoneNumber, avatarObjectKey, avatarUrl, userStatus, roles\[\] (tối đa một), permissions\[\], authzVersion, accessMode (FULL \| OPEN\_ORDERS\_ONLY \| ORDERS\_AND\_WITHDRAWAL \| WITHDRAWAL\_ONLY), customerProfile\|null, sellerProfile\|null (không đồng thời), createdAt |
+| UserSelfProfile | userId,accountType,email,authMethod,fullName,phoneNumber,avatarObjectKey,avatarUrl,accountStatus,userStatus,bannedAt (nullable),disabledAt (nullable),restoreUntil (nullable),roles[] (tối đa một),permissions[],authzVersion,accessMode (enum §4.2),customerProfile (nullable),sellerProfile (nullable; không đồng thời),createdAt |
 | SellerPublic | sellerId, sellerName (users.full\_name), description, logoUrl (từ users.avatar\_object\_key). Không có sellers.logo\_object\_key hay sellerName/contactPhone riêng trong hồ sơ lưu trữ. |
-| SellerAdminView | { user: UserSummary (userId, email, fullName \= tên cửa hàng, phoneNumber \= số liên hệ, userStatus), sellerProfile: SellerSelfProfile, reviewedByUserId }; không trả passwordHash/googleSubject/token |
+| SellerAdminView | {user:UserSummary,sellerProfile:SellerSelfProfile,reviewedByUserId,banImpact}; không credential/token |
 | Address | addressId, recipientName, recipientPhone, provinceCode, provinceName, wardCode, wardName, addressDetail, lastUsedAt, isDefault theo DB 3.1.4, createdAt |
 | AuthTokens | accessToken, accessTokenExpiresIn, refreshToken, tokenType=Bearer, accountType, accessMode, profile: UserSelfProfile. Backend phải kiểm tra quyền hiện tại, không tin quyền snapshot từ token. |
-| UserSummary | userId, email, fullName, phoneNumber, userStatus; chỉ DTO quản trị có operations:read:any, không dùng cho public Seller |
+| UserSummary | userId,email,fullName,phoneNumber,accountType,accountStatus,userStatus,accessMode,bannedAt (nullable),disabledAt (nullable),restoreUntil (nullable),authzVersion; chỉ quản trị operations:read:any |
+| CustomerAdminView | {user:UserSummary,customerProfile,banReason,banImpact}; không banHistory/credential |
+| BanImpact | {evaluatedAt,resultingAccountStatus,obligations}; obligations = {hasOpenOrders,hasPendingPayment,hasUnresolvedRefund,hasPendingFinance,pendingBalanceVnd,availableBalanceVnd}; Customer có hasPendingFinance=false, hai số dư 0 |
+
+Admin detail trả banImpact snapshot cho popup, không endpoint preview public mới. Nguồn lỗi không giả số 0, không cho xác nhận đến khi tải được; POST ban đọc lại, UI hiển thị kết quả thực tế nếu khác snapshot. Không khóa liên service. Popup bỏ scope, nêu loại tài khoản/lý do bắt buộc, từng nghĩa vụ/pending/available, trạng thái và quyền dự kiến; BANNED chưa bắt đầu hạn, DISABLED 30 ngày từ disabledAt. Detail hiển thị mốc/deadline, khóa gỡ quá hạn.
 
 #### Chi tiết endpoint
 
@@ -608,7 +621,7 @@ POST /api/v1/identity/auth/register
 
 **Quyền: PUBLIC    UC: A03**
 
-* Request body BẮT BUỘC {email, password, accountType: CUSTOMER\|SELLER\|ADMIN}. FE xác định accountType theo web app; Identity đối chiếu users.account\_type. Sai vai trò dù mật khẩu đúng → 401 INVALID\_CREDENTIALS chung. Seller PENDING/REJECTED không login. Customer BANNED chỉ login nếu còn đơn chưa hoàn tất; Seller APPROVED/BANNED chỉ login nếu còn đơn chưa hoàn tất hoặc available\>0, cấp phiên giới hạn. USER DISABLED không login.
+* Request bắt buộc {email,password,accountType:CUSTOMER|SELLER|ADMIN}; sai accountType dù đúng mật khẩu → 401 INVALID_CREDENTIALS chung. Login áp dụng đầy đủ G-14 §3.2, gồm pending/refund, nghĩa vụ muộn khi DISABLED, 503 khi nguồn lỗi; Seller PENDING/REJECTED không login.
 
 **Request body (application/json): bắt buộc email, password, accountType (CUSTOMER\|SELLER\|ADMIN).**
 
@@ -632,7 +645,7 @@ POST /api/v1/identity/auth/register
 
 * WRONG\_AUTH\_METHOD (409) — email đăng ký bằng Google
 
-* ACCOUNT\_DISABLED (403); SELLER\_PENDING\_APPROVAL/SELLER\_REJECTED (403); ACCOUNT\_BANNED (403 khi hết điều kiện cho phiên giới hạn). Sai accountType trả INVALID\_CREDENTIALS (401).
+* ACCOUNT\_DISABLED (403) sau khi xác minh không có nghĩa vụ muộn; SELLER\_PENDING\_APPROVAL/SELLER\_REJECTED (403); SERVICE_UNAVAILABLE (503) khi chưa xác minh được nghĩa vụ. ACCOUNT_BANNED (403) dành cho thao tác ngoài allowlist, không thay ACCOUNT_DISABLED khi đã hết nghĩa vụ. Sai accountType trả INVALID\_CREDENTIALS (401).
 
 ##### POST /identity/auth/google — Đăng ký / đăng nhập Customer bằng Google (Should)
 
@@ -660,7 +673,7 @@ POST /api/v1/identity/auth/register
 
 * WRONG\_AUTH\_METHOD (409)
 
-* Customer BANNED: còn Order chưa hoàn tất thì cấp phiên OPEN\_ORDERS\_ONLY; hết Order chưa hoàn tất từ chối login/refresh. USER DISABLED chặn login.
+* Customer BANNED login theo nghĩa vụ hiện tại G-14 §3.2; DISABLED phải kiểm tra nghĩa vụ muộn trước ACCOUNT_DISABLED.
 
 ##### POST /identity/auth/register-seller — Đăng ký bán hàng
 
@@ -698,7 +711,7 @@ POST /api/v1/identity/auth/register
 
 * Xoay vòng refresh token. Token cũ dùng lại sau khi đã xoay → thu hồi toàn bộ chuỗi token đó (phát hiện đánh cắp).
 
-* Refresh phải kiểm tra lại User, accountType, trạng thái Seller và nghĩa vụ hiện hành. Seller PENDING/REJECTED không đăng nhập; Customer BANNED chỉ refresh nếu còn Order chưa hoàn tất; Seller APPROVED/BANNED chỉ refresh nếu còn đơn chưa hoàn tất hoặc available\>0; USER DISABLED thu hồi session.
+* Refresh dùng cùng G-14 §3.2, kiểm tra accountType/approval và Order/Payment/Refund/Finance kể cả DISABLED; nguồn lỗi 503 không mở rộng quyền.
 
 **Request body (application/json)**
 
@@ -715,6 +728,8 @@ POST /api/v1/identity/auth/register
 * INVALID\_REFRESH\_TOKEN (401)
 
 * INVALID\_REFRESH\_TOKEN (401) nếu phiên không còn hiệu lực.
+
+* ACCOUNT_DISABLED (403) sau đối soát không có nghĩa vụ muộn; SELLER_PENDING_APPROVAL/SELLER_REJECTED (403); SERVICE_UNAVAILABLE (503) khi nguồn nghĩa vụ lỗi. Không cấp token quyền rộng hơn khi chưa xác minh.
 
 ##### POST /identity/auth/logout — Đăng xuất thiết bị hiện tại
 
@@ -1019,7 +1034,7 @@ POST /api/v1/identity/auth/register
 
 **Response thành công**
 
-200 → data CustomerAdminView \= {user,customerProfile,hasUnfinishedOrder,banReason}; hasUnfinishedOrder thay cờ lịch sử hasPaidOrder để cấp ngoại lệ đăng nhập Customer BANNED. Không trả banHistory.
+200 → data CustomerAdminView theo DTO §6.1, gồm accountStatus/mốc/accessMode và banImpact hiện hành; không banHistory.
 
 ##### GET /identity/admin/sellers — Danh sách Seller (gồm hồ sơ chờ duyệt)
 
@@ -1088,25 +1103,27 @@ POST /api/v1/identity/auth/register
 
 * ALREADY\_PROCESSED (409)
 
-##### POST  /identity/admin/ban/{userId}  —  Cấm theo phạm vi
+##### POST /identity/admin/ban/{userId} — Cấm tài khoản
 
-Quyền: account:moderate
+Quyền: account:moderate. Request: `{reason: string 1..1000}`. Không nhận `scope`; gửi field cũ trả 400 VALIDATION_ERROR, không alias.
 
-Request: { scope: USER \| CUSTOMER \| SELLER, reason: string 1–1000 }
+200 → `data: {userId,accountType,accountStatus,userStatus,customerStatus|null,sellerStatus|null,accessMode,bannedAt|null,disabledAt|null,restoreUntil|null,authzVersion,obligations}`.
 
-200 data: {userId,accountType,scope,userStatus,customerStatus\|null,sellerStatus\|null,accessMode,hasUnfinishedOrder?,sellerAvailableBalanceVnd?,authzVersion}
+Chỉ tác động tài khoản đã chọn, không tài khoản khác của cùng người; không cấm ADMIN (403), chỉ Seller APPROVED được cấm (Seller PENDING/REJECTED → 409 INVALID_STATE_TRANSITION). Đọc lại nguồn nghĩa vụ trước commit: còn nghĩa vụ → BANNED; xác minh hết → DISABLED. Nguồn lỗi/404 bất thường/không nhất quán → 503 SERVICE_UNAVAILABLE, không ghi ban một phần. Ban lặp không phát sự kiện hoặc đổi mốc. Lỗi chung: 401 khi chưa xác thực, 403 thiếu quyền/target ADMIN, 404 target không tồn tại.
 
-scope bắt buộc, đúng accountType. USER → DISABLED và thu hồi phiên; CUSTOMER → BANNED chỉ cho login khi còn Order chưa hoàn tất để xử lý đúng đơn đó; SELLER → BANNED CHỈ khi Seller APPROVED, khi còn Order dở hoặc available\>0 cho login giới hạn xử lý đơn/rút available, không tạo bán mới hay tự hủy đơn chỉ do cấm. PENDING/REJECTED không cho cấm Seller (409 INVALID\_STATE\_TRANSITION). Không khóa ADMIN qua UI; kiểm soát audit/idempotency.
+`bannedAt` là đầu đợt cấm; `disabledAt` là lần đầu DISABLED trong đợt, `restoreUntil = disabledAt + 30 ngày` theo UTC. Cấm/job lặp và DISABLED→BANNED→DISABLED giữ mốc của cùng đợt. disabled_reason dùng lý do đợt cấm, profile ban_reason giữ đến unban; không có lệnh khóa độc lập vượt nghĩa vụ.
 
-##### POST  /identity/admin/unban/{userId}  —  Gỡ cấm theo phạm vi
+Các mốc response là timestamp UTC (ISO 8601), nullable trước khi được lập; BANNED chưa từng DISABLED có disabledAt=null và restoreUntil=null. `obligations` dùng đúng cấu trúc BanImpact.obligations (§6.1 DTO), không trả snapshot lịch sử hoặc field scope.
 
-Quyền: account:moderate
+##### POST /identity/admin/unban/{userId} — Gỡ cấm tài khoản
 
-Request: { scope: USER \| CUSTOMER \| SELLER, reason?: string ≤1000 }
+Quyền: account:moderate. Request: `{reason?: string <=1000}`; `scope` → 400 VALIDATION_ERROR.
 
-Response: 200 data {userId,accountType,scope,userStatus,customerStatus\|null,sellerStatus\|null,authzVersion}
+200 → `data: {userId,accountType,accountStatus,userStatus,customerStatus|null,sellerStatus|null,accessMode,bannedAt|null,disabledAt|null,restoreUntil|null,authzVersion}`.
 
-USER → ACTIVE; CUSTOMER/SELLER → ACTIVE riêng hồ sơ. Không xóa điều kiện khóa khác, không mở lại đơn đã hủy, không tự cấp SELLER cho hồ sơ chưa duyệt. Khóa có điều kiện \+ tăng authzVersion \+ audit/outbox trong cùng transaction Identity. Nếu đã ACTIVE trả 200, không phát lặp. Lỗi chung 401/403/404; scope thiếu/sai → 400\.
+BANNED được gỡ bất kỳ lúc nào, kể cả hơn 30 ngày chưa DISABLED. DISABLED được gỡ khi `now <= restoreUntil`; sau hạn → 409 ACCOUNT_RESTORE_WINDOW_EXPIRED, ví dụ `{"error":{"code":"ACCOUNT_RESTORE_WINDOW_EXPIRED","message":"Cửa sổ gỡ cấm đã hết hạn"}}`. Không xóa tài khoản/dữ liệu/tiền hoặc đổi trạng thái đơn khi quá hạn. ACTIVE trả 200 idempotent, không phát lặp.
+
+Unban không cần Order/Finance để bỏ lệnh cấm nhưng kiểm tra tài khoản/Seller local; chuyển ACTIVE, xóa mốc hiệu lực/lý do hiện tại, giữ lịch sử audit. Đợt ban mới tạo mốc mới. Transaction Identity gồm cặp trạng thái, authzVersion, audit, Outbox; không phục hồi đơn hủy, Product HIDDEN/REMOVED hoặc quyền Seller chưa duyệt. Lỗi chung 401/403/404; Seller chưa duyệt 409 INVALID_STATE_TRANSITION.
 
 ##### POST /identity/auth/seller-reapplication/challenge — Yêu cầu xác minh email để nộp hồ sơ Seller mới (PUBLIC)
 
@@ -1354,7 +1371,7 @@ GET /api/v1/products?q=ao thun\\\&categoryId=4c1e...\\\&sort=priceVnd,asc\\\&pag
 
 **Quyền: product:manage:own    UC: D01**    Idempotency-Key: bắt buộc
 
-* Product Service tạo Product HIDDEN cùng outbox yêu cầu khởi tạo tồn; gọi POST /internal/v1/inventory idempotent theo productId. Sau khi Inventory xác nhận, mới chuyển sang trạng thái khách yêu cầu. Timeout giữ HIDDEN, retry cùng productId; không giả định rollback xuyên hai database. Request tạo sản phẩm dùng Idempotency-Key để retry không sinh Product mới.
+* Product tạo HIDDEN cùng công việc provision bền vững trong transaction; sau commit gọi POST /internal/v1/inventory idempotent theo productId. Chỉ khi Inventory xác nhận và Seller/Product còn hợp lệ mới áp trạng thái Seller yêu cầu. Timeout giữ HIDDEN, retry cùng productId và Idempotency-Key, không sinh Product mới/rollback giả xuyên DB. Seller ban hoặc Product REMOVED trong lúc đợi không tự SELLING. Validation/media lỗi trước chấp nhận tạo không lưu Product; không áp quy tắc đó cho HIDDEN hợp lệ đang chờ tồn. Dùng cơ chế [SAD §5.7](software-architecture.md), không thêm job/endpoint/trạng thái.
 
 * Ảnh bìa \= media IMAGE đầu tiên theo thứ tự; chỉ có video → placeholder.
 
@@ -1711,7 +1728,7 @@ Việc **chọn dòng để thanh toán** là trạng thái phía FE: FE gửi d
 | AWAITING\_PAYMENT | payment.failed / J1 hết hạn / khách hủy phiên | PAYMENT\_FAILED / EXPIRED / CANCELLED |
 | PAID | start-packing (Seller) | PACKING |
 | PAID | cancel (Customer) | CANCELLED → Refund |
-| PAID, PACKING | reject (Seller) / J4 quá 7 ngày / Seller bị cấm | CANCELLED → Refund |
+| PAID, PACKING | reject Seller / J4 quá 7 ngày / Order chứng minh invalid giao dịch khi apply Payment SUCCESS (§8.1) | CANCELLED → Refund riêng Order; ban sau capture không là trigger |
 | PACKING | mark-delivered (Seller) | DELIVERED |
 | DELIVERED | confirm-receipt (Customer) / J3 quá 7 ngày | CONFIRMED → quyết toán |
 | CONFIRMED, CANCELLED | — | Kết thúc, không chuyển tiếp |
@@ -2482,7 +2499,7 @@ Giai đoạn 1 vẫn đi đủ trạng thái PENDING → SUCCESS/FAILED và phá
 
 | DTO | Field |
 | :---- | :---- |
-| Wallet | walletId,ownerType,sellerId,sellerName(Admin),pendingBalanceVnd,availableBalanceVnd,totalWithdrawnVnd,minWithdrawalVnd,isFrozen (KHÔNG tự tính true khi Seller BANNED),canWithdraw (gồm Seller APPROVED/BANNED có phiên giới hạn và available đủ ngưỡng),withdrawDisabledReason,isSimulated |
+| Wallet | walletId,ownerType,sellerId,sellerName(Admin),pendingBalanceVnd,availableBalanceVnd,totalWithdrawnVnd,minWithdrawalVnd (=10000),allowBelowMinimumFullWithdrawal:boolean,isFrozen (không chỉ vì ban),canWithdraw,withdrawDisabledReason,isSimulated |
 | WalletTransaction | walletTransactionId, transactionType (WalletTransactionType), referenceType (PAYMENT \| ORDER \| REFUND \| WITHDRAWAL), referenceId, settlementId, withdrawalId, orderId (khi liên quan đơn), pendingDeltaVnd, availableDeltaVnd, withdrawnDeltaVnd, createdAt |
 | Settlement | settlementId, orderId, paymentId, grossAmountVnd, commissionBpsSnapshot, commissionAmountVnd, sellerAmountVnd (tính khi tạo Settlement; khi PENDING là khoản đang chờ, chưa rút được), status, createdAt, settledAt, isSimulated |
 | Withdrawal | withdrawalId, withdrawalCode, amountVnd, availableBeforeVnd, availableAfterVnd, destination, withdrawnAt, isSimulated |
@@ -2504,12 +2521,13 @@ Giai đoạn 1 vẫn đi đủ trạng thái PENDING → SUCCESS/FAILED và phá
 ```json
 { "data": { "walletId": "wl-5d2a", "ownerType": "SELLER", "sellerId": "5d2a...",
             "pendingBalanceVnd": 285000, "availableBalanceVnd": 190000, "totalWithdrawnVnd": 400000,
-            "minWithdrawalVnd": 10000, "isFrozen": false,
+            "minWithdrawalVnd": 10000, "allowBelowMinimumFullWithdrawal": false, "isFrozen": false,
             "canWithdraw": true, "withdrawDisabledReason": null,
             "isSimulated": true } }
 ```
 
 withdrawDisabledReason ∈ {null, BELOW\_MINIMUM\_PENDING\_EXISTS, BELOW\_MINIMUM, ACCOUNT\_DISABLED, SELLER\_NOT\_APPROVED, WALLET\_INCONSISTENT}. Seller BANNED không tự kích hoạt WALLET\_FROZEN.
+Ngoại lệ WD-03/WD-09: allowBelowMinimumFullWithdrawal=true khi đủ quyền rút và accountStatus=BANNED, 0 < availableBalanceVnd < 10000. Khi đó canWithdraw=true, withdrawDisabledReason=null; UI khóa amount bằng toàn bộ available. Không rút pending; ACTIVE giữ ngưỡng 10000.
 
 ##### GET /finance/seller/wallet/transactions — Lịch sử biến động ví
 
@@ -2564,7 +2582,7 @@ withdrawDisabledReason ∈ {null, BELOW\_MINIMUM\_PENDING\_EXISTS, BELOW\_MINIMU
 
 | Field | Kiểu | Bắt buộc | Validation / ghi chú |
 | :---- | :---- | :---- | :---- |
-| amountVnd | int | ✓ | Số nguyên, 10.000 ≤ amount ≤ số dư khả dụng |
+| amountVnd | int | ✓ | Số nguyên dương ≤ available; amountVnd >= 10000 hoặc (accountStatus == BANNED && 0 < availableBalanceVnd < 10000 && amountVnd == availableBalanceVnd). Kiểm tra lại quyền/số dư trong giao dịch; atomic debit + ledger + Withdrawal, concurrency/idempotency giữ nguyên. |
 
 **Response thành công**
 
@@ -2586,7 +2604,7 @@ Idempotency-Key: 9a0b7f31-4f0e-4a6f-8f3e-6c1b2d4e5a77
 
 **Lỗi nghiệp vụ**
 
-* WITHDRAWAL\_BELOW\_MINIMUM (422)
+* WITHDRAWAL\_BELOW\_MINIMUM (422): BANNED available=9500 rút 9500 hợp lệ, rút 5000 lỗi; ACTIVE rút 9500 vẫn lỗi.
 
 * INSUFFICIENT\_AVAILABLE\_BALANCE (409) — kể cả khi hai tab rút đồng thời
 
@@ -2649,7 +2667,7 @@ Idempotency-Key: 9a0b7f31-4f0e-4a6f-8f3e-6c1b2d4e5a77
 | :---- | :---- | :---- | :---- | :---- |
 | ownerType | query | WalletOwnerType |  |  |
 | sellerId | query | uuid |  |  |
-| frozen | query | bool |  | Danh sách ví Seller bị cấm |
+| frozen | query | bool | | Lọc theo isFrozen thực tế; không đồng nghĩa Seller bị cấm |
 | page, size | query |  |  |  |
 
 **Response thành công**
@@ -2790,7 +2808,7 @@ Base /internal/v1, chỉ gọi bởi service đã xác thực (mTLS hoặc token
 
 | Provider | Method \+ Path | Consumer | Mục đích / response chính |
 | :---- | :---- | :---- | :---- |
-| Identity | POST /identity/auth/authorization-context | Gateway, mọi service bảo vệ | Bearer \+ service credential → { userId, userStatus, authzVersion, roles\[\], permissions\[\], customerProfile, sellerProfile, sessionActive }; kiểm tra sessionId và token version. |
+| Identity | POST /identity/auth/authorization-context | Gateway, mọi service bảo vệ | Bearer + service credential → {userId,accountType,accountStatus,userStatus,accessMode,bannedAt,disabledAt,restoreUntil,authzVersion,roles[],permissions[],customerProfile,sellerProfile,sessionActive}; ba mốc nullable; kiểm tra sessionId/version và allowlist G-14 hiện hành. |
 | Identity | GET /identity/sellers/status?ids= | Product, Cart, Order, Finance | \[{ sellerId, userId, userStatus, approvalStatus, status, sellerRoleActive, sellable }\]; no credential/PII; quyết định hiện hành không cache quyền. |
 | Identity | GET /identity/customers/{id}/checkout-eligibility | Order, Payment | { userId, userStatus, customerStatus, paymentBlocked, hasPhone, addressCount, canCheckout, authzVersion }; xác minh quyền và Customer. |
 | Identity | GET /identity/customers/{id}/addresses/{addressId} | Order | Snapshot địa chỉ gồm recipientName, recipientPhone, provinceCode, provinceName, wardCode, wardName, addressDetail (tên lấy qua RegionProvider); 404 nếu không thuộc Customer. |
@@ -2802,12 +2820,13 @@ Base /internal/v1, chỉ gọi bởi service đã xác thực (mTLS hoặc token
 | Order | POST /inventory | Product | { productId, sellerId, onHandQuantity }; UQ productId và request hash; lặp cùng payload trả kết quả cũ, khác payload 409\. |
 | Order | GET /inventory/details?productIds= | Product | Tồn thực/giữ/khả dụng/version; Product Service chỉ chuyển tiếp dữ liệu đúng quyền Seller/Admin. |
 | Order | GET /orders/checkout-sessions/{id}/payable | Payment | { customerId, status, expiresAt, totalAmountVnd, orders\[\] }; Payment đối chiếu customerId với sub. |
-| Order | GET /orders/customers/{id}/has-paid-order | Identity | {hasUnfinishedOrder,openOrderIds\[\],evaluatedAt,orderStateVersion}; Identity dùng để quyết định phiên giới hạn G-14 ở ban/login/refresh; không dùng hasPaidOrder lịch sử, không truy vấn trực tiếp DB Order. |
+| Order | GET /orders/accounts/{userId}/obligations?accountType=CUSTOMER\|SELLER | Identity | {hasOpenOrders,openOrderIds[],hasPendingPayment,hasUnresolvedRefund,evaluatedAt,orderStateVersion}; Order tổng hợp Order/CheckoutSession đúng owner và xác minh qua Payment internal API, không join DB; gồm FULL_CHECKOUT dù phiên đóng và SUCCESS chưa apply. |
 | Order | GET /orders/order-items/{id}/review-eligibility?customerId= | Product | { eligible, productId, orderStatus }; xác minh chủ Order và CONFIRMED. |
 | Payment | GET /payments/by-checkout/{checkoutSessionId} | Order | Trạng thái Payment; Order đã kiểm tra chủ phiên. |
-| Payment | GET /payments/refunds?orderIds= | Order | Trạng thái hoàn của các Order. |
+| Payment | GET /payments/refunds?orderIds= | Order | Trạng thái hoàn của các Order; Order cũng truy vấn theo checkoutSessionIds để lấy Refund FULL_CHECKOUT có orderId=null, kể cả CheckoutSession đã đóng. Đây là mở rộng contract tra cứu hiện có; không loại Refund PENDING/FAILED khỏi đánh giá nghĩa vụ. |
 | Payment | GET /payments/totals | Finance | Tổng thu/hoàn/chờ hoàn để đối soát. |
 | Finance | GET /finance/commission-rate | Order | { commissionBps } hiện hành để snapshot. |
+| Finance | GET /finance/sellers/{sellerId}/obligations | Identity | {hasPendingFinance,pendingBalanceVnd,availableBalanceVnd,evaluatedAt,financeStateVersion}; gồm settlement/hiệu ứng pending chưa apply kể cả bằng 0, không chỉ wallet. |
 | Notification | POST /notifications | Identity, Product, Order, Payment, Finance | Tạo thông báo từ service allowlist; hợp đồng chi tiết 7.1.1. Không lộ qua public Gateway. |
 
 #### 7.1.1 Tạo thông báo nội bộ
@@ -2822,7 +2841,9 @@ Consumer event Outbox và internal POST dùng chung hàm createNotification vớ
 
 #### 7.1.2 Nguồn quyền và dữ liệu liên service
 
-G-14 dùng hasUnfinishedOrder từ Order Service và availableBalanceVnd của Seller từ Finance tại ban/login/refresh; không dùng snapshot hasPaidOrderBeforeBan. Kiểm tra hiện hành và version, fail closed 503 nếu không xác minh được; API protected kiểm tra ownership và accessMode, hết nghĩa vụ thì không tiếp tục cấp phiên giới hạn.
+G-14 dùng hai contract obligations §7.1 tại ban/login/refresh/J7. Đây là bổ sung đặc tả, không tuyên bố endpoint code tồn tại. 404 tài khoản/ví đáng lẽ tồn tại, timeout/lỗi/không nhất quán không là nghĩa vụ 0: request cần xác minh →503, không ghi ban một phần/cấp quyền rộng hơn; job giữ trạng thái và retry.
+
+HTTP liên service nằm ngoài transaction giữ khóa. Trước commit Identity kiểm tra version và đợt cấm còn hiện hành để job không ghi đè Admin unban. Snapshot các nguồn không nguyên tử; giữ bền vững nghĩa vụ/hiệu ứng muộn để mở lại quyền giới hạn, không mất tiền.
 
 Điều phối giữa các service dùng outbox/inbox và retry; không join database chéo. Khi event cancel/confirm/refund tới Finance trước checkout.paid hoặc trước ví được tạo, consumer giữ bản ghi chờ phụ thuộc và retry; không đánh dấu đã áp dụng thành công hoặc ghi số dư âm. Event cùng aggregate phải kiểm tra version/state; event cũ không đảo trạng thái mới. Đối soát J5/Finance kiểm tra lại service sở hữu khi thiếu dữ kiện; không tự đoán số tiền từ notification.
 
@@ -2851,11 +2872,11 @@ Event dùng Outbox, consumer Inbox chống lặp eventId; envelope thêm actor {
 | funds.available | Finance | orderId, sellerId, sellerAmountVnd | Notification |
 | withdrawal.completed | Finance | withdrawalId, sellerId, amountVnd, availableAfterVnd | Notification |
 | seller.registered / approved / rejected | Identity | userId, sellerId (=userId), approvalStatus, authzVersion, reason? | Finance (approved), Notification |
-| seller.banned / seller.unbanned | Identity | userId, sellerId, status, authzVersion, reason | Order KHÔNG tự hủy PAID/PACKING khi Seller được duyệt bị cấm; Seller được xử lý Order tồn tại trong phiên giới hạn, J4 vẫn hủy nếu quá hạn. Finance cho rút available; Notification vẫn thông báo. |
-| customer.banned / customer.unbanned | Identity | userId,customerId,accessMode (OPEN\_ORDERS\_ONLY \| LOGIN\_BLOCKED),hasUnfinishedOrder,authzVersion | Notification |
+| seller.banned / seller.unbanned | Identity | userId,sellerId,status,accountStatus,accessMode,bannedAt,disabledAt,restoreUntil,authzVersion,reason | Order không tự hủy; J4 giữ nguyên. Finance không đóng băng available vì ban; Notification phân biệt quyền giới hạn/unban, nêu deadline nếu có. |
+| customer.banned / customer.unbanned | Identity | userId,customerId,accountStatus,accessMode,bannedAt,disabledAt,restoreUntil,authzVersion,reason | Notification theo userId/accountType độc lập; không hợp quyền tài khoản khác. |
 | product.removed | Product | productId, sellerId, reason | Notification |
 | password.reset\_requested | Identity | userId, resetUrl (secret nội bộ, không log), expiresAt | Notification EMAIL; không lưu in-app, queue retention ngắn |
-| user.disabled / user.enabled | Identity | userId,accountType,authzVersion,reason; USER DISABLED thu hồi phiên tài khoản đó, không tự hủy Order có nghĩa vụ còn dở; job/Refund vẫn chạy. | Order xử lý Seller PAID/PACKING nếu disable; Finance tính freeze theo policy còn hiệu lực; Notification |
+| user.disabled / user.enabled | Identity | userId,accountType,accountStatus,accessMode,bannedAt,disabledAt,restoreUntil,authzVersion,reason | Không tự hủy Order/đóng băng available; Payment/Refund vẫn chạy. user.enabled do nghĩa vụ muộn có accountStatus BANNED, không là unban; chỉ lệnh unban phát *.unbanned. Notification dùng type hiện có, phân biệt quyền giới hạn với khôi phục đầy đủ. |
 | user.roles\_changed | Identity | userId, roleCodes hiện hành, authzVersion | Audit/đồng bộ policy; API vẫn hỏi quyền hiện hành |
 
 ### 7.3 Job nền
@@ -2868,8 +2889,9 @@ Event dùng Outbox, consumer Inbox chống lặp eventId; envelope thêm actor {
 | J4 (Must) | Order | Đơn PAID/PACKING quá sellerActionDueAt → CANCELLED (refundReason \= SELLER\_TIMEOUT) | S-DELIVERY-07 |
 | J5 | Payment | Tra cứu / retry an toàn Refund PENDING hoặc FAILED (cùng idempotency key) | Chưa có tham số (Param mục 8.9) |
 | J6 | Notification | Gửi lại email lỗi | P-19 |
+| J7 — Đối soát trạng thái tài khoản bị cấm | Identity | Định kỳ đánh giá BANNED/DISABLED trong đợt cấm; hết nghĩa vụ đã xác minh → DISABLED, nghĩa vụ muộn → BANNED giới hạn. Không chuyển ACTIVE/không tự unban, không reset mốc/phát duplicate; kiểm tra version/đợt cấm trước commit | Retry an toàn, không đặt chu kỳ/backoff hoặc SLA mới |
 
-Chu kỳ chạy thuộc N-06 (chưa chốt). Mọi job khóa bản ghi và kiểm tra trạng thái hiện tại để không chạy chồng với thao tác người dùng (J3 với "Đã nhận hàng", J4 với "Đã giao"/"Từ chối"). J7 (payout) không còn dùng (FRD v5.2). J2/J2b/J5 chỉ có việc thực sự để làm khi bật giai đoạn 2 của bộ giả lập nhưng vẫn triển khai từ giai đoạn 1\.
+Chu kỳ J1–J6 thuộc N-06 (chưa chốt). Mọi job kiểm tra trạng thái hiện tại tránh chạy chồng với thao tác người dùng. J7 là job Identity nêu trên, không phải payout lịch sử; không áp giá trị dev N-06 thành SLA J7. J2/J2b/J5 giữ lộ trình simulator hiện có.
 
 ## 8. Luồng tích hợp tiêu biểu
 
@@ -2883,6 +2905,8 @@ Chu kỳ chạy thuộc N-06 (chưa chốt). Mọi job khóa bản ghi và kiể
 | 4 | Payment → Order | event payment.succeeded | Một transaction: N Order → PAID, Reservation COMMITTED, StockMovement SOLD, outbox checkout.paid |
 | 5 | Order → Cart, Finance, Notification | event checkout.paid | Cart giảm dòng đã mua (nếu CART); Finance tạo Settlement \+ bút toán PAYMENT\_RECEIVED; Notification gửi email khách và từng Seller |
 | 6 | FE → Order | GET /orders/me | Các đơn hiển thị "Chờ xử lý" |
+
+Order Service là owner/trigger khi apply Payment SUCCESS qua payment.succeeded hoặc đường đối soát dùng chung handler ([SAD §5.1](software-architecture.md)). Xác minh điều kiện giao dịch qua Identity/Product ngoài transaction giữ khóa; invalid được chứng minh thì hủy/hoàn riêng Order đủ điều kiện PAID/PACKING, giữ Payment SUCCESS, đủ checkout.paid/order.cancelled. Payment tạo Refund ORDER; Finance giữ pending/PENDING_REFUND đến Refund SUCCESS. Seller ban sau capture không là lý do hủy; event trễ không suy invalid từ status hiện tại, thiếu bằng chứng tại capture phải xác minh/retry. Lỗi nguồn không là invalid; giữ retry bền vững, replay không nhân đôi SOLD/RESTOCK/Refund/ledger. Không quét hủy mọi đơn Seller, không hủy DELIVERED/CONFIRMED, không giao quyết định cho J7/J2/J5; late-payment FULL_CHECKOUT giữ nguyên.
 
 ### 8.2 Seller từ chối giao hàng
 
@@ -2967,6 +2991,7 @@ Các quyết định tiền/tồn còn hiệu lực từ bản trước. Bản v
 
 | Phiên bản | Ngày | Nội dung | Người sửa |
 | :---- | :---- | :---- | :---- |
+| Thẻ 15 | 17/11/2026 | Đặc tả vòng đời cấm/nghĩa vụ/30 ngày, DTO/preview, internal obligations/J7/events, rút toàn bộ số dư nhỏ, provision HIDDEN và trigger invalid sau capture; authority [coverage §the-15](coverage.md#the-15). Không xác nhận runtime. |
 | v0.3 (draft) | 19/10/2026 | Đồng bộ FRD v5.3 / Database v4.6: chốt C-02, C-03, C-04 (theo FRD), C-10 (theo Database), C-06 chốt sau, C-07 đã xử lý; mọi tham chiếu FRD 4.x đổi sang mục Database (DB x.y, G-xx, WD-xx); bỏ endpoint công khai /payments/provider/mock/callback; thay Mock Provider bằng bộ giả lập thanh toán nội bộ (6.5.1), mockScenario → simulatorScenario, provider \= SIMULATOR, thêm kịch bản REFUND\_FAIL và lộ trình hai giai đoạn. | Claude, chờ nhóm review |
 | v0.2 (draft) | 18/10/2026 | Đồng bộ Database v4.6: bỏ mọi tham chiếu Payout; enum WalletTransactionType, RefundReason, SettlementStatus và DTO Wallet/WalletTransaction/Settlement/Withdrawal theo tên field DB; Settlement không còn customerConfirmDueAt; luồng hoàn tiền theo DB (REFUND\_DEBIT khi Refund SUCCESS); cập nhật C-01, C-10, C-11, C-13. | Claude, chờ nhóm review |
 | v0.1 (draft) | 18/10/2026 | Bản đầu: quy ước chung, ma trận UC → service, đặc tả 7 service, internal API, event, job, danh sách điểm cần chốt. | Claude (soạn nháp), chờ nhóm review |
@@ -2980,7 +3005,7 @@ Các comment gốc được giữ và neo tại các dòng đối chiếu dướ
 | Comment gốc | Xử lý trong bản v1.0 |
 | :---- | :---- |
 | IDs 0, 2, 4, 6, 8, 10, 12 — dùng POST /identity/auth/login cho cả Customer Seller Admin | Giữ một endpoint login về mặt kỹ thuật, nhưng request bắt buộc accountType và dùng tài khoản Customer/Seller/Admin độc lập. Không có User đa vai trò; refresh, reset, DTO và session theo đúng accountType. |
-| IDs 21, 23, 25, 27 — identity/admin/ban/{userId} | Ban/unban giữ scope USER/CUSTOMER/SELLER; chỉ Seller APPROVED được cấm. Customer BANNED chỉ vào để xử lý Order chưa hoàn tất; Seller APPROVED/BANNED chỉ xử lý Order tồn/rút available; không tự động cấm tài khoản vai trò khác. |
+| IDs 21,23,25,27 — identity/admin/ban/{userId} | Thẻ 15 thay quyết định scope cũ: ban/unban một tài khoản theo §3.2/§6.1, chỉ Seller APPROVED; nghĩa vụ hiện tại quyết định BANNED/DISABLED và quyền giới hạn, không tự cấm tài khoản khác. |
 | ID 31 — chuẩn hóa /categories và /products | Public Catalog bỏ /catalog ở route, bảng endpoint, ví dụ và cross-reference; giữ /catalog riêng internal service routing; từ 06/11/2026 service đổi tên thành Product và internal dùng /internal/v1/products/\*\*. |
 | IDs 33, 36 — API review không cần thiết | Bỏ PUT review và GET my-reviews. Tạo review chỉ một lần; Order lấy review summary qua internal Product khi cần biết đã đánh giá. |
 | ID 29 — DB có lưu đâu tại audit-logs | Bỏ public GET audit-logs và DTO banHistory. Giữ audit kỹ thuật bắt buộc theo Database v5.0 để truy vết quyền/khóa/duyệt, không xây màn xem log. |
@@ -2995,7 +3020,7 @@ Database RBAC v5.0 là nền: User/Customer/Seller shared PK, bốn bảng RBAC,
 | Thành phần | Đồng bộ bắt buộc |
 | :---- | :---- |
 | Notification | Thêm deleted\_at TIMESTAMPTZ NULL; filter IN\_APP chưa xóa; giữ dedupe\_key UQ kể cả đã xóa. Một record/kênh; không xóa email log. NotificationType thêm SELLER\_REGISTERED, USER\_DISABLED, USER\_ENABLED. |
-| Customer ban policy | G-14 dựa nghĩa vụ còn tồn tại: hasUnfinishedOrder và Seller.availableBalanceVnd tại thời điểm ban/login/refresh; không dùng has\_paid\_order\_before\_ban làm cờ mở quyền từ lịch sử thanh toán. Thay đổi quyền tăng authzVersion; lỗi phụ thuộc trả 503 fail closed. |
+| Account ban policy | G-14 §3.2/§7.1.2: nghĩa vụ Order/Payment/Refund/Finance hiện tại; accountStatus suy ra theo cặp trạng thái, users.banned_at/disabled_at/restore_until TIMESTAMPTZ NULL; chuyển cặp trạng thái/authzVersion/audit/Outbox local transaction. Đây là đặc tả, không chứng minh migration/runtime. |
 | User/Customer/Seller API | Credential lưu tại users của MỖI tài khoản tách vai trò; accountType là cột bắt buộc, tối đa một role hiện hành/User. DTO có avatarObjectKey/avatarUrl từ users.avatar\_object\_key; Seller logoUrl lấy cùng ảnh này, không còn sellers.logo\_object\_key. |
 | Product Review | Không còn public update/my-reviews; UNIQUE(customer\_id, product\_id) giữ nguyên. updated\_at có thể giữ để tương thích DB, không tạo endpoint sửa chỉ vì có cột. |
 | RegionProvider | Không tạo bảng danh mục tỉnh/phường tự quản; lưu mã trong CustomerAddress và snapshot tên trong Order như thiết kế. Adapter/cache có dataset version, cấu hình nguồn cần được chốt. |
@@ -3006,7 +3031,11 @@ Database RBAC v5.0 là nền: User/Customer/Seller shared PK, bốn bảng RBAC,
 
 Ba tài khoản Customer/Seller/Admin độc lập; login sai accountType báo INVALID\_CREDENTIALS chung; Seller PENDING/REJECTED không đăng nhập; Seller REJECTED nộp SellerApplication mới qua email verification; chỉ Seller APPROVED được cấm. Token cũ/sai role bị từ chối; backend không tự nâng role.
 
-Customer BANNED chỉ đăng nhập nếu còn Order chưa hoàn tất và chỉ xử lý Order đó; Seller APPROVED/BANNED chỉ đăng nhập nếu còn Order dở hoặc số dư khả dụng để xử lý đơn/rút available; USER DISABLED chặn toàn bộ. Không làm ảnh hưởng tài khoản vai trò khác. Mọi list/detail và idempotency kiểm tra ownership/quyền hiện hành.
+Tiêu chí Thẻ 15 B1–B11: chỉ CONFIRMED và hết nghĩa vụ → DISABLED/thu hồi phiên; PAID/DELIVERED → BANNED đúng chủ, hủy/xác nhận theo state machine không mua/review; CANCELLED + Refund FAILED vẫn BANNED chỉ đọc. Seller chỉ pending/effect chưa apply → OBLIGATIONS_READ_ONLY, không rút pending; available=9500 cho BANNED rút 9500, không 5000, ACTIVE không ngoại lệ. Rút hết và hết nghĩa vụ, J7 lặp chỉ DISABLED một lần không đổi mốc/ledger. Unban đúng restoreUntil →200 ACTIVE, sau 1 giây →409 ACCOUNT_RESTORE_WINDOW_EXPIRED không mất tiền/dữ liệu; BANNED hơn 30 ngày chưa DISABLED vẫn unban được. Timeout nguồn →503/giữ trạng thái, không ban một phần; job cạnh tranh unban không ghi đè ACTIVE. Nghĩa vụ muộn mở lại BANNED giới hạn, giữ mốc đợt khi DISABLED lại. ADMIN/PENDING/REJECTED không cấm theo UC-E03, không đổi approval/role.
+
+P1/P2: provision timeout/replay cùng key chỉ một Product HIDDEN/productId, Inventory xác nhận mới publish nếu còn hợp lệ; ban/REMOVED trong lúc đợi không bật SELLING, validation/media lỗi trước tạo không lưu Product.
+
+O1–O3: Payment SUCCESS giữ nguyên; một Order invalid giao dịch chỉ hoàn Order đó, đủ checkout.paid/order.cancelled, pending chỉ giảm Refund SUCCESS; ban sau capture với event trễ không tự cancel/refund. Identity/Product lỗi giữ retry bền vững, replay không nhân đôi kho/Refund/ledger.
 
 Không còn public /catalog, PUT review, my-reviews hoặc public audit. Login vẫn một endpoint nhưng buộc accountType của tài khoản riêng. SellerPublic không có PII; Region 503 đúng khi lỗi, Notification delete/idempotency/allowlist giữ nguyên. Order/CheckoutSession dùng UUID, chỉ Withdrawal có withdrawalCode. dedupe/payload không gửi trùng.
 

@@ -1,5 +1,7 @@
 # identity-service — `SessionService.refresh` flow
 
+> Đặc tả [Thẻ 15](../docs/requirements/coverage.md#the-15) đã đổi: login/refresh/J7 phải đánh giá nghĩa vụ hiện tại và quyền giới hạn. Đồ thị dưới đây mô tả implementation đã khảo sát, chưa được kiểm chứng theo contract mới; không phải bằng chứng J7 hay khôi phục quyền đã triển khai.
+
 How `SessionService.refresh(refreshToken)` (`src/main/java/com/example/identity_service/session/SessionService.java`) exchanges a refresh token for a new token pair. Spec: API §3.2 and §6.1 `POST /identity/auth/refresh`, DB §6 `AuthSession`.
 
 The whole method runs in one transaction with `noRollbackFor = ApiException.class`, so revoking a session on token reuse is committed even though the call then fails with `INVALID_REFRESH_TOKEN`.

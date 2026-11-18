@@ -1,5 +1,30 @@
 # Nguồn, độ phủ và phần còn mở
 
+<a id="the-15"></a>
+## Quyết định Thẻ 15 — 17/11/2026
+
+Nguồn: [Thẻ 15](https://docs.google.com/document/d/1VukChbA8p9eOU_loe7y_RVCFvdkzIeMDQCWBoUn2nRI/edit?tab=t.9bkh3t22k4xx), cùng kế hoạch được người dùng phê duyệt ngày 17/11/2026. Các quyết định sau thay thế riêng các đoạn mâu thuẫn về ban/provision/trigger trong baseline cũ; không thay thế toàn bộ SAD.
+
+- Tài khoản Customer/Seller/Admin độc lập, ban không chọn scope; không cấm Admin hoặc Seller chưa APPROVED.
+- BANNED khi còn nghĩa vụ đơn, Payment/Refund chưa xử lý xong; Seller thêm Settlement/hiệu ứng tài chính chưa xong, pending hoặc available. Chỉ DISABLED sau khi xác minh hết nghĩa vụ. Lỗi nguồn không có nghĩa số dư/nghĩa vụ bằng 0.
+- J7 do Identity sở hữu đối soát BANNED/DISABLED; nghĩa vụ đến muộn mở lại BANNED giới hạn, không tự unban. Không tự hủy đơn/đóng băng available chỉ vì ban.
+- BANNED được gỡ bất kỳ lúc nào; DISABLED được gỡ đến hết 30 ngày từ lần đầu DISABLED trong đợt cấm. Ban/job lặp không gia hạn. Quá hạn không xóa dữ liệu hoặc tiền.
+- Seller BANNED được rút toàn bộ available dương dưới 10.000đ, không rút một phần dưới ngưỡng; Seller ACTIVE giữ ngưỡng 10.000đ, pending không rút.
+- UC-D01 thiếu bước đã có trong API/SAD: tạo Product HIDDEN cùng công việc provision bền vững; xác nhận Inventory mới được áp dụng trạng thái yêu cầu nếu còn hợp lệ; timeout giữ HIDDEN/retry cùng productId.
+- Database §8.2B đã có invalid-after-capture: Order xác minh khi áp dụng Payment SUCCESS, không phải ban sau thanh toán tự hủy; lỗi phụ thuộc giữ retry, không coi là invalid.
+
+Phạm vi gồm tài liệu hiệu lực trong repository và các thẻ/tài sản liên quan trên Drive. Các bản nguồn lịch sử và mô tả implementation không được viết lại thành tính năng đã triển khai. Bằng chứng đối chiếu tài liệu không phải UAT/runtime pass. Nội dung bàn giao remote và bằng chứng giới hạn lưu tại [kế hoạch active](../plans/active/the-15-docs-remote-patches.md); chưa tuyên bố tài sản remote đã lưu.
+
+| Mục Thẻ 15 | Nguồn/section Drive | Nguồn hiệu lực repository | Ca đối chiếu | Trạng thái |
+|---|---|---|---|---|
+| 1 — vòng đời cấm/khôi phục | FRD UC-A03/E03/D05/G03; Database User/G-14/WD; API auth/ban/unban/§7; UI/Parameter/BRD và conflicts | [FRD](FRD.md), [Database](database.md), [API](api_specs.md), [Identity](identity.md#uc-e03), [Finance](finance.md#uc-d05), [SAD](software-architecture.md) | B1–B11 theo bảng AC Thẻ 15 trong FRD | Repository đã hiệu chỉnh và đối chiếu đặc tả; Drive/UI chưa có bằng chứng lưu |
+| 2 — Product HIDDEN/provision | FRD UC-D01; API Product; UI III.4a; Activity UC-D01 | [FRD](FRD.md), [Catalog](catalog.md#uc-d01), [API](api_specs.md), [SAD](software-architecture.md) | P1–P2; AC-CAT-002 | Repository đã đồng bộ thiếu sót FRD; artifact remote chưa áp dụng/xác minh hình |
+| 3 — trigger sau thu | Database §8.2B; API state table/event; FRD UC-B06/G02; Activity B06/G02; Simulated Gateway | [Database](database.md), [API](api_specs.md), [Order](checkout-orders.md#uc-b06), [Payment](payments.md#uc-g02), [SAD §5.1](software-architecture.md) | O1–O3; AC-ORD-003 | Repository đã chỉ rõ Order owner và tách ban sau thu; remote chưa có bằng chứng lưu |
+
+Mapping bổ sung: Identity AC-IDN-010/011 bao phủ deadline/J7/lỗi nguồn; Finance AC-FIN-004 bao phủ rút toàn bộ dưới ngưỡng; Notification AC-NOT-003 bao phủ user.enabled BANNED không đồng nghĩa unban. Đây là AC để triển khai, không kết quả test ứng dụng.
+
+Kiểm chứng ngày 18/11/2026: 561 explicit ID duy nhất, giữ đủ 37 UC/17 G/11 WD/26 AT; manifest 5 nguồn hiện hành khớp SHA-256. Kiểm tra gốc vẫn FAIL tại đường dẫn lịch sử `business/UET FRD v5.4 - dong bo API DB.md` không tồn tại. Scan link tách 656 dẫn `business/` cũ, còn một link hiện trạng Catalog tới `ProductTestController.java` không tồn tại; không coi toàn bộ link repository đã pass. Không chạy runtime/UAT. Remote chưa thay đổi do browser timeout và giới hạn chỉnh sửa thiết kế; [bản vá/chi tiết kiểm chứng](../plans/active/the-15-docs-remote-patches.md) giữ trạng thái Blocked, không chuyển completed.
+
 ## Baseline và giới hạn kết luận
 
 Người dùng chấp nhận SAD v1.1 §7.1/D.1 và cây tài liệu ngày 11/11/2026.
@@ -13,31 +38,25 @@ Mọi kết luận code/test là khảo sát tĩnh ngày 11/11/2026, không kế
 
 ## Manifest nguồn
 
-Hash là SHA-256 toàn bộ bytes; dùng phát hiện đổi nguồn, không chứng minh nguồn
-đúng hoặc đầy đủ về nghiệp vụ. Không đổi tên/biên tập nguồn trong công việc này.
+Hash là SHA-256 toàn bộ bytes, chỉ phát hiện đổi nguồn. Ba hàng `business/...` là manifest lịch sử baseline 11/11/2026, không đổi đường dẫn/hash quá khứ thành giả định file hiện có. Ngày 16/11 hai nguồn kiến trúc chuyển vào `docs/requirements/`; ngày 18/11 cập nhật hash/line của nguồn kiến trúc và ba nguồn hiện hành sau hiệu chỉnh Thẻ 15. Nguồn lịch sử `docs/api.md`, `docs/database.md`, FRD v5.4 không bị sửa bởi công việc này.
 
 | Đường dẫn | Phiên bản / phạm vi | Dòng | SHA-256 |
 |---|---|---:|---|
 | `business/UET FRD v5.4 - dong bo API DB.md` | FRD v5.4, 06/11/2026; 37 UC (2 loại bỏ), nghiệp vụ/ngoại lệ | 1539 | `e4fbc0e7b16583e90da42e0ca0fb139f54b63682be9a5c8ca3a91ca283b07de9` |
 | `business/database.md` | Database RBAC v5.0, 25/10/2026; data dictionary/G/WD/state | 1055 | `033b8c01e69a8e6c9f783c51b29933ae8afe240e5f85e37423c60c4923e65ab1` |
 | `business/api.md` | API v1.0, 25/10/2026, có cập nhật sau metadata; contract để review | 2979 | `6cf4d3144537fcabf1e4aafd3f1e3886200166e6ad3cbe696dbd5463d12b4046` |
-| `business/Software-Architecture.md` | SAD-ECOM-01 v1.1, 10/11/2026; TO-BE, ADR/DELTA/AT | 1132 | `4245fb93d5227a8a30b59dd6ca8299cd672d85b69225c4674916f379e4894f73` |
-| `business/system-architecture.md` | Không có metadata version/ngày rõ; kiến trúc hệ thống | 1136 | `1e60a4348d298cef62c98c81c37d1dd07a14c2afc1b0b812a59e45257a66c959` |
+| `docs/requirements/software-architecture.md` | SAD-ECOM-01 v1.1 + hiệu chỉnh Thẻ 15, 18/11/2026 | 1137 | `5c81048802cc35658bc3f3973ce8422646ca4f2cf806a6cf598eeaf7852a3bc9` |
+| `docs/requirements/system-architecture.md` | Kiến trúc hệ thống + hiệu chỉnh Thẻ 15, 18/11/2026 | 1141 | `1df9591c1a4cb5447ecd3a851dd2663396512d25eb2c50b11c0c46f2d521da44` |
 
 ### Nguồn mới được thêm vào harness ngày 16/11/2026
 
 | Tài liệu | Phiên bản | Dòng | SHA-256 |
 |---|---|---:|---|
-| [docs/requirements/FRD.md](FRD.md) | FRD v5.5 | 1520 | `ca8145facea3bd6f8bbe2d2f9a191d4dcc8983474861344e6238c435670b9775` |
-| [docs/requirements/api_specs.md](api_specs.md) | API v1.1 | 3014 | `fb88536ea171d16e6b53b19ec105b4c950daa3e266756add92777f35ccf980cc` |
-| [docs/requirements/database.md](database.md) | Database v5.1 | 1027 | `668ca6ec7aadcb6330e06606e0a77fd56edee9ea6826648aa5b6979b286c2a07` |
+| [docs/requirements/FRD.md](FRD.md) | FRD v5.5 + Thẻ 15, 18/11/2026 | 1546 | `8532c531cd333fd08ddf14ffa815f7c00a34943d71aa65d40bd2d428e6e8a14d` |
+| [docs/requirements/api_specs.md](api_specs.md) | API v1.1 + Thẻ 15, 18/11/2026 | 3043 | `e11ac577117a69f6a98dfb4c943ae5676d364964e1950a7f8719dadd7203bcee` |
+| [docs/requirements/database.md](database.md) | Database v5.1 + Thẻ 15, 18/11/2026 | 1098 | `ee6ff9b9fea62e2af7daf8019381f839fa441a7f9246e679f38cadf54592f491` |
 
-Tham chiếu mới không xác nhận đã rà soát lại 377 clause, các bảng hiệu chỉnh,
-thuật ngữ/quyền hoặc implementation theo ba phiên bản này. Các dẫn `Lx–y`
-trong phần truy vết dưới đây thuộc snapshot cũ, không chuyển nguyên số dòng
-sang nguồn mới. Đặc biệt, quy tắc tài khoản riêng/đăng nhập giới hạn trong
-nguồn mới khác mô hình User dùng chung của hồ sơ cũ; phần xung đột cần được
-đối chiếu theo authority trước khi triển khai, không suy diễn từ hash hay ngày sửa.
+Các phần thuộc Thẻ 15 đã được đối chiếu ngữ nghĩa theo bảng trên; không xác nhận đã rà lại toàn bộ 377 clause/implementation theo nguồn mới. Các dẫn `Lx–y` chưa sửa bên dưới vẫn là snapshot cũ, không chuyển nguyên số dòng sang bản mới. Khi chạm phần ngoài phạm vi, đối chiếu authority trước triển khai, không suy diễn từ hash/ngày sửa. Các inventory nguồn cũ giữ tên/section cũ như provenance, không phải đề nghị dùng lại scope/đa vai trò/snapshot đã bị thay.
 
 ## UC và điều khoản đã chuyển
 
@@ -148,31 +167,31 @@ Mỗi G/WD/AT chỉ có một hồ sơ sở hữu bản diễn giải; hồ sơ 
 
 ## Hiệu chỉnh và nội dung bị thay thế
 
-Nguồn vẫn giữ nguyên; bảng ghi clause đích đã áp dụng baseline, không coi code đang chạy là căn cứ thay thế.
+Bảng ghi các hiệu chỉnh theo nguồn hiệu lực, không coi code đang chạy là căn cứ thay thế. Các hàng nguồn cũ/số dòng cũ là truy vết lịch sử, không là policy khi đã bị [Thẻ 15](#the-15) thay thế; các phần ngoài phạm vi này chưa được rà lại toàn bộ.
 
 | Clause | Nguồn cũ | Baseline và nội dung hiệu lực |
 |---|---|---|
-| [UC-A03.MAIN-03](identity.md#uc-a03.main-03) | [UC-A03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L385 | Một lần đăng nhập dùng chung mọi vai trò; một React SPA hiển thị vùng Customer/Seller/Admin theo permission và trạng thái hiện hành. Không có ba phiên hay ba tài khoản độc lập. [baseline](../../business/Software-Architecture.md), L83–98 |
-| [UC-A03.POST-01](identity.md#uc-a03.post-01) | [UC-A03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L403 | Một tài khoản đăng nhập dùng chung các vai trò hợp lệ. Customer BANNED chỉ giữ quyền xem/xử lý đơn cũ theo G-14 nếu snapshot tại thời điểm cấm cho biết đã từng có đơn thanh toán thành công; không có lịch sử đó thì chặn phạm vi Customer nhưng giữ vai trò khác hợp lệ. Cấm Customer không tự disable User. [baseline](../../business/Software-Architecture.md), L602–614 |
-| [UC-B04.MAIN-03](checkout-orders.md#uc-b04.main-03) | [UC-B04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L609 | Khách chọn một địa chỉ cho toàn bộ N đơn và xác nhận Thanh toán. Preview chỉ đọc; bước pay mới tạo checkout, giữ tồn và lưu ý định charge. [baseline](../../business/Software-Architecture.md), L444–496 |
-| [UC-B04.MAIN-05](checkout-orders.md#uc-b04.main-05) | [UC-B04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L613 | Khi pay hợp lệ, local transaction O1 của Order giữ đủ tất cả dòng, tạo một CheckoutSession, N Order theo Seller và lưu ý định gọi Payment bền vững; thiếu một dòng rollback toàn bộ. [baseline](../../business/Software-Architecture.md), L444–496 |
-| [UC-B04.MAIN-06](checkout-orders.md#uc-b04.main-06) | [UC-B04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L615 | Order chưa PAID thì UI hiển thị đang xác nhận; chỉ báo đặt hàng thành công sau O3 áp dụng PAID. Không triển khai luồng tạo phiên công khai rồi browser tự gọi charge cũ như baseline mới. [baseline](../../business/Software-Architecture.md), L444–496 |
-| [UC-B04.POST-01](checkout-orders.md#uc-b04.post-01) | [UC-B04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L629 | Một checkout có một CheckoutSession, N Order theo N Seller và tối đa một Payment; Order được định danh bằng orderId, không có mã hiển thị riêng. [baseline](../../business/Software-Architecture.md), L444–496 |
-| [UC-B10.MAIN-03](checkout-orders.md#uc-b10.main-03) | [UC-B10](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L809 | Khách chọn địa chỉ chung; quy tắc mặc định tham chiếu Database §3.1.4 (FRD ghi nhầm §3.1.3). Chưa pay thì chưa tạo Order/Reservation. [baseline](../../business/Software-Architecture.md), L444–496 |
-| [UC-B10.MAIN-04](checkout-orders.md#uc-b10.main-04) | [UC-B10](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L811 | Khi xác nhận Thanh toán, O1 kiểm tra lại quote/giá/Seller/tồn, tạo một CheckoutSession BUY_NOW, một Order, một OrderItem và công việc charge bền vững. BUY_NOW không gọi Cart. [baseline](../../business/Software-Architecture.md), L444–496 |
-| [UC-B10.ALT-06](checkout-orders.md#uc-b10.alt-06) | [UC-B10](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L827 | Rời trang trước khi xác nhận Thanh toán: chỉ có Preview, chưa có phiên/đơn/giữ tồn; không coi việc mở trang hoặc bấm một bước xem trước là O1. [baseline](../../business/Software-Architecture.md), L444–520 |
-| [UC-B05.PRE-01](payments.md#uc-b05.pre-01) | [UC-B05](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L639 | Customer được phép thanh toán; kiểm tra dữ liệu hiện hành, địa chỉ, quote và idempotency tại pay; O1 mới tạo checkout/giữ tồn. Nếu tiếp tục workflow đã nhận thì dùng tham chiếu và ý định cũ, không thu mới. [baseline](../../business/Software-Architecture.md), L444–520 |
-| [UC-B05.MAIN-01](payments.md#uc-b05.main-01) | [UC-B05](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L643 | Khách xem Preview và xác nhận Thanh toán qua Order; chi tiết pay/quote/internal charge thuộc DELTA-01/03 cần đồng bộ contract trước code. Không xem endpoint đề xuất là API đã tồn tại. [baseline](../../business/Software-Architecture.md), L444–496 |
-| [UC-G02.MAIN-04](payments.md#uc-g02.main-04) | [UC-G02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1333 | Payment ghi Refund SUCCESS và Outbox trong local transaction; Finance nhận kết quả tin cậy, cập nhật Settlement REFUNDED, pending Seller −Sᵢ/PLATFORM −Cᵢ và REFUND_DEBIT trong transaction Finance. Order/Notification cập nhật riêng, có dedupe; không có transaction chung Refund–Settlement–Order. [baseline](../../business/Software-Architecture.md), L522–539 |
-| [UC-D04.MAIN-01](finance.md#uc-d04.main-01) | [UC-D04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L983 | Seller mở tra cứu vận hành đơn, Settlement và ví thuộc mình; không bắt buộc màn thống kê phân tích hoặc chọn kỳ phân tích trong MVP. [baseline](../../business/Software-Architecture.md), L75–81 |
-| [UC-D04.MAIN-02](finance.md#uc-d04.main-02) | [UC-D04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L985 | MVP tra cứu danh sách/chi tiết đơn và khoản tiền tại service sở hữu; hoãn biểu đồ, top sản phẩm, export phân tích và Reporting Service. [baseline](../../business/Software-Architecture.md), L75–81 |
-| [UC-D04.ALT-03](finance.md#uc-d04.alt-03) | [UC-D04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L997 | Không có giao dịch: danh sách trống và số dư thực tế; không dựng read model kỳ thống kê chỉ để đáp ứng phần phân tích đã hoãn. [baseline](../../business/Software-Architecture.md), L75–81 |
-| [UC-D05.PRE-01](finance.md#uc-d05.pre-01) | [UC-D05](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1007 | Điều kiện rút: Seller được duyệt, ACTIVE, xác thực/quyền/ownership hợp lệ và available ≥ 10.000 VND. Điều kiện số dư này không cấm xem ví dưới 10.000; các nhánh ALT dưới đây quy định trạng thái nút rút. [baseline](../../business/Software-Architecture.md), L572–578 |
-| [UC-E02.GOAL-01](finance.md#uc-e02.goal-01) | [UC-E02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1079 | Admin tra cứu vận hành và đối soát nguồn tiền chính thức; không bắt buộc dashboard phân tích theo kỳ trong MVP. [baseline](../../business/Software-Architecture.md), L75–81 |
-| [UC-E02.MAIN-01](finance.md#uc-e02.main-01) | [UC-E02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1085 | Admin mở tra cứu vận hành và đối soát; hoãn dashboard phân tích, biểu đồ và export. [baseline](../../business/Software-Architecture.md), L75–81 |
-| [UC-E02.ALT-01](finance.md#uc-e02.alt-01) | [UC-E02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1097 | Nguồn đủ dữ liệu và không có giao dịch thì phản ánh 0; thiếu nguồn không được coi là balanced=true hoặc không có giao dịch. [baseline](../../business/Software-Architecture.md), L665–685 |
-| [UC-G04.MAIN-02](finance.md#uc-g04.main-02) | [UC-G04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1395 | Order ghi CONFIRMED và Outbox trong local transaction; Finance xử lý order.confirmed, chuyển Settlement SETTLED, Seller pending −Sᵢ/available +Sᵢ, PLATFORM pending −Cᵢ/available +Cᵢ và SETTLEMENT_RELEASED trong transaction Finance. Không gộp transaction Order và Finance. [baseline](../../business/Software-Architecture.md), L559–570 |
-| [UC-G01.MAIN-05](notifications.md#uc-g01.main-05) | [UC-G01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1305 | Email demo bất đồng bộ là Must qua DemoEmailAdapter; không tuyên bố email thật đã giao. In-app là Should, chưa bắt buộc trong MVP. [baseline](../../business/Software-Architecture.md), L303–318 |
+| [UC-A03.MAIN-03](identity.md#uc-a03.main-03) | FRD v5.4/§UC-A03; baseline 11/11 đa vai trò, đã bị thay thế ở phần tài khoản | Customer/Seller/Admin là tài khoản độc lập, login đúng accountType; không hợp quyền nhiều vai trò. [FRD UC-A03](FRD.md), [Thẻ 15](#the-15). |
+| [UC-A03.POST-01](identity.md#uc-a03.post-01) | FRD v5.4/§UC-A03; snapshot lịch sử thanh toán đã bị thay thế | BANNED chỉ có phiên giới hạn theo nghĩa vụ hiện tại, DISABLED khi xác minh hết; không dùng hasPaidOrderBeforeBan. J7 và login/refresh phục hồi BANNED nếu nghĩa vụ đến muộn, không tự unban. [FRD UC-E03](FRD.md), [Database G-14](database.md), [Thẻ 15](#the-15). |
+| [UC-B04.MAIN-03](checkout-orders.md#uc-b04.main-03) | [UC-B04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L609 | Khách chọn một địa chỉ cho toàn bộ N đơn và xác nhận Thanh toán. Preview chỉ đọc; bước pay mới tạo checkout, giữ tồn và lưu ý định charge. [baseline](software-architecture.md), L444–496 |
+| [UC-B04.MAIN-05](checkout-orders.md#uc-b04.main-05) | [UC-B04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L613 | Khi pay hợp lệ, local transaction O1 của Order giữ đủ tất cả dòng, tạo một CheckoutSession, N Order theo Seller và lưu ý định gọi Payment bền vững; thiếu một dòng rollback toàn bộ. [baseline](software-architecture.md), L444–496 |
+| [UC-B04.MAIN-06](checkout-orders.md#uc-b04.main-06) | [UC-B04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L615 | Order chưa PAID thì UI hiển thị đang xác nhận; chỉ báo đặt hàng thành công sau O3 áp dụng PAID. Không triển khai luồng tạo phiên công khai rồi browser tự gọi charge cũ như baseline mới. [baseline](software-architecture.md), L444–496 |
+| [UC-B04.POST-01](checkout-orders.md#uc-b04.post-01) | [UC-B04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L629 | Một checkout có một CheckoutSession, N Order theo N Seller và tối đa một Payment; Order được định danh bằng orderId, không có mã hiển thị riêng. [baseline](software-architecture.md), L444–496 |
+| [UC-B10.MAIN-03](checkout-orders.md#uc-b10.main-03) | [UC-B10](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L809 | Khách chọn địa chỉ chung; quy tắc mặc định tham chiếu Database §3.1.4 (FRD ghi nhầm §3.1.3). Chưa pay thì chưa tạo Order/Reservation. [baseline](software-architecture.md), L444–496 |
+| [UC-B10.MAIN-04](checkout-orders.md#uc-b10.main-04) | [UC-B10](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L811 | Khi xác nhận Thanh toán, O1 kiểm tra lại quote/giá/Seller/tồn, tạo một CheckoutSession BUY_NOW, một Order, một OrderItem và công việc charge bền vững. BUY_NOW không gọi Cart. [baseline](software-architecture.md), L444–496 |
+| [UC-B10.ALT-06](checkout-orders.md#uc-b10.alt-06) | [UC-B10](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L827 | Rời trang trước khi xác nhận Thanh toán: chỉ có Preview, chưa có phiên/đơn/giữ tồn; không coi việc mở trang hoặc bấm một bước xem trước là O1. [baseline](software-architecture.md), L444–520 |
+| [UC-B05.PRE-01](payments.md#uc-b05.pre-01) | [UC-B05](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L639 | Customer được phép thanh toán; kiểm tra dữ liệu hiện hành, địa chỉ, quote và idempotency tại pay; O1 mới tạo checkout/giữ tồn. Nếu tiếp tục workflow đã nhận thì dùng tham chiếu và ý định cũ, không thu mới. [baseline](software-architecture.md), L444–520 |
+| [UC-B05.MAIN-01](payments.md#uc-b05.main-01) | [UC-B05](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L643 | Khách xem Preview và xác nhận Thanh toán qua Order; chi tiết pay/quote/internal charge thuộc DELTA-01/03 cần đồng bộ contract trước code. Không xem endpoint đề xuất là API đã tồn tại. [baseline](software-architecture.md), L444–496 |
+| [UC-G02.MAIN-04](payments.md#uc-g02.main-04) | [UC-G02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1333 | Payment ghi Refund SUCCESS và Outbox trong local transaction; Finance nhận kết quả tin cậy, cập nhật Settlement REFUNDED, pending Seller −Sᵢ/PLATFORM −Cᵢ và REFUND_DEBIT trong transaction Finance. Order/Notification cập nhật riêng, có dedupe; không có transaction chung Refund–Settlement–Order. [baseline](software-architecture.md), L522–539 |
+| [UC-D04.MAIN-01](finance.md#uc-d04.main-01) | [UC-D04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L983 | Seller mở tra cứu vận hành đơn, Settlement và ví thuộc mình; không bắt buộc màn thống kê phân tích hoặc chọn kỳ phân tích trong MVP. [baseline](software-architecture.md), L75–81 |
+| [UC-D04.MAIN-02](finance.md#uc-d04.main-02) | [UC-D04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L985 | MVP tra cứu danh sách/chi tiết đơn và khoản tiền tại service sở hữu; hoãn biểu đồ, top sản phẩm, export phân tích và Reporting Service. [baseline](software-architecture.md), L75–81 |
+| [UC-D04.ALT-03](finance.md#uc-d04.alt-03) | [UC-D04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L997 | Không có giao dịch: danh sách trống và số dư thực tế; không dựng read model kỳ thống kê chỉ để đáp ứng phần phân tích đã hoãn. [baseline](software-architecture.md), L75–81 |
+| [UC-D05.PRE-01](finance.md#uc-d05.pre-01) | FRD v5.4 UC-D05; điều kiện ACTIVE-only và ngưỡng vô điều kiện đã bị thay ở phần này | Seller APPROVED/ACTIVE hoặc BANNED có allowlist đúng owner: rút số nguyên dương <=available, >=10.000đ; ngoại lệ BANNED available dương <10.000đ được rút đúng toàn bộ. Không rút pending; không đóng băng chỉ vì ban. [Thẻ 15](#the-15), [FRD UC-D05](FRD.md), [Database WD-03/09](database.md). |
+| [UC-E02.GOAL-01](finance.md#uc-e02.goal-01) | [UC-E02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1079 | Admin tra cứu vận hành và đối soát nguồn tiền chính thức; không bắt buộc dashboard phân tích theo kỳ trong MVP. [baseline](software-architecture.md), L75–81 |
+| [UC-E02.MAIN-01](finance.md#uc-e02.main-01) | [UC-E02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1085 | Admin mở tra cứu vận hành và đối soát; hoãn dashboard phân tích, biểu đồ và export. [baseline](software-architecture.md), L75–81 |
+| [UC-E02.ALT-01](finance.md#uc-e02.alt-01) | [UC-E02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1097 | Nguồn đủ dữ liệu và không có giao dịch thì phản ánh 0; thiếu nguồn không được coi là balanced=true hoặc không có giao dịch. [baseline](software-architecture.md), L665–685 |
+| [UC-G04.MAIN-02](finance.md#uc-g04.main-02) | [UC-G04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1395 | Order ghi CONFIRMED và Outbox trong local transaction; Finance xử lý order.confirmed, chuyển Settlement SETTLED, Seller pending −Sᵢ/available +Sᵢ, PLATFORM pending −Cᵢ/available +Cᵢ và SETTLEMENT_RELEASED trong transaction Finance. Không gộp transaction Order và Finance. [baseline](software-architecture.md), L559–570 |
+| [UC-G01.MAIN-05](notifications.md#uc-g01.main-05) | [UC-G01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1305 | Email demo bất đồng bộ là Must qua DemoEmailAdapter; không tuyên bố email thật đã giao. In-app là Should, chưa bắt buộc trong MVP. [baseline](software-architecture.md), L303–318 |
 
 Các hiệu chỉnh xuyên nguồn khác: API nói 3 web app → ADR-02 một SPA; API §3.2
 ví dụ refreshToken JSON → SAD §6.3 cookie; API nguồn địa giới ngoài → SAD §3.1/6.7
@@ -483,159 +502,159 @@ vẫn ở nguồn, không tuyên bố mọi clause trong section đã được d
 | [10.3 Đối chiếu comment của Bùi Minh Quang](../../business/api.md), L2941–2955 | [engineering](../engineering.md), coverage và hồ sơ consumer — quy ước/internal/event/job/lịch sử; contract tra cứu |
 | [10.4 Tác động lên schema và chuyển đổi API](../../business/api.md), L2956–2969 | [engineering](../engineering.md), coverage và hồ sơ consumer — quy ước/internal/event/job/lịch sử; contract tra cứu |
 | [10.5 Kiểm thử chấp nhận RBAC và comment](../../business/api.md), L2970–2979 | [engineering](../engineering.md), coverage và hồ sơ consumer — quy ước/internal/event/job/lịch sử; contract tra cứu |
-| [TÀI LIỆU KIẾN TRÚC PHẦN MỀM](../../business/Software-Architecture.md), L1–1132 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [Hướng dẫn sử dụng tài liệu](../../business/Software-Architecture.md), L15–38 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [Cách hiểu mức độ ràng buộc](../../business/Software-Architecture.md), L31–38 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [Mục lục](../../business/Software-Architecture.md), L39–56 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [1. Bối cảnh và phạm vi kiến trúc](../../business/Software-Architecture.md), L57–116 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [1.1. Mục đích và quan hệ với hồ sơ dự án](../../business/Software-Architecture.md), L59–74 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [1.2. Phạm vi phiên bản MVP](../../business/Software-Architecture.md), L75–82 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [1.3. Ràng buộc và nền tảng đã chốt](../../business/Software-Architecture.md), L83–99 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [1.4. Các yêu cầu chi phối thiết kế](../../business/Software-Architecture.md), L100–116 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [2. Cấu trúc phần mềm và tổ chức mã nguồn](../../business/Software-Architecture.md), L117–196 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [2.1. Bản đồ trách nhiệm và dữ liệu](../../business/Software-Architecture.md), L121–137 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [2.2. Cấu trúc backend và hướng phụ thuộc](../../business/Software-Architecture.md), L138–168 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [2.3. Cấu trúc React SPA](../../business/Software-Architecture.md), L169–186 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [2.4. Gateway, Discovery và biên mở rộng](../../business/Software-Architecture.md), L187–196 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [3. Thiết kế bên trong từng service](../../business/Software-Architecture.md), L197–321 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [3.1. Identity — tài khoản, hồ sơ và quyền](../../business/Software-Architecture.md), L201–217 | [identity](identity.md) — yêu cầu baseline và biên liên service |
-| [3.2. Product — sản phẩm và tìm kiếm](../../business/Software-Architecture.md), L218–234 | [catalog](catalog.md) — yêu cầu baseline và biên liên service |
-| [3.3. Cart — giỏ hàng](../../business/Software-Architecture.md), L235–251 | [checkout-orders](checkout-orders.md) — yêu cầu baseline và biên liên service |
-| [3.4. Order — checkout, đơn hàng và tồn kho](../../business/Software-Architecture.md), L252–268 | [checkout-orders](checkout-orders.md) — yêu cầu baseline và biên liên service |
-| [3.5. Payment — thanh toán và hoàn tiền](../../business/Software-Architecture.md), L269–285 | [payments](payments.md) — yêu cầu baseline và biên liên service |
-| [3.6. Finance — quyết toán, ví và rút tiền](../../business/Software-Architecture.md), L286–302 | [finance](finance.md) — yêu cầu baseline và biên liên service |
-| [3.7. Notification — thông báo](../../business/Software-Architecture.md), L303–321 | [notifications](notifications.md) — yêu cầu baseline và biên liên service |
-| [4. Giao tiếp giữa các thành phần](../../business/Software-Architecture.md), L322–439 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [4.1. Khi nào dùng REST, khi nào dùng Kafka?](../../business/Software-Architecture.md), L324–337 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [4.2. Góc nhìn REST](../../business/Software-Architecture.md), L338–368 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [4.3. Góc nhìn sự kiện Kafka](../../business/Software-Architecture.md), L369–417 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [4.4. Hợp đồng public/internal và quản lý thay đổi](../../business/Software-Architecture.md), L418–439 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [5. Các luồng nghiệp vụ xuyên service](../../business/Software-Architecture.md), L440–591 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [5.1. Đặt hàng từ giỏ hoặc Mua ngay](../../business/Software-Architecture.md), L444–498 | [checkout-orders](checkout-orders.md) — yêu cầu baseline và biên liên service |
-| [5.2. Giá thay đổi, timeout và các kết quả không rõ ràng](../../business/Software-Architecture.md), L499–521 | [checkout-orders](checkout-orders.md) — yêu cầu baseline và biên liên service |
-| [5.3. Hủy đơn và hoàn tiền](../../business/Software-Architecture.md), L522–540 | [payments](payments.md) — yêu cầu baseline và biên liên service |
-| [5.4. Seller thực hiện đơn và Customer xác nhận](../../business/Software-Architecture.md), L541–558 | [checkout-orders](checkout-orders.md) — yêu cầu baseline và biên liên service |
-| [5.5. Quyết toán sau xác nhận nhận hàng](../../business/Software-Architecture.md), L559–571 | [finance](finance.md) — yêu cầu baseline và biên liên service |
-| [5.6. Seller rút tiền giả lập](../../business/Software-Architecture.md), L572–579 | [finance](finance.md) — yêu cầu baseline và biên liên service |
-| [5.7. Tạo sản phẩm và khởi tạo tồn](../../business/Software-Architecture.md), L580–591 | [catalog](catalog.md) — yêu cầu baseline và biên liên service |
-| [6. Các quy tắc thiết kế dùng chung](../../business/Software-Architecture.md), L592–707 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [6.1. Xác thực, quyền hiện hành và ownership](../../business/Software-Architecture.md), L596–601 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [6.2. Chính sách cấm và thu hồi phiên](../../business/Software-Architecture.md), L602–615 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [6.3. Phiên frontend, cookie và bí mật](../../business/Software-Architecture.md), L616–623 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [6.4. Xác thực lời gọi nội bộ](../../business/Software-Architecture.md), L624–631 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [6.5. Transaction, tồn kho và chống trùng](../../business/Software-Architecture.md), L632–664 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [6.6. Tiền, ledger và đối soát](../../business/Software-Architecture.md), L665–686 | [finance](finance.md) — yêu cầu baseline và biên liên service |
-| [6.7. Quyền sở hữu dữ liệu và các dữ liệu hỗ trợ](../../business/Software-Architecture.md), L687–707 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [7. Quyết định kiến trúc và nội dung cần chốt](../../business/Software-Architecture.md), L708–775 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [7.1. Sổ quyết định đã xác nhận](../../business/Software-Architecture.md), L712–724 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [7.2. Các bổ sung hợp đồng cần review trước triển khai](../../business/Software-Architecture.md), L725–740 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [7.3. Tham số còn mở](../../business/Software-Architecture.md), L741–760 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [7.4. Rủi ro và đánh đổi](../../business/Software-Architecture.md), L761–775 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [8. Kiểm chứng kiến trúc và điều kiện nghiệm thu](../../business/Software-Architecture.md), L776–798 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [8.1. Điều kiện hoàn thành phiên bản MVP](../../business/Software-Architecture.md), L791–798 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [Phụ lục A — Ghi chú thiết kế chi tiết để triển khai](../../business/Software-Architecture.md), L799–967 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
-| [A.1. Checkout: công việc bền vững, dispatch và đóng quá hạn](../../business/Software-Architecture.md), L803–833 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
-| [A.1.1. Lưu ý định và ranh giới transaction](../../business/Software-Architecture.md), L805–819 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
-| [A.1.2. Đóng phiên, đối soát và success muộn](../../business/Software-Architecture.md), L820–833 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
-| [A.2. Ranh giới lớp và transaction Spring](../../business/Software-Architecture.md), L834–841 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
-| [A.3. Identity lifecycle và phương án service token](../../business/Software-Architecture.md), L842–857 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
-| [A.3.1. Vòng đời tài khoản và hồ sơ](../../business/Software-Architecture.md), L844–849 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
-| [A.3.2. Phương án credential service đề xuất](../../business/Software-Architecture.md), L850–857 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
-| [A.4. Simulator, topology Kafka và envelope](../../business/Software-Architecture.md), L858–888 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
-| [A.4.1. PaymentGateway và simulator](../../business/Software-Architecture.md), L860–865 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
-| [A.4.2. Topology đề xuất](../../business/Software-Architecture.md), L866–871 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
-| [A.4.3. Envelope và dữ liệu còn thiếu trong contract](../../business/Software-Architecture.md), L872–888 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
-| [A.5. Relay, Inbox và áp dụng thay đổi giỏ/ví](../../business/Software-Architecture.md), L889–912 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
-| [A.5.1. Outbox relay](../../business/Software-Architecture.md), L891–896 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
-| [A.5.2. Inbox và sự kiện chờ phụ thuộc](../../business/Software-Architecture.md), L897–904 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
-| [A.5.3. Áp dụng checkout.paid vào Cart](../../business/Software-Architecture.md), L905–912 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
-| [A.6. Product, địa chỉ, media và delivery](../../business/Software-Architecture.md), L913–942 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
-| [A.6.1. Product và tìm kiếm](../../business/Software-Architecture.md), L915–924 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
-| [A.6.2. Địa chỉ và địa giới](../../business/Software-Architecture.md), L925–930 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
-| [A.6.3. Media](../../business/Software-Architecture.md), L931–934 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
-| [A.6.4. Notification và email demo](../../business/Software-Architecture.md), L935–942 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
-| [A.7. Ranh giới mở rộng Should/Could](../../business/Software-Architecture.md), L943–946 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
-| [A.8. Checklist constraint và migration](../../business/Software-Architecture.md), L947–967 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
-| [Phụ lục B — Danh mục kiểm thử và truy vết](../../business/Software-Architecture.md), L968–1028 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
-| [B.1. Chiến lược kiểm thử](../../business/Software-Architecture.md), L972–977 | AT-01…26 phân chủ sở hữu; chiến lược test engineering, trace nguồn giữ tham chiếu |
-| [B.2. Ma trận 26 kịch bản nghiệm thu](../../business/Software-Architecture.md), L978–1008 | AT-01…26 phân chủ sở hữu; chiến lược test engineering, trace nguồn giữ tham chiếu |
-| [B.3. Truy vết yêu cầu → thiết kế → kiểm chứng](../../business/Software-Architecture.md), L1009–1028 | AT-01…26 phân chủ sở hữu; chiến lược test engineering, trace nguồn giữ tham chiếu |
-| [Phụ lục C — Hiện trạng, triển khai và vận hành](../../business/Software-Architecture.md), L1029–1098 | AT-01…26 phân chủ sở hữu; chiến lược test engineering, trace nguồn giữ tham chiếu |
-| [C.1. Khoảng cách với code tại lần rà soát 10/11/2026](../../business/Software-Architecture.md), L1033–1051 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [C.2. Các mốc triển khai và điều kiện đóng](../../business/Software-Architecture.md), L1052–1064 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [C.3. Danh mục tác vụ nền](../../business/Software-Architecture.md), L1065–1082 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [C.4. Quan sát và runbook](../../business/Software-Architecture.md), L1083–1090 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [C.5. Triển khai, backup và phục hồi](../../business/Software-Architecture.md), L1091–1098 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [Phụ lục D — Nguồn, thuật ngữ và lịch sử](../../business/Software-Architecture.md), L1099–1132 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [D.1. Hồ sơ đầu vào và quy tắc ưu tiên](../../business/Software-Architecture.md), L1101–1116 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [D.2. Nguồn tham khảo kỹ thuật](../../business/Software-Architecture.md), L1117–1122 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [D.3. Thuật ngữ](../../business/Software-Architecture.md), L1123–1126 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [D.4. Lịch sử phiên bản](../../business/Software-Architecture.md), L1127–1132 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
-| [Tài liệu Kiến trúc hệ thống Ecommerce](../../business/system-architecture.md), L1–2 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [1. Giới thiệu và phạm vi hệ thống](../../business/system-architecture.md), L3–63 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [1.1. Tổng quan dự án](../../business/system-architecture.md), L5–12 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [1.2. Đối tượng sử dụng](../../business/system-architecture.md), L13–23 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [1.2.1. Người sử dụng hệ thống](../../business/system-architecture.md), L15–23 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [1.3. Phạm vi chức năng](../../business/system-architecture.md), L24–41 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [1.4. Phạm vi kỹ thuật và giới hạn](../../business/system-architecture.md), L42–63 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [1.4.1. Phạm vi kỹ thuật](../../business/system-architecture.md), L44–55 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [1.4.2. Giới hạn phạm vi](../../business/system-architecture.md), L56–63 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [2. Yêu cầu kiến trúc và lựa chọn công nghệ](../../business/system-architecture.md), L64–217 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [2.1. Các yêu cầu nghiệp vụ chi phối kiến trúc](../../business/system-architecture.md), L66–81 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [2.2. Yêu cầu chất lượng hệ thống](../../business/system-architecture.md), L82–120 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [2.2.1. Bảo mật](../../business/system-architecture.md), L84–91 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [2.2.2. Tính nhất quán và độ tin cậy](../../business/system-architecture.md), L92–97 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [2.2.3. Hiệu năng và khả năng mở rộng](../../business/system-architecture.md), L98–103 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [2.2.4. Khả năng vận hành và phục hồi](../../business/system-architecture.md), L104–107 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [2.2.5. Tiêu chí kiểm chứng](../../business/system-architecture.md), L108–120 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [2.3. Ràng buộc thiết kế và triển khai](../../business/system-architecture.md), L121–126 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [2.4. Lựa chọn kiến trúc](../../business/system-architecture.md), L127–166 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [2.4.1. Chia hệ thống theo nghiệp vụ rõ ràng](../../business/system-architecture.md), L133–138 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [2.4.2. Mở rộng riêng service cần thêm tài nguyên](../../business/system-architecture.md), L139–144 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [2.4.3. Cập nhật và triển khai từng service](../../business/system-architecture.md), L145–150 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [2.4.4. Giảm ảnh hưởng khi một service gặp lỗi](../../business/system-architecture.md), L151–158 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [2.4.6. Nguyên tắc áp dụng](../../business/system-architecture.md), L159–166 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [2.5. Lựa chọn công nghệ](../../business/system-architecture.md), L167–217 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [2.5.1. Lý do lựa chọn AWS](../../business/system-architecture.md), L189–199 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [2.5.2. Lý do lựa chọn Apache Kafka](../../business/system-architecture.md), L200–217 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [3. Kiến trúc tổng thể và phân chia service](../../business/system-architecture.md), L218–919 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [3.1. Tổng quan kiến trúc](../../business/system-architecture.md), L220–345 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [3.1.1. C4 Level 2 - Container Diagram](../../business/system-architecture.md), L261–345 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [3.2. Các lớp thành phần](../../business/system-architecture.md), L346–358 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [3.3. Phân chia trách nhiệm và dữ liệu](../../business/system-architecture.md), L359–382 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [3.4. Vai trò của Gateway và Discovery](../../business/system-architecture.md), L383–398 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [3.4.1. API Gateway](../../business/system-architecture.md), L385–392 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [3.4.2. Discovery Service](../../business/system-architecture.md), L393–398 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [3.5. Giao tiếp đồng bộ qua API](../../business/system-architecture.md), L399–441 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [3.6. Giao tiếp bất đồng bộ qua Kafka](../../business/system-architecture.md), L442–485 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [3.7. Tổ chức dữ liệu và media](../../business/system-architecture.md), L486–493 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [3.8. C4 Level 3 - Component Diagram](../../business/system-architecture.md), L494–919 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [3.8.1. Identity Service](../../business/system-architecture.md), L504–567 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [3.8.2. Product Service](../../business/system-architecture.md), L568–613 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [3.8.3. Cart Service](../../business/system-architecture.md), L614–651 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [3.8.4. Order Service](../../business/system-architecture.md), L652–701 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [3.8.5. Payment Service](../../business/system-architecture.md), L702–748 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [3.8.6. Finance Service](../../business/system-architecture.md), L749–799 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [3.8.7. Notification Service](../../business/system-architecture.md), L800–843 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [3.8.8. Gateway Service](../../business/system-architecture.md), L844–883 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [3.8.9. Discovery Service](../../business/system-architecture.md), L884–911 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [3.8.10. Nguyên tắc triển khai từ Component Diagram](../../business/system-architecture.md), L912–919 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [4. Kiến trúc dữ liệu và tính nhất quán](../../business/system-architecture.md), L920–1136 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [4.1. Nguyên tắc tổ chức dữ liệu](../../business/system-architecture.md), L922–942 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [4.2. Mô hình dữ liệu tổng quan](../../business/system-architecture.md), L943–981 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [4.3. Snapshot và quy ước lưu trữ](../../business/system-architecture.md), L982–1004 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [4.3.1. Snapshot giao dịch](../../business/system-architecture.md), L984–996 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [4.3.2. Kiểu dữ liệu và media](../../business/system-architecture.md), L997–1004 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [4.4. Transaction và cập nhật đồng thời](../../business/system-architecture.md), L1005–1032 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [4.4.1. Transaction trong từng service](../../business/system-architecture.md), L1007–1021 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [4.4.2. Kiểm soát thao tác đồng thời](../../business/system-architecture.md), L1022–1032 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [4.5. Tính nhất quán của tồn kho](../../business/system-architecture.md), L1033–1052 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [4.6. Tính nhất quán của thanh toán và ví](../../business/system-architecture.md), L1053–1081 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [4.7. Nhất quán giữa các service](../../business/system-architecture.md), L1082–1126 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [4.7.1. Outbox, Inbox và idempotency](../../business/system-architecture.md), L1108–1114 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [4.7.2. Event sai thứ tự và thiếu dữ liệu phụ thuộc](../../business/system-architecture.md), L1115–1120 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [4.7.3. Retry, xử lý bù và đối soát](../../business/system-architecture.md), L1121–1126 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
-| [4.8. Vòng đời dữ liệu và thay đổi cấu trúc](../../business/system-architecture.md), L1127–1136 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [TÀI LIỆU KIẾN TRÚC PHẦN MỀM](software-architecture.md), L1–1132 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [Hướng dẫn sử dụng tài liệu](software-architecture.md), L15–38 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [Cách hiểu mức độ ràng buộc](software-architecture.md), L31–38 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [Mục lục](software-architecture.md), L39–56 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [1. Bối cảnh và phạm vi kiến trúc](software-architecture.md), L57–116 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [1.1. Mục đích và quan hệ với hồ sơ dự án](software-architecture.md), L59–74 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [1.2. Phạm vi phiên bản MVP](software-architecture.md), L75–82 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [1.3. Ràng buộc và nền tảng đã chốt](software-architecture.md), L83–99 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [1.4. Các yêu cầu chi phối thiết kế](software-architecture.md), L100–116 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [2. Cấu trúc phần mềm và tổ chức mã nguồn](software-architecture.md), L117–196 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [2.1. Bản đồ trách nhiệm và dữ liệu](software-architecture.md), L121–137 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [2.2. Cấu trúc backend và hướng phụ thuộc](software-architecture.md), L138–168 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [2.3. Cấu trúc React SPA](software-architecture.md), L169–186 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [2.4. Gateway, Discovery và biên mở rộng](software-architecture.md), L187–196 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [3. Thiết kế bên trong từng service](software-architecture.md), L197–321 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [3.1. Identity — tài khoản, hồ sơ và quyền](software-architecture.md), L201–217 | [identity](identity.md) — yêu cầu baseline và biên liên service |
+| [3.2. Product — sản phẩm và tìm kiếm](software-architecture.md), L218–234 | [catalog](catalog.md) — yêu cầu baseline và biên liên service |
+| [3.3. Cart — giỏ hàng](software-architecture.md), L235–251 | [checkout-orders](checkout-orders.md) — yêu cầu baseline và biên liên service |
+| [3.4. Order — checkout, đơn hàng và tồn kho](software-architecture.md), L252–268 | [checkout-orders](checkout-orders.md) — yêu cầu baseline và biên liên service |
+| [3.5. Payment — thanh toán và hoàn tiền](software-architecture.md), L269–285 | [payments](payments.md) — yêu cầu baseline và biên liên service |
+| [3.6. Finance — quyết toán, ví và rút tiền](software-architecture.md), L286–302 | [finance](finance.md) — yêu cầu baseline và biên liên service |
+| [3.7. Notification — thông báo](software-architecture.md), L303–321 | [notifications](notifications.md) — yêu cầu baseline và biên liên service |
+| [4. Giao tiếp giữa các thành phần](software-architecture.md), L322–439 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [4.1. Khi nào dùng REST, khi nào dùng Kafka?](software-architecture.md), L324–337 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [4.2. Góc nhìn REST](software-architecture.md), L338–368 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [4.3. Góc nhìn sự kiện Kafka](software-architecture.md), L369–417 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [4.4. Hợp đồng public/internal và quản lý thay đổi](software-architecture.md), L418–439 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [5. Các luồng nghiệp vụ xuyên service](software-architecture.md), L440–591 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [5.1. Đặt hàng từ giỏ hoặc Mua ngay](software-architecture.md), L444–498 | [checkout-orders](checkout-orders.md) — yêu cầu baseline và biên liên service |
+| [5.2. Giá thay đổi, timeout và các kết quả không rõ ràng](software-architecture.md), L499–521 | [checkout-orders](checkout-orders.md) — yêu cầu baseline và biên liên service |
+| [5.3. Hủy đơn và hoàn tiền](software-architecture.md), L522–540 | [payments](payments.md) — yêu cầu baseline và biên liên service |
+| [5.4. Seller thực hiện đơn và Customer xác nhận](software-architecture.md), L541–558 | [checkout-orders](checkout-orders.md) — yêu cầu baseline và biên liên service |
+| [5.5. Quyết toán sau xác nhận nhận hàng](software-architecture.md), L559–571 | [finance](finance.md) — yêu cầu baseline và biên liên service |
+| [5.6. Seller rút tiền giả lập](software-architecture.md), L572–579 | [finance](finance.md) — yêu cầu baseline và biên liên service |
+| [5.7. Tạo sản phẩm và khởi tạo tồn](software-architecture.md), L580–591 | [catalog](catalog.md) — yêu cầu baseline và biên liên service |
+| [6. Các quy tắc thiết kế dùng chung](software-architecture.md), L592–707 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [6.1. Xác thực, quyền hiện hành và ownership](software-architecture.md), L596–601 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [6.2. Chính sách cấm và thu hồi phiên](software-architecture.md), L602–615 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [6.3. Phiên frontend, cookie và bí mật](software-architecture.md), L616–623 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [6.4. Xác thực lời gọi nội bộ](software-architecture.md), L624–631 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [6.5. Transaction, tồn kho và chống trùng](software-architecture.md), L632–664 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [6.6. Tiền, ledger và đối soát](software-architecture.md), L665–686 | [finance](finance.md) — yêu cầu baseline và biên liên service |
+| [6.7. Quyền sở hữu dữ liệu và các dữ liệu hỗ trợ](software-architecture.md), L687–707 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [7. Quyết định kiến trúc và nội dung cần chốt](software-architecture.md), L708–775 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [7.1. Sổ quyết định đã xác nhận](software-architecture.md), L712–724 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [7.2. Các bổ sung hợp đồng cần review trước triển khai](software-architecture.md), L725–740 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [7.3. Tham số còn mở](software-architecture.md), L741–760 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [7.4. Rủi ro và đánh đổi](software-architecture.md), L761–775 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [8. Kiểm chứng kiến trúc và điều kiện nghiệm thu](software-architecture.md), L776–798 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [8.1. Điều kiện hoàn thành phiên bản MVP](software-architecture.md), L791–798 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [Phụ lục A — Ghi chú thiết kế chi tiết để triển khai](software-architecture.md), L799–967 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
+| [A.1. Checkout: công việc bền vững, dispatch và đóng quá hạn](software-architecture.md), L803–833 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
+| [A.1.1. Lưu ý định và ranh giới transaction](software-architecture.md), L805–819 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
+| [A.1.2. Đóng phiên, đối soát và success muộn](software-architecture.md), L820–833 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
+| [A.2. Ranh giới lớp và transaction Spring](software-architecture.md), L834–841 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
+| [A.3. Identity lifecycle và phương án service token](software-architecture.md), L842–857 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
+| [A.3.1. Vòng đời tài khoản và hồ sơ](software-architecture.md), L844–849 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
+| [A.3.2. Phương án credential service đề xuất](software-architecture.md), L850–857 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
+| [A.4. Simulator, topology Kafka và envelope](software-architecture.md), L858–888 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
+| [A.4.1. PaymentGateway và simulator](software-architecture.md), L860–865 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
+| [A.4.2. Topology đề xuất](software-architecture.md), L866–871 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
+| [A.4.3. Envelope và dữ liệu còn thiếu trong contract](software-architecture.md), L872–888 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
+| [A.5. Relay, Inbox và áp dụng thay đổi giỏ/ví](software-architecture.md), L889–912 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
+| [A.5.1. Outbox relay](software-architecture.md), L891–896 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
+| [A.5.2. Inbox và sự kiện chờ phụ thuộc](software-architecture.md), L897–904 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
+| [A.5.3. Áp dụng checkout.paid vào Cart](software-architecture.md), L905–912 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
+| [A.6. Product, địa chỉ, media và delivery](software-architecture.md), L913–942 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
+| [A.6.1. Product và tìm kiếm](software-architecture.md), L915–924 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
+| [A.6.2. Địa chỉ và địa giới](software-architecture.md), L925–930 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
+| [A.6.3. Media](software-architecture.md), L931–934 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
+| [A.6.4. Notification và email demo](software-architecture.md), L935–942 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
+| [A.7. Ranh giới mở rộng Should/Could](software-architecture.md), L943–946 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
+| [A.8. Checklist constraint và migration](software-architecture.md), L947–967 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
+| [Phụ lục B — Danh mục kiểm thử và truy vết](software-architecture.md), L968–1028 | Đề xuất kỹ thuật phụ lục A; giữ chi tiết ở nguồn, DELTA cần review trước code |
+| [B.1. Chiến lược kiểm thử](software-architecture.md), L972–977 | AT-01…26 phân chủ sở hữu; chiến lược test engineering, trace nguồn giữ tham chiếu |
+| [B.2. Ma trận 26 kịch bản nghiệm thu](software-architecture.md), L978–1008 | AT-01…26 phân chủ sở hữu; chiến lược test engineering, trace nguồn giữ tham chiếu |
+| [B.3. Truy vết yêu cầu → thiết kế → kiểm chứng](software-architecture.md), L1009–1028 | AT-01…26 phân chủ sở hữu; chiến lược test engineering, trace nguồn giữ tham chiếu |
+| [Phụ lục C — Hiện trạng, triển khai và vận hành](software-architecture.md), L1029–1098 | AT-01…26 phân chủ sở hữu; chiến lược test engineering, trace nguồn giữ tham chiếu |
+| [C.1. Khoảng cách với code tại lần rà soát 10/11/2026](software-architecture.md), L1033–1051 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [C.2. Các mốc triển khai và điều kiện đóng](software-architecture.md), L1052–1064 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [C.3. Danh mục tác vụ nền](software-architecture.md), L1065–1082 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [C.4. Quan sát và runbook](software-architecture.md), L1083–1090 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [C.5. Triển khai, backup và phục hồi](software-architecture.md), L1091–1098 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [Phụ lục D — Nguồn, thuật ngữ và lịch sử](software-architecture.md), L1099–1132 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [D.1. Hồ sơ đầu vào và quy tắc ưu tiên](software-architecture.md), L1101–1116 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [D.2. Nguồn tham khảo kỹ thuật](software-architecture.md), L1117–1122 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [D.3. Thuật ngữ](software-architecture.md), L1123–1126 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [D.4. Lịch sử phiên bản](software-architecture.md), L1127–1132 | [engineering](../engineering.md), [quy ước](README.md), coverage — baseline/ownership/ADR/DELTA/NFR/nguồn |
+| [Tài liệu Kiến trúc hệ thống Ecommerce](system-architecture.md), L1–2 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [1. Giới thiệu và phạm vi hệ thống](system-architecture.md), L3–63 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [1.1. Tổng quan dự án](system-architecture.md), L5–12 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [1.2. Đối tượng sử dụng](system-architecture.md), L13–23 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [1.2.1. Người sử dụng hệ thống](system-architecture.md), L15–23 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [1.3. Phạm vi chức năng](system-architecture.md), L24–41 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [1.4. Phạm vi kỹ thuật và giới hạn](system-architecture.md), L42–63 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [1.4.1. Phạm vi kỹ thuật](system-architecture.md), L44–55 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [1.4.2. Giới hạn phạm vi](system-architecture.md), L56–63 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [2. Yêu cầu kiến trúc và lựa chọn công nghệ](system-architecture.md), L64–217 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [2.1. Các yêu cầu nghiệp vụ chi phối kiến trúc](system-architecture.md), L66–81 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [2.2. Yêu cầu chất lượng hệ thống](system-architecture.md), L82–120 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [2.2.1. Bảo mật](system-architecture.md), L84–91 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [2.2.2. Tính nhất quán và độ tin cậy](system-architecture.md), L92–97 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [2.2.3. Hiệu năng và khả năng mở rộng](system-architecture.md), L98–103 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [2.2.4. Khả năng vận hành và phục hồi](system-architecture.md), L104–107 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [2.2.5. Tiêu chí kiểm chứng](system-architecture.md), L108–120 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [2.3. Ràng buộc thiết kế và triển khai](system-architecture.md), L121–126 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [2.4. Lựa chọn kiến trúc](system-architecture.md), L127–166 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [2.4.1. Chia hệ thống theo nghiệp vụ rõ ràng](system-architecture.md), L133–138 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [2.4.2. Mở rộng riêng service cần thêm tài nguyên](system-architecture.md), L139–144 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [2.4.3. Cập nhật và triển khai từng service](system-architecture.md), L145–150 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [2.4.4. Giảm ảnh hưởng khi một service gặp lỗi](system-architecture.md), L151–158 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [2.4.6. Nguyên tắc áp dụng](system-architecture.md), L159–166 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [2.5. Lựa chọn công nghệ](system-architecture.md), L167–217 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [2.5.1. Lý do lựa chọn AWS](system-architecture.md), L189–199 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [2.5.2. Lý do lựa chọn Apache Kafka](system-architecture.md), L200–217 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [3. Kiến trúc tổng thể và phân chia service](system-architecture.md), L218–919 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [3.1. Tổng quan kiến trúc](system-architecture.md), L220–345 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [3.1.1. C4 Level 2 - Container Diagram](system-architecture.md), L261–345 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [3.2. Các lớp thành phần](system-architecture.md), L346–358 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [3.3. Phân chia trách nhiệm và dữ liệu](system-architecture.md), L359–382 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [3.4. Vai trò của Gateway và Discovery](system-architecture.md), L383–398 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [3.4.1. API Gateway](system-architecture.md), L385–392 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [3.4.2. Discovery Service](system-architecture.md), L393–398 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [3.5. Giao tiếp đồng bộ qua API](system-architecture.md), L399–441 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [3.6. Giao tiếp bất đồng bộ qua Kafka](system-architecture.md), L442–485 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [3.7. Tổ chức dữ liệu và media](system-architecture.md), L486–493 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [3.8. C4 Level 3 - Component Diagram](system-architecture.md), L494–919 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [3.8.1. Identity Service](system-architecture.md), L504–567 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [3.8.2. Product Service](system-architecture.md), L568–613 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [3.8.3. Cart Service](system-architecture.md), L614–651 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [3.8.4. Order Service](system-architecture.md), L652–701 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [3.8.5. Payment Service](system-architecture.md), L702–748 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [3.8.6. Finance Service](system-architecture.md), L749–799 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [3.8.7. Notification Service](system-architecture.md), L800–843 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [3.8.8. Gateway Service](system-architecture.md), L844–883 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [3.8.9. Discovery Service](system-architecture.md), L884–911 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [3.8.10. Nguyên tắc triển khai từ Component Diagram](system-architecture.md), L912–919 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [4. Kiến trúc dữ liệu và tính nhất quán](system-architecture.md), L920–1136 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [4.1. Nguyên tắc tổ chức dữ liệu](system-architecture.md), L922–942 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [4.2. Mô hình dữ liệu tổng quan](system-architecture.md), L943–981 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [4.3. Snapshot và quy ước lưu trữ](system-architecture.md), L982–1004 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [4.3.1. Snapshot giao dịch](system-architecture.md), L984–996 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [4.3.2. Kiểu dữ liệu và media](system-architecture.md), L997–1004 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [4.4. Transaction và cập nhật đồng thời](system-architecture.md), L1005–1032 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [4.4.1. Transaction trong từng service](system-architecture.md), L1007–1021 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [4.4.2. Kiểm soát thao tác đồng thời](system-architecture.md), L1022–1032 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [4.5. Tính nhất quán của tồn kho](system-architecture.md), L1033–1052 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [4.6. Tính nhất quán của thanh toán và ví](system-architecture.md), L1053–1081 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [4.7. Nhất quán giữa các service](system-architecture.md), L1082–1126 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [4.7.1. Outbox, Inbox và idempotency](system-architecture.md), L1108–1114 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [4.7.2. Event sai thứ tự và thiếu dữ liệu phụ thuộc](system-architecture.md), L1115–1120 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [4.7.3. Retry, xử lý bù và đối soát](system-architecture.md), L1121–1126 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
+| [4.8. Vòng đời dữ liệu và thay đổi cấu trúc](system-architecture.md), L1127–1136 | [engineering](../engineering.md), hồ sơ service theo task — kiến trúc/boundary; sơ đồ/hạ tầng chi tiết giữ nguồn |
 
 <a id="kiem-tra"></a>
 ## Cách kiểm tra độ đầy đủ
@@ -662,7 +681,7 @@ import hashlib
 import re
 
 coverage = Path('docs/requirements/coverage.md').read_text()
-inputs = re.findall(r'^\| `(business/[^`]+)` \|.*?\| `([0-9a-f]{64})` \|$', coverage, re.M)
+inputs = re.findall(r'^\| `((?:business|docs/requirements)/[^`]+)` \|.*?\| `([0-9a-f]{64})` \|$', coverage, re.M)
 assert len(inputs) == 5, 'Manifest nguồn phải có 5 file'
 for name, expected in inputs:
     assert hashlib.sha256(Path(name).read_bytes()).hexdigest() == expected, name

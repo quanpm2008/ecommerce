@@ -1,6 +1,8 @@
 # Sản phẩm, tìm kiếm và quản lý tồn
 
 Baseline: SAD v1.1 §7.1/D.1, được người dùng chấp nhận ngày 11/11/2026.
+
+Các điều khoản UC-D01/REQ-CAT-003/AC-CAT-002 được đồng bộ ngày 18/11/2026 theo [Thẻ 15](coverage.md#the-15); đây là đặc tả, không phải xác nhận implementation.
 [Quy ước/thuật ngữ](README.md) · [Coverage và câu hỏi](coverage.md) · [Kỹ thuật/validation](../engineering.md).
 
 Đọc đúng UC dưới đây, quy tắc bổ sung và hàng AC liên quan; chỉ mở mục contract nguồn khi cần DTO/cột/endpoint chi tiết. Yêu cầu TO-BE không chứng minh code đã làm đúng.
@@ -21,7 +23,7 @@ Khi lập task, lần theo caller/consumer và artifacts trong cùng hàng, rồ
 ## Contract và dữ liệu cần tra cứu
 
 - [§3.2, §5.2, §8.2E](../../business/database.md): field, required/conditional, unique/FK/CHECK và ownership. Bảng nguồn là thiết kế, không khẳng định migration tồn tại.
-- [§7.1–7.3](../../business/api.md): provider/consumer allowlist, event payload và jobs. [§7.2](../../business/Software-Architecture.md): DELTA cần review.
+- [§7.1–7.3](../../business/api.md): provider/consumer allowlist, event payload và jobs. [§7.2](software-architecture.md): DELTA cần review.
 - Public paths bên dưới là phần sau `/api/v1`; internal dùng `/internal/v1`. Base URL mẫu trong nguồn không chứng minh cổng service hiện tại. Tên path là khóa contract ổn định; quyền ở bảng vẫn phải kết hợp trạng thái/ownership.
 - **Bảng contract nguồn, chưa phải bằng chứng triển khai.** Endpoint Should vẫn giữ tham chiếu; luồng checkout cũ và stats/dashboard bị baseline hiệu chỉnh không được triển khai nguyên xi. DTO, body/error examples và required/optional giữ tại đúng mục nguồn, không suy ra từ tên endpoint.
 
@@ -62,8 +64,8 @@ Quy tắc chung G-09/G-11 ở [engineering](../engineering.md); G-10/G-13/G-15 �
 |---|---|---|
 | <a id="req-cat-001"></a>REQ-CAT-001 | Product có một Seller, một Category, một giá VND >0; không SKU/variant. Category phẳng một cấp, tên unique; không xóa danh mục được Product tham chiếu. Danh mục nền cần seed dù UI CRUD là Should. | Yêu cầu baseline; [§3.2.1–3.2.2](../../business/database.md), L243–279 |
 | <a id="req-cat-002"></a>REQ-CAT-002 | Media có ít nhất một ảnh/video, lưu metadata/object_key và thứ tự, không lưu binary/presigned URL. Backend kiểm tra loại thực tế; P-08 chưa chốt. Cover là ảnh đầu tiên, chỉ video thì placeholder; MVP không transcode video. | Yêu cầu baseline; [§3.2.2](../../business/database.md), L258–279 |
-| <a id="req-cat-003"></a>REQ-CAT-003 | Khởi tạo Product HIDDEN và ý định provision tồn bền vững; gọi Order sau commit, idempotent theo productId; timeout giữ HIDDEN/retry cùng ID. Chỉ bán sau xác nhận Inventory, không tự bật nếu Seller bị cấm/Product bị gỡ khi chờ. | Yêu cầu baseline; [§5.7](../../business/Software-Architecture.md), L580–590 |
-| <a id="req-cat-004"></a>REQ-CAT-004 | Search Product tại DB Product, Seller tại Identity; kiểm tra đủ G-06. Baseline SAD §6.7 quy định PostgreSQL unaccent/lowercase và tham số hóa, không Search Service; thay giới hạn case-insensitive của Database §5.2/API C-08. Contract và test tìm không dấu vẫn phải đồng bộ; phương án index/normalization chi tiết ở A.6 còn review. | Yêu cầu baseline; [§6.7 thay Database §5.2/API C-08](../../business/Software-Architecture.md), L687–704; [§5.2](../../business/database.md), L783–788; [§9 / C-08](../../business/api.md), L2885 |
+| <a id="req-cat-003"></a>REQ-CAT-003 | Khởi tạo Product HIDDEN và ý định provision tồn bền vững; gọi Order sau commit, idempotent theo productId; timeout giữ HIDDEN/retry cùng ID. Chỉ bán sau xác nhận Inventory, không tự bật nếu Seller bị cấm/Product bị gỡ khi chờ. | Yêu cầu baseline; [§5.7](software-architecture.md), L580–590 |
+| <a id="req-cat-004"></a>REQ-CAT-004 | Search Product tại DB Product, Seller tại Identity; kiểm tra đủ G-06. Baseline SAD §6.7 quy định PostgreSQL unaccent/lowercase và tham số hóa, không Search Service; thay giới hạn case-insensitive của Database §5.2/API C-08. Contract và test tìm không dấu vẫn phải đồng bộ; phương án index/normalization chi tiết ở A.6 còn review. | Yêu cầu baseline; [§6.7 thay Database §5.2/API C-08](software-architecture.md), L687–704; [§5.2](../../business/database.md), L783–788; [§9 / C-08](../../business/api.md), L2885 |
 
 ## Acceptance criteria để triển khai/kiểm chứng
 
@@ -72,7 +74,7 @@ Các AC sau là diễn giải kiểm chứng từ điều khoản cùng mã UC/R
 | Mã AC | Liên kết yêu cầu | Given | When | Then |
 |---|---|---|---|---|
 | <a id="ac-cat-001"></a>AC-CAT-001 | UC-B01; G-06; REQ-CAT-004 | Product SELLING; các tổ hợp Seller/User/role hợp lệ và không hợp lệ | Search tên với chữ hoa/thường, có/không dấu; mở detail | Kết quả theo unaccent/lowercase baseline, đủ G-06 và không lộ sản phẩm không bán được; dữ liệu tồn hiển thị không thay quyền giữ tồn Order. Contract/test tìm không dấu chưa được triển khai không phải lý do bỏ yêu cầu. |
-| <a id="ac-cat-002"></a>AC-CAT-002 | UC-D01; REQ-CAT-001/002/003 | Seller hoạt động có danh mục hợp lệ, media thật | Tạo/sửa Product; provision tồn timeout | Giá nguyên dương, một giá, media ≥1; chỉ owner sửa; timeout chưa SELLING; retry cùng productId; sửa giá không đổi snapshot đơn cũ. |
+| <a id="ac-cat-002"></a>AC-CAT-002 | UC-D01; REQ-CAT-001/002/003 | Seller ACTIVE/APPROVED, danh mục/media hợp lệ; yêu cầu SELLING | Tạo/sửa; provision timeout, replay cùng key; Seller bị cấm hoặc Product REMOVED khi chờ | Một Product HIDDEN và công việc bền vững; retry cùng productId/Idempotency-Key, Inventory idempotent; chỉ áp dụng trạng thái yêu cầu sau xác nhận tồn và kiểm tra lại Seller/Product. BANNED/DISABLED hoặc REMOVED không tự SELLING. Validation/media lỗi trước chấp nhận không lưu Product; giá nguyên dương, chỉ owner sửa, không đổi snapshot đơn cũ. |
 | <a id="ac-cat-003"></a>AC-CAT-003 | UC-D03; G-04 | on_hand≥reserved và version hiện hành | Nhập số âm/lẻ/<reserved hoặc version cũ | Từ chối, không ghi đè; update hợp lệ có lịch sử; test tranh checkout không oversell. |
 | <a id="ac-cat-004"></a>AC-CAT-004 | UC-E04 | Product REMOVED, ngày gỡ xác định | Seller tự bật; Admin khôi phục trong/sau 30 ngày | Seller không khôi phục; Admin đúng hạn chỉ về HIDDEN, quá hạn từ chối; đơn đã trả tiền không tự đổi tiến độ. |
 
@@ -82,7 +84,7 @@ Các AT bao phủ nhiều service; hồ sơ này là đầu mối đọc, không
 
 | Mã | Tình huống | Bằng chứng cần có | Nguồn |
 |---|---|---|---|
-| <a id="at-20"></a>AT-20 | Tạo Product nhưng Inventory timeout | Product HIDDEN, retry cùng ID, không bán trước khi tồn sẵn sàng | [B.2](../../business/Software-Architecture.md), L1001 |
+| <a id="at-20"></a>AT-20 | Tạo Product nhưng Inventory timeout | Product HIDDEN, retry cùng ID, không bán trước khi tồn sẵn sàng | [B.2](software-architecture.md), L1001 |
 
 ## Chênh lệch, đề xuất và câu hỏi còn mở
 
@@ -132,22 +134,22 @@ Nguồn: [§6 / UC-C02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20
 <a id="uc-d01"></a>
 ## UC-D01 — Quản lý sản phẩm
 
-Nguồn: [§6 / UC-D01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L879–910. Vai trò: Người bán · Ưu tiên: M.
+Nguồn hiệu lực cho phần tạo/provision: [FRD §6 / UC-D01](FRD.md), [SAD §5.7/A.6](software-architecture.md), [Thẻ 15](coverage.md#the-15). Vai trò: Người bán · Ưu tiên: M.
 
 Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
 | <a id="uc-d01.goal-01"></a>UC-D01.GOAL-01 | Mục tiêu | Người bán tạo và cập nhật sản phẩm thuộc gian hàng của mình. | [UC-D01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L883 |
-| <a id="uc-d01.pre-01"></a>UC-D01.PRE-01 | Điều kiện | Người bán đã được duyệt và tài khoản đang hoạt động. | [UC-D01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L885 |
+| <a id="uc-d01.pre-01"></a>UC-D01.PRE-01 | Điều kiện | Seller APPROVED và accountStatus ACTIVE mới được tạo/sửa sản phẩm hoặc tồn kho; BANNED/DISABLED không được bán/publish dù còn phiên giới hạn nghĩa vụ. | [FRD UC-D01/E03](FRD.md); [Thẻ 15](coverage.md#the-15) |
 | <a id="uc-d01.main-01"></a>UC-D01.MAIN-01 | Luồng chính | Người bán mở “Sản phẩm của tôi”, chọn thêm mới hoặc một sản phẩm hiện có. | [UC-D01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L889 |
 | <a id="uc-d01.main-02"></a>UC-D01.MAIN-02 | Luồng chính | Người bán nhập tên, giá, mô tả, danh mục, tồn kho và tối thiểu một ảnh hoặc video. | [UC-D01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L891 |
 | <a id="uc-d01.main-03"></a>UC-D01.MAIN-03 | Luồng chính | Hệ thống kiểm tra các thông tin bắt buộc, giá và số lượng hợp lệ, định dạng/giới hạn tệp. | [UC-D01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L893 |
-| <a id="uc-d01.main-04"></a>UC-D01.MAIN-04 | Luồng chính | Người bán lưu sản phẩm hoặc bật/tạm ẩn bán; hệ thống cập nhật hiển thị của sản phẩm cho khách. | [UC-D01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L895 |
+| <a id="uc-d01.main-04"></a>UC-D01.MAIN-04 | Luồng chính | Tạo mới sau validation: ghi Product HIDDEN cùng ý định provision bền vững trong local transaction; sau commit gọi POST /internal/v1/inventory. Order provision idempotent theo productId. Chỉ sau xác nhận Inventory và kiểm tra Seller/Product còn hợp lệ mới áp dụng trạng thái Seller yêu cầu. Cập nhật sản phẩm hiện có theo quyền/state hiện hành, không tạo Product hay provision mới. | [FRD UC-D01](FRD.md); [API provisioning](api_specs.md); [SAD §5.7/A.6](software-architecture.md) |
 | <a id="uc-d01.alt-01"></a>UC-D01.ALT-01 | Ngoại lệ | Sản phẩm đã bị quản trị viên gỡ: người bán xem lý do nhưng không được sửa hoặc bật bán lại. | [UC-D01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L899 |
 | <a id="uc-d01.alt-02"></a>UC-D01.ALT-02 | Ngoại lệ | Giá thay đổi: chỉ áp dụng cho lượt mua mới, không làm thay đổi giá trong các đơn trước đó. | [UC-D01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L901 |
 | <a id="uc-d01.alt-03"></a>UC-D01.ALT-03 | Ngoại lệ | Người bán đặt tồn kho thấp hơn số hàng đang được giữ cho khách: hệ thống từ chối và cho biết số lượng tối thiểu có thể nhập. | [UC-D01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L903 |
-| <a id="uc-d01.alt-04"></a>UC-D01.ALT-04 | Ngoại lệ | Ảnh/video không hợp lệ hoặc việc tải lên bị hủy: hệ thống không lưu sản phẩm ở trạng thái dở dang. | [UC-D01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L905 |
+| <a id="uc-d01.alt-04"></a>UC-D01.ALT-04 | Ngoại lệ | Validation/media lỗi hoặc tải lên hủy trước khi chấp nhận tạo: không lưu Product dở. Product hợp lệ đang HIDDEN chờ tồn không thuộc lỗi này: timeout giữ HIDDEN, retry cùng productId và Idempotency-Key, không tạo Product khác hay rollback giả xuyên DB. Seller bị cấm hoặc Product REMOVED khi chờ không được tự bật SELLING khi provision xong. | [FRD UC-D01](FRD.md); [SAD §5.7/A.6](software-architecture.md); [Thẻ 15](coverage.md#the-15) |
 | <a id="uc-d01.alt-05"></a>UC-D01.ALT-05 | Ngoại lệ | Sản phẩm bị ẩn trong khi có trong giỏ khách: giỏ được cập nhật khi khách mở lại. | [UC-D01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L907 |
 | <a id="uc-d01.post-01"></a>UC-D01.POST-01 | Hậu điều kiện | Người bán chỉ quản lý sản phẩm của mình; sản phẩm phải có ít nhất một ảnh hoặc video, còn video hiển thị được trên trình duyệt theo P-08. | [UC-D01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L909 |
 

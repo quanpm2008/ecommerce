@@ -6,8 +6,8 @@ runtime signals are the system of record.
 ## Repository Map
 
 - `AGENTS.md`: entry map and authority boundary.
-- `README.md`, `docs/requirements/`, architecture, and decisions: current intent and
-  constraints.
+- `README.md`, `docs/requirements/`, and decisions: current intent and constraints.
+  Architecture sources live in `docs/requirements/{software-architecture,system-architecture}.md`;
   Business and contract sources: [FRD](requirements/FRD.md),
   [API](requirements/api_specs.md), and [Database](requirements/database.md).
 - `docs/plans/`: durable work; `docs/templates/`: optional structures.

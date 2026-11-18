@@ -4,6 +4,8 @@ Enterprise E-commerce Platform (MVP) — v5.5
 
 Phiên bản: **v5.5 — ngày 16/11/2026** — cập nhật quyết định mới tại FRD Conflicts: tách tài khoản Customer/Seller/Administrator; Seller chờ duyệt/bị từ chối không đăng nhập; hồ sơ bị từ chối phải đăng ký mới; Customer bị cấm chỉ đăng nhập khi còn đơn chưa hoàn tất; Seller đã duyệt bị cấm chỉ xử lý đơn chưa hoàn tất và rút tiền khả dụng; chỉ cấm Seller đã duyệt; sai vai trò báo lỗi đăng nhập chung; dùng users.avatar\_object\_key làm ảnh đại diện và logo Seller.
 
+**Bổ sung hiệu lực 17/11/2026 — [Thẻ 15](coverage.md#the-15):** UC-E03 thay policy cấm cũ; nghĩa vụ bao gồm Payment/Refund/Finance dù không còn Order mở. UC-D05 có ngoại lệ rút toàn bộ dưới ngưỡng. Đoạn giới thiệu v5.5 và nhật ký phiên bản là lịch sử, không phải authority trái bổ sung này.
+
 Giữ các quyết định không thay đổi; quyết định \#15 đã chốt theo API/Database: Order và CheckoutSession sử dụng UUID, không có mã hiển thị/mã vận đơn, giữ withdrawalCode. FRD v5.5 đã được đồng bộ về mặt đặc tả với Database v5.1 và API v1.1; BRD/UI/Figma, OpenAPI triển khai và mã nguồn còn cần cập nhật.
 
 - **v5.4 (06/11/2026)** từng chốt mô hình một User nhiều vai trò, nhưng đã được thay thế bằng tài khoản tách vai trò theo conflict số 6\.
@@ -70,7 +72,7 @@ Database v5.1 và API v1.1 đã được chỉnh theo quyết định mới củ
 | UC-A01…UC-G04 | Mã use case cố định — dùng chung với backlog, API, test case |
 | M / S / C | Must (bắt buộc) / Should (nên có) / Could (có thể cắt) |
 | P-xx / N-xx | Tham số nghiệp vụ / yêu cầu phi chức năng — đối chiếu tài liệu riêng |
-| J1, J2b, J3, J4 | Mã tác vụ nền (job), xem UC-G03 |
+| J1, J2/J2b, J3–J7 | Mã tác vụ nền (job), xem UC-G03; J7 do Identity đối soát tài khoản bị cấm |
 | Tài khoản và vai trò | Tài khoản được tách theo vai trò: Customer, Seller và Administrator phải sử dụng ba tài khoản độc lập (email/định danh đăng nhập khác nhau). Một người tham gia nhiều vai trò phải đăng ký hoặc được cấp từng tài khoản riêng; không gán nhiều vai trò nghiệp vụ cho cùng một tài khoản. Yêu cầu này thay thế mô hình một User nhiều vai trò của FRD v5.4 và cần đồng bộ lại Database/API. |
 | Tên cửa hàng | Họ tên (full\_name) của tài khoản Seller được dùng làm tên cửa hàng; không có trường tên người bán riêng. Customer và Administrator dùng tài khoản khác. |
 | CheckoutSession | Một lần đặt hàng và thanh toán chung (“phiên thanh toán”); gom N Order được tách theo cửa hàng; đơn và phiên được định danh bằng ID, không có mã hiển thị riêng |
@@ -110,11 +112,11 @@ Database v5.1 và API v1.1 đã được chỉnh theo quyết định mới củ
 | Hai lối vào checkout | Từ giỏ hàng (UC-B03/B04) hoặc nút “Mua ngay” trên trang sản phẩm (UC-B10). Mua ngay tạo 1 đơn cho đúng 1 sản phẩm và không đọc/ghi giỏ hàng. |
 | Tiền chờ ≠ tiền khả dụng (v5.2) | Khi khách thanh toán, phần của Seller vào **số dư chờ quyết toán** (không rút được). Chỉ khi đơn **đã\_xác\_nhận** — trạng thái kết thúc, không thể hủy/hoàn — tiền mới chuyển sang **số dư khả dụng** và Seller mới được rút. |
 | Hoàn tiền không trừ ví khả dụng (v5.2) | Hoàn tiền khách luôn lấy từ phần nền tảng đang tạm giữ của đúng đơn bị hủy; không bao giờ trừ vào số dư khả dụng hoặc số tiền đã rút của Seller. Ví Seller không bao giờ âm. |
-| Seller chủ động rút (v5.2) | Không còn chi trả tự động theo từng đơn. Seller tự rút một số tiền từ 10.000 VND đến số dư khả dụng (UC-D05); giao dịch giả lập hoàn tất ngay, không cần Admin duyệt, không có trạng thái chờ. |
+| Seller chủ động rút | Ngưỡng chung 10.000 VND; BANNED được rút toàn bộ available dương dưới ngưỡng theo UC-D05; giao dịch tức thời không duyệt. |
 | Không còn báo cáo vi phạm (v5.2) | Customer không gửi báo cáo sản phẩm/Seller; Admin vẫn chủ động gỡ sản phẩm (UC-E04) và cấm tài khoản (UC-E03). |
 | Số tiền đều giả lập | Không phát sinh tiền thật; không coi tổng thu là hoa hồng của nền tảng. Thanh toán và hoàn tiền do bộ giả lập thanh toán nội bộ xử lý; giai đoạn 1 chỉ kịch bản thành công, giai đoạn 2 bổ sung thất bại, chờ lâu, thành công muộn, hoàn lỗi (Database 8.4). |
 | Hoàn tiền trừ số dư chờ khi hoàn xong (v5.3) | Đơn bị hủy sau thanh toán: Settlement chuyển chờ\_hoàn, phần tiền của đơn vẫn nằm trong số dư chờ nhưng bị khóa; chỉ khi Refund thành công mới trừ số dư chờ của ví Seller (Sᵢ) và ví nền tảng (Cᵢ). |
-| Tách tài khoản theo vai trò (v5.5) | Customer, Seller và Administrator bắt buộc có tài khoản đăng nhập độc lập. Người sử dụng nhiều vai trò phải dùng các tài khoản tương ứng; không cộng gộp vai trò hoặc quyền giữa các tài khoản. Cấm theo phạm vi USER/CUSTOMER/SELLER có ngoại lệ tiếp tục xử lý nghĩa vụ chưa hoàn tất được mô tả ở UC-A03, D02, D05 và E03. |
+| Tách tài khoản theo vai trò | Customer, Seller, Administrator dùng tài khoản độc lập, không cộng gộp quyền. Cấm tài khoản theo nghĩa vụ UC-E03, không scope. |
 
 ## Giải nghĩa công thức & sổ tiền (FRD v5.x)
 
@@ -130,7 +132,7 @@ Database v5.1 và API v1.1 đã được chỉnh theo quyết định mới củ
 | C \= hoa\_hồng\_dự\_kiến | Hoa hồng tính trên đơn; ghi vào ngăn chờ của ví nền tảng khi thanh toán, chốt khi đơn được xác nhận nhận hàng. | VND, số nguyên |
 | S \= seller\_nhận\_dự\_kiến | Khoản Seller dự kiến được hưởng từ đơn; S \= G − C. Ghi vào số dư chờ khi thanh toán, chuyển sang khả dụng khi đơn đã\_xác\_nhận. | VND, số nguyên |
 | T \= CheckoutSession.tổng\_tiền | Tổng tiền thanh toán chung một lần \= Σ G của N đơn trong cùng lần checkout. | VND, số nguyên |
-| A \= Withdrawal.số\_tiền | Số tiền Seller rút; P-WD-01 (10.000) ≤ A ≤ số dư khả dụng tại thời điểm rút. | VND, số nguyên |
+| A \= Withdrawal.số\_tiền | Số nguyên dương ≤ available; ngưỡng chung 10.000 VND, ngoại lệ BANNED rút toàn bộ available dương dưới ngưỡng (UC-D05). | VND |
 | floor(x) | Lấy phần nguyên thấp hơn hoặc bằng x; \+5.000 thực hiện làm tròn nửa lên ở phép chia /10.000. | phép toán |
 
 ### 02 | Công thức & ví dụ tính từng bước
@@ -200,7 +202,7 @@ Kiểm tra bảo toàn ngày 12: tổng thu 100.000 \= 50.000 đã hoàn \+ 10.0
 | Xác nhận nhận đơn → quyết toán → số dư khả dụng | B09, G03, G04 | Order, Settlement, Wallet, WalletTransaction | DB 3.5, 8.3 |
 | Seller rút tiền giả lập (tức thời) | D05 | Wallet, WalletTransaction, Withdrawal | DB 3.5, 8.3 (WD) |
 | Admin báo cáo tổng quan / đối soát số dư | E02, E08 | Payment, Refund, Settlement, Wallet, Withdrawal | DB 8.3; P-13 |
-| Thông báo và job định kỳ | G01, G03 | Notification, CheckoutSession, Order, Payment, Withdrawal | DB 3.7, 8.2 |
+| Thông báo và job định kỳ | G01, G03, E03 | Notification, CheckoutSession, Order, Payment, Withdrawal, User/Customer/Seller | [Database §8.2](database.md); J7 Identity và ca B1–B11 tại §9 |
 
 **Nguyên tắc đối chiếu:** Các tham chiếu theo mã UC hoặc số mục; ưu tiên liên kết tới thực thể và acceptance criteria ngay trong use case. Không thay đổi ID gốc dù đã rút gọn tiêu đề hiển thị.
 
@@ -213,7 +215,7 @@ FRD gộp yêu cầu người dùng (use case) và yêu cầu chức năng hệ 
 | Actor | Mô tả | Ghi chú |
 | :---- | :---- | :---- |
 | Customer | Duyệt, tìm kiếm, mua hàng (đa-seller, tách đơn theo cửa hàng), theo dõi/hủy đơn, xác nhận nhận hàng, đánh giá | Chưa đăng nhập chỉ xem/tìm kiếm được |
-| Seller | Đăng ký tài khoản Seller riêng, sau khi được duyệt thì quản lý sản phẩm/đơn/thống kê của cửa hàng, ví và rút tiền giả lập; Seller bị cấm chỉ được truy cập giới hạn để hoàn tất đơn đang dở hoặc rút số dư khả dụng. | Tài khoản Seller không dùng chung với Customer/Administrator. Seller chờ duyệt hoặc bị từ chối không được đăng nhập; Seller bị cấm chỉ có ngoại lệ đăng nhập khi còn đơn chưa hoàn tất hoặc số dư khả dụng. |
+| Seller | Tài khoản riêng; APPROVED/ACTIVE quản lý cửa hàng; BANNED chỉ nghĩa vụ đơn/tiền UC-E03. | PENDING/REJECTED không login; nghĩa vụ pending/hệ thống cũng giữ phiên giới hạn. |
 | Administrator | Quản trị & giám sát toàn nền tảng | Tài khoản Administrator riêng do hệ thống cấp nội bộ (seed), không đăng ký công khai và không dùng chung với tài khoản Customer/Seller. |
 | System | Các tác vụ nền: thông báo, hoàn tiền, quyết toán và ghi sổ ví, đối soát thanh toán, hết hạn giữ chỗ, tự hoàn tất đơn | Mô tả ở nhóm G |
 
@@ -252,26 +254,26 @@ Mục 4 đã bị xóa khỏi FRD từ v5.3. Số mục được giữ chỗ đ�
 | Chức năng | Customer | Seller (phạm vi riêng) | Administrator |
 | :---- | :---- | :---- | :---- |
 | Đăng ký | ✓ (tài khoản Customer riêng, bằng email hoặc Google; không bổ sung vai trò Customer trên tài khoản Seller/Admin) | ✓ (tài khoản Seller riêng bằng email; chờ duyệt không đăng nhập; nếu bị từ chối phải gửi hồ sơ đăng ký mới) | – (cấp nội bộ) |
-| Đăng nhập | Đăng nhập tài khoản Customer bằng phương thức đã đăng ký; không dùng tài khoản Seller/Admin. | Đăng nhập tài khoản Seller riêng khi đã được duyệt và hoạt động; nếu bị cấm chỉ được vào khi còn đơn chưa hoàn tất hoặc số dư khả dụng. Chờ duyệt/bị từ chối: không được đăng nhập. | Chỉ đăng nhập bằng tài khoản Administrator riêng được cấp nội bộ. |
+| Đăng nhập | Đúng kênh Customer; BANNED theo UC-E03. | APPROVED, đúng kênh Seller; BANNED theo UC-E03; PENDING/REJECTED không login. | Tài khoản Admin riêng. |
 | Hồ sơ cá nhân, đổi mật khẩu | ✓ (họ tên, số điện thoại, ảnh đại diện lưu ở users.avatar\_object\_key, sổ địa chỉ) | ✓ (mô tả, ảnh đại diện dùng làm logo cửa hàng tại users.avatar\_object\_key; tên cửa hàng là họ tên tài khoản Seller, không đổi khi chờ duyệt/đã duyệt) | ✓ (họ tên, mật khẩu, ảnh đại diện của tài khoản Administrator riêng) |
 | Xem catalog/tìm kiếm sản phẩm & Seller | ✓ | ✓ | ✓ |
-| Giỏ, mua ngay, checkout (tách đơn theo cửa hàng), thanh toán một lần | ✓; nếu bị cấm chỉ được truy cập để xử lý đơn chưa hoàn tất, không được tạo giao dịch mua mới. | – | – |
-| Xem, hủy, xác nhận nhận hàng từng đơn | ✓ đối với những đơn chưa hoàn tất còn tồn tại khi Customer bị cấm; chỉ được thực hiện thao tác hợp lệ để hoàn tất chính các đơn đó. | – | – |
+| Giỏ, mua ngay, checkout, thanh toán mới | Chỉ ACTIVE; BANNED không dùng kể cả có AWAITING_PAYMENT. | – | – |
+| Xem, hủy, xác nhận nhận hàng | Đúng chủ/state; BANNED chỉ đơn/phiên/Refund gắn nghĩa vụ hiện tại. | – | – |
 | Đánh giá sản phẩm | ✓ | – | – |
 | Quản lý sản phẩm & tồn kho | – | ✓ (của mình) | Chỉ gỡ/khôi phục (UC-E04) |
-| Xử lý đơn của cửa hàng: đóng gói → đã giao hoặc từ chối (M) | – | ✓ xử lý đơn của cửa hàng mình trong hạn 7 ngày; Seller bị cấm chỉ được xử lý đơn chưa hoàn tất tồn tại trước khi bị cấm. | – |
+| Xử lý đơn cửa hàng: đóng gói → giao hoặc từ chối (M) | – | Đúng seller_id/state/hạn; BANNED xử lý đơn tồn gắn nghĩa vụ kể cả hiệu ứng tới muộn. | – |
 | Thống kê kinh doanh | – | ✓ chỉ xem của mình | ✓ toàn hệ thống |
-| Xem ví giả lập (chờ / khả dụng / đã rút) | – | ✓ xem ví của mình; Seller bị cấm chỉ xem thông tin cần thiết để xử lý đơn đang dở hoặc rút số dư khả dụng. | ✓ mọi ví, kể cả ví nền tảng (chỉ xem) |
+| Xem ví | – | Ví của mình; BANNED chỉ thông tin nghĩa vụ pending/available và biên nhận liên quan. | Mọi ví, chỉ xem |
 | Rút tiền giả lập (M) | – | ✓ rút tiền từ số dư khả dụng của mình, hoàn tất ngay; Seller bị cấm mà đáp ứng ngoại lệ đăng nhập vẫn được rút. | – (không rút thay, không duyệt) |
 | Xử lý hoàn tiền lỗi (M) | – | – | ✓ |
 | Duyệt / từ chối Seller | – | – | ✓ |
-| Cấm/gỡ cấm theo phạm vi USER / CUSTOMER / SELLER của tài khoản tương ứng | – | – | ✓ |
+| Cấm/gỡ cấm tài khoản UC-E03, không scope | – | – | ✓ |
 | Xem người dùng | – | – | ✓ |
 | Quản lý danh mục | – | – | ✓ |
 | Xem đơn toàn hệ thống & can thiệp đơn lỗi (S) | – | – | ✓ |
 | Nhận thông báo (email, in-app) | ✓ | ✓ | – (dùng dashboard) |
 
-**Quyền dữ liệu: mỗi tài khoản chỉ truy cập dữ liệu của vai trò tương ứng. Customer chỉ truy cập giỏ/checkout/đơn/địa chỉ/đánh giá của mình; Seller chỉ truy cập sản phẩm, Order thuộc seller\_id của mình, ví và lịch sử rút. Nếu bị cấm, phạm vi bị giới hạn tiếp vào đơn chưa hoàn tất và, với Seller, số dư khả dụng theo UC-E03. Không lộ dữ liệu đơn của cửa hàng khác dù thanh toán cùng phiên.**
+**Quyền dữ liệu:** Đúng tài khoản/vai trò/chủ sở hữu. BANNED chỉ nghĩa vụ hiện tại UC-E03 gồm Payment/Refund/pending/available; không lịch sử ngoài nghĩa vụ hoặc Order Seller khác dù chung phiên. AccessMode không thay ownership/state.
 
 **Customer, Seller và Administrator dùng ba tài khoản độc lập, không cộng gộp quyền hay dùng chung phiên đăng nhập. Người dùng nhiều vai trò cần tài khoản riêng; quyền Admin không tự cấp quyền mua/bán. Mô hình một User nhiều vai trò của Database/API hiện hành cần sửa theo quyết định FRD Conflicts số 6\.**
 
@@ -355,7 +357,7 @@ Cách đọc: Mỗi use case trình bày mục tiêu, điều kiện, các bư�
 
 **Mục tiêu: Xác thực theo kênh Customer, Seller hoặc Administrator, chỉ cấp quyền cho tài khoản thuộc đúng kênh và đang đủ điều kiện.**
 
-**Điều kiện: Người dùng có tài khoản thuộc đúng kênh; Seller chỉ đăng nhập khi đã được duyệt và hoạt động hoặc đủ điều kiện ngoại lệ nếu bị cấm; Customer bị cấm chỉ đăng nhập khi còn đơn chưa hoàn tất.**
+**Điều kiện:** Tài khoản đúng kênh; Seller APPROVED. Login/refresh đánh giá vòng đời và nghĩa vụ hiện tại theo UC-E03, kể cả nghĩa vụ đến muộn của DISABLED.
 
 **LUỒNG CHÍNH**
 
@@ -365,23 +367,21 @@ Cách đọc: Mỗi use case trình bày mục tiêu, điều kiện, các bư�
 
 3. Nếu hợp lệ, hệ thống cho đăng nhập vào đúng kênh tài khoản và cấp quyền tương ứng. Không có đăng nhập dùng chung Customer/Seller/Administrator.
 
-4. Customer bị cấm chỉ được đăng nhập khi còn đơn chưa hoàn tất, và chỉ được xem/thực hiện thao tác hợp lệ để hoàn tất đúng những đơn đó; không được mua hàng hoặc thanh toán mới.
+4. BANNED nhận phiên giới hạn theo accessMode/allowlist UC-E03; Customer không được mua hoặc thanh toán mới.
 
 **LUỒNG THAY THẾ / NGOẠI LỆ**
 
 * Sai thông tin: thông báo chung, không tiết lộ tài khoản có tồn tại.
 
-* Seller chờ duyệt hoặc bị từ chối: không được đăng nhập. Seller đã duyệt bị cấm: chỉ được đăng nhập nếu còn đơn chưa hoàn tất hoặc số dư khả dụng, và chỉ được xử lý đơn đang dở/rút tiền khả dụng; không đăng bán, nhận đơn mới, sửa sản phẩm hay vào chức năng kinh doanh khác.
+* Seller PENDING/REJECTED không login; BANNED chỉ xử lý nghĩa vụ đơn/tiền của mình theo UC-E03, không kinh doanh mới.
 
 * Nhập đúng thông tin của tài khoản nhưng không thuộc vai trò của kênh (ví dụ Customer vào Seller/Admin): thông báo chung “Thông tin đăng nhập không chính xác”, không hướng dẫn đăng ký bán hàng và không tiết lộ vai trò tài khoản.
 
-* Tài khoản bị cấm phạm vi USER: không đăng nhập được, phiên hiện tại bị thu hồi. Các ngoại lệ dành cho lệnh cấm CUSTOMER/SELLER không áp dụng với phạm vi USER.
-
-* Customer bị cấm: nếu không còn đơn chưa hoàn tất thì không được đăng nhập; nếu còn, chỉ được xem và xử lý những đơn đang dở đó, không dùng giỏ, checkout, mua ngay, tạo đánh giá mới hoặc xem dữ liệu ngoài phạm vi ngoại lệ.
+* DISABLED chỉ bị từ chối với ACCOUNT_DISABLED sau kiểm tra nghĩa vụ muộn; nguồn cần xác minh lỗi trả 503. BANNED có nghĩa vụ Payment/Refund/Finance dù không còn đơn thao tác được vẫn được phiên OBLIGATIONS_READ_ONLY; không dùng giỏ, checkout, review hoặc lịch sử ngoài nghĩa vụ.
 
 * Đăng nhập bằng Google khác phương thức đăng ký: hướng dẫn dùng phương thức đúng; không tự liên kết tài khoản.
 
-**Kết quả mong đợi: chỉ đăng nhập đúng loại tài khoản; Seller chờ duyệt/bị từ chối không đăng nhập; Customer bị cấm chỉ truy cập khi còn đơn chưa hoàn tất; Seller bị cấm chỉ truy cập khi còn đơn chưa hoàn tất hoặc số dư khả dụng, chỉ với các chức năng cho phép.**
+**Kết quả mong đợi:** Đúng loại tài khoản, quyền hiện hành theo UC-E03; không dựa vào lịch sử đã từng thanh toán hoặc chỉ trạng thái terminal của Order.
 
 #### UC-A04 | Đổi mật khẩu
 
@@ -569,7 +569,7 @@ Cách đọc: Mỗi use case trình bày mục tiêu, điều kiện, các bư�
 
 * Đơn tạo qua “Mua ngay” (UC-B10): giỏ không bị đọc hay trừ, kể cả khi giỏ đang chứa cùng sản phẩm.
 
-* Customer bị cấm chỉ được đăng nhập khi còn đơn chưa hoàn tất, và khi đó không được dùng giỏ hàng hoặc thực hiện thanh toán mới.
+* BANNED không dùng giỏ/thu mới; phiên giới hạn theo nghĩa vụ UC-E03, không chỉ Order mở.
 
 **Kết quả mong đợi:** Một giỏ nhiều cửa hàng được thanh toán một lần và tách thành các đơn riêng theo cửa hàng; giỏ không bị trừ lại khi nhận xác nhận thanh toán trùng.
 
@@ -633,7 +633,7 @@ Cách đọc: Mỗi use case trình bày mục tiêu, điều kiện, các bư�
 
 **LUỒNG THAY THẾ / NGOẠI LỆ**
 
-* Customer bị cấm không được thanh toán mới; nếu còn đơn chưa hoàn tất chỉ được đăng nhập giới hạn để xử lý đúng đơn đó theo UC-B07–B09.
+* BANNED không thanh toán mới; AWAITING_PAYMENT chỉ chờ J1/J2/J2b hoặc hủy hợp lệ; quyền theo UC-E03.
 
 * Thanh toán bị từ chối rõ ràng (giai đoạn 2, kịch bản FAIL): tất cả các đơn của phiên đóng ở “Thanh toán thất bại”, giải phóng hàng đang giữ, giữ giỏ và hướng dẫn đặt hàng lại.
 
@@ -669,7 +669,8 @@ Cách đọc: Mỗi use case trình bày mục tiêu, điều kiện, các bư�
 
 **LUỒNG THAY THẾ / NGOẠI LỆ**
 
-* Seller bị cấm SAU khi thanh toán không tự động làm hủy Order đang dở: Seller vẫn được xử lý các Order tồn tại trong phiên giới hạn; quá thời hạn J4 mới hủy/hoàn đúng Order. Nếu Seller hoặc sản phẩm không hợp lệ ở thời điểm xác minh giao dịch, hủy/hoàn theo state machine; không ảnh hưởng đơn của Seller khác.
+* Order Service, khi áp dụng Payment SUCCESS qua `payment.succeeded` hoặc đối soát dùng chung handler, xác minh điều kiện giao dịch qua Identity/Product ngoài transaction giữ khóa ([SAD §5.1](software-architecture.md), [Database §8.2B](database.md)). Chỉ invalid có bằng chứng tại thời điểm thu mới hủy/hoàn riêng Order đủ điều kiện PAID/PACKING; Payment giữ SUCCESS, đủ hiệu ứng checkout.paid/order.cancelled; Payment tạo Refund, Finance giữ pending/PENDING_REFUND đến Refund SUCCESS. Không ảnh hưởng Order Seller khác hoặc chuyển DELIVERED/CONFIRMED về CANCELLED.
+* Seller ban sau capture không phải lý do hủy/hoàn, dù event tới chậm; không suy ra invalid tại lúc thu từ trạng thái Seller hiện tại. Thiếu bằng chứng hoặc Identity/Product lỗi → giữ công việc retry bền vững, không coi lỗi mạng là invalid. Replay không nhân đôi SOLD/RESTOCK/Refund/ledger. Không quét hủy mọi đơn Seller hoặc giao quyết định này cho J7/J2/J5; J4 và quyền xử lý đơn tồn giữ nguyên.
 
 * Thông báo thanh toán thành công đến sau khi phiên đã hết hạn/hủy: hoàn toàn bộ tiền, không khôi phục đơn, không trừ kho, không tạo Settlement hay bút toán ví.
 
@@ -697,11 +698,11 @@ Cách đọc: Mỗi use case trình bày mục tiêu, điều kiện, các bư�
 
 **LUỒNG THAY THẾ / NGOẠI LỆ**
 
-* Phiên chưa thanh toán: các đơn hiển thị “Chờ thanh toán” với hạn chung và nút thanh toán chung; thanh toán pending: tạm khóa thanh toán/hủy.
+* Phiên chưa thanh toán: các đơn hiển thị “Chờ thanh toán” với hạn chung; chỉ Customer ACTIVE có nút thanh toán chung. Customer BANNED chỉ xem nghĩa vụ, không thu mới; J1/J2/J2b và hủy hợp lệ vẫn tiếp tục. Payment pending: tạm khóa thanh toán/hủy.
 
 * Các đơn cùng lần thanh toán ở các trạng thái khác nhau (ví dụ một đơn đã hủy, một đơn đã giao): hiển thị độc lập.
 
-* Customer bị cấm chỉ được đăng nhập khi còn đơn chưa hoàn tất và chỉ truy cập những đơn đó; không xem toàn bộ lịch sử hoặc sử dụng chức năng mua sắm khác.
+* Customer BANNED chỉ đơn/phiên và Payment/Refund gắn nghĩa vụ đúng chủ theo UC-E03, không toàn bộ lịch sử/mua sắm.
 
 * Không tìm thấy đơn hoặc không có quyền: không hiển thị dữ liệu của người khác.
 
@@ -809,7 +810,7 @@ Cách đọc: Mỗi use case trình bày mục tiêu, điều kiện, các bư�
 
 * Bấm “Đặt hàng” lặp: cùng khóa chống lặp trả về cùng phiên và đơn (G-09).
 
-* Customer bị cấm không được sử dụng “Mua ngay” hoặc đặt đơn mới; chỉ có thể đăng nhập giới hạn khi còn đơn chưa hoàn tất.
+* BANNED không Mua ngay/đặt đơn mới; quyền nghĩa vụ theo UC-E03.
 
 * Giỏ đang có cùng sản phẩm: không gộp, không trừ; giỏ không đổi.
 
@@ -825,7 +826,7 @@ Cách đọc: Mỗi use case trình bày mục tiêu, điều kiện, các bư�
 
 **Mục tiêu:** Khách đánh giá sản phẩm đã nhận từ người bán.
 
-**Điều kiện:** Sản phẩm thuộc một đơn đã\_xác\_nhận của khách và đơn không bị hủy.
+**Điều kiện:** Customer ACTIVE; sản phẩm thuộc một đơn đã\_xác\_nhận của khách và đơn không bị hủy. BANNED không được review, kể cả đã mua/nhận hàng; phiên nghĩa vụ không mở lịch sử ngoài allowlist UC-E03.
 
 **LUỒNG CHÍNH**
 
@@ -855,7 +856,7 @@ Chức năng Customer gửi báo cáo vi phạm sản phẩm hoặc người bá
 
 ### Nhóm D — Seller (phạm vi của chính mình)
 
-Chỉ người bán đã được duyệt và còn hoạt động mới sử dụng các chức năng nhóm này; mỗi người bán chỉ xem và thao tác sản phẩm, các Order có seller\_id của mình và ví của mình.
+Chỉ Seller APPROVED/ACTIVE được dùng toàn bộ nhóm này. Seller BANNED chỉ có ngoại lệ xử lý đơn tồn tại UC-D02 và thông tin/rút tiền nghĩa vụ tại UC-D05 theo UC-E03, không quản lý sản phẩm/tồn kho hoặc thống kê chung. Mọi truy cập phải đúng seller_id của mình; hệ thống vẫn xử lý các hiệu ứng kho/tiền hợp lệ khi tài khoản bị cấm.
 
 #### UC-D01 | Quản lý sản phẩm
 
@@ -873,7 +874,7 @@ Chỉ người bán đã được duyệt và còn hoạt động mới sử d�
 
 3. Hệ thống kiểm tra các thông tin bắt buộc, giá và số lượng hợp lệ, định dạng/giới hạn tệp.
 
-4. Người bán lưu sản phẩm hoặc bật/tạm ẩn bán; hệ thống cập nhật hiển thị của sản phẩm cho khách.
+4. Tạo mới: sau validation, Product ghi HIDDEN cùng công việc provision bền vững; sau commit gọi `POST /internal/v1/inventory`. Order provision idempotent theo productId. Chỉ sau xác nhận Inventory và Seller/Product còn hợp lệ mới áp dụng trạng thái Seller yêu cầu. Cập nhật: kiểm tra ownership, trạng thái và cập nhật sản phẩm hiện có theo quyền hiện hành; không tạo Product mới.
 
 **LUỒNG THAY THẾ / NGOẠI LỆ**
 
@@ -883,7 +884,7 @@ Chỉ người bán đã được duyệt và còn hoạt động mới sử d�
 
 * Người bán đặt tồn kho thấp hơn số hàng đang được giữ cho khách: hệ thống từ chối và cho biết số lượng tối thiểu có thể nhập.
 
-* Ảnh/video không hợp lệ hoặc việc tải lên bị hủy: hệ thống không lưu sản phẩm ở trạng thái dở dang.
+* Validation/media lỗi hoặc tải lên bị hủy trước chấp nhận tạo: không lưu Product dở dang. Product hợp lệ HIDDEN chờ Inventory không thuộc trường hợp này. Timeout giữ HIDDEN, retry cùng productId và Idempotency-Key, không tạo Product khác hoặc rollback giả xuyên DB. Seller bị ban/Product REMOVED trong lúc chờ thì provision xong không tự bật SELLING. Dùng cơ chế hiện có tại [SAD §5.7/A.6](software-architecture.md), không thêm trạng thái, endpoint hay job provision.
 
 * Sản phẩm bị ẩn trong khi có trong giỏ khách: giỏ được cập nhật khi khách mở lại.
 
@@ -895,11 +896,11 @@ Chỉ người bán đã được duyệt và còn hoạt động mới sử d�
 
 **Mục tiêu:** Người bán xử lý các đơn của cửa hàng mình và bắt buộc chọn giao hoặc từ chối giao trong 7 ngày.
 
-**Điều kiện: Seller đã được duyệt và có đơn đã thanh toán; Seller hoạt động được xử lý bình thường, Seller bị cấm chỉ được xử lý những đơn chưa hoàn tất đã tồn tại trước khi cấm (UC-A03, E03).**
+**Điều kiện:** Seller APPROVED có đơn đã thanh toán; BANNED xử lý đơn tồn gắn nghĩa vụ theo UC-E03 kể cả hiệu ứng tới muộn, không nhận đơn mới.
 
 **LUỒNG CHÍNH**
 
-1. Seller mở “Đơn cần xử lý”, chỉ xem đơn của cửa hàng mình. Seller bị cấm chỉ thấy đơn chưa hoàn tất cần xử lý với thông tin tối thiểu; không nhận đơn mới.
+1. Seller mở “Đơn cần xử lý”, chỉ xem đơn của cửa hàng mình. Seller BANNED chỉ thấy đơn tồn và thông tin tối thiểu gắn nghĩa vụ hiện tại, kể cả hiệu ứng đến muộn; không nhận đơn mới. Nghĩa vụ chỉ Payment/Refund/Finance không tạo quyền thao tác đơn ngoài state machine (UC-E03).
 
 2. Người bán bắt đầu chuẩn bị hàng; hệ thống chuyển đơn sang “Đang đóng gói”.
 
@@ -957,7 +958,7 @@ Chỉ người bán đã được duyệt và còn hoạt động mới sử d�
 
 **Mục tiêu:** Người bán theo dõi kết quả bán hàng và tình trạng tiền theo các đơn của mình.
 
-**Điều kiện: Seller đã đăng nhập và hoạt động; Seller bị cấm không truy cập thống kê chung, chỉ được xem thông tin đơn đang dở và ví khả dụng khi đáp ứng ngoại lệ.**
+**Điều kiện:** ACTIVE dùng thống kê; BANNED không thống kê chung, chỉ thông tin nghĩa vụ đơn/tiền gồm pending theo UC-E03.
 
 **LUỒNG CHÍNH**
 
@@ -985,7 +986,7 @@ Chỉ người bán đã được duyệt và còn hoạt động mới sử d�
 
 **Mục tiêu:** Người bán xem số dư ví giả lập và rút ngay phần tiền đã được quyết toán, trong khi tiền của các đơn còn có thể bị hủy/hoàn vẫn được nền tảng giữ lại.
 
-**Điều kiện: Seller đã được duyệt, đăng nhập hợp lệ và có số dư khả dụng ≥ 10.000 VND (P-WD-01). Seller bị cấm phạm vi SELLER vẫn được rút số dư khả dụng; không rút tiền chờ quyết toán. Cấm toàn tài khoản (USER) vẫn chặn đăng nhập.**
+**Điều kiện:** Seller APPROVED, phiên hợp lệ UC-E03; xem ví theo allowlist; chỉ rút available đáp ứng công thức dưới đây, không pending.
 
 **LUỒNG CHÍNH**
 
@@ -995,7 +996,7 @@ Chỉ người bán đã được duyệt và còn hoạt động mới sử d�
 
 3. Seller chọn “Rút tiền” và nhập số tiền A (mặc định đề xuất toàn bộ số dư khả dụng). Đích nhận cố định là “Ví ngoài giả lập”; không nhập thông tin ngân hàng.
 
-4. Hệ thống kiểm tra số tiền và số dư khả dụng: 10.000 ≤ A ≤ số dư khả dụng và các điều kiện an toàn giao dịch. Với Seller bị cấm phạm vi SELLER, bỏ điều kiện không bị cấm đối với việc rút khả dụng; không bỏ kiểm tra số dư, giới hạn và idempotency.
+4. `amountVnd` nguyên dương, ≤ available, và thỏa `(amountVnd >= 10000) || (accountStatus == BANNED && 0 < availableBalanceVnd < 10000 && amountVnd == availableBalanceVnd)`. Kiểm tra lại quyền/số dư trong transaction hiện hành; concurrency/idempotency và một atomic debit + ledger + Withdrawal giữ nguyên. Wallet giữ `minWithdrawalVnd=10000`, thêm `allowBelowMinimumFullWithdrawal: boolean`; ngoại lệ thỏa thì `canWithdraw=true`, `withdrawDisabledReason=null`, UI khóa amount bằng toàn bộ available. Rút một phần dưới ngưỡng trả 422 `WITHDRAWAL_BELOW_MINIMUM`; không thêm trạng thái Withdrawal.
 
 5. Seller xác nhận; trong một transaction hệ thống trừ A khỏi số dư khả dụng, cộng A vào tổng đã rút, tạo Withdrawal và bút toán WITHDRAWAL\_COMPLETED (WD-04).
 
@@ -1003,11 +1004,9 @@ Chỉ người bán đã được duyệt và còn hoạt động mới sử d�
 
 **LUỒNG THAY THẾ / NGOẠI LỆ**
 
-* Số dư khả dụng dưới 10.000 VND nhưng số dư chờ \> 0: nút “Rút tiền” bị vô hiệu kèm giải thích “Tiền sẽ khả dụng khi đơn được khách xác nhận nhận hàng hoặc tự xác nhận sau 7 ngày kể từ khi giao”.
-
-* Số dư khả dụng dưới 10.000 VND và không có số dư chờ: nút “Rút tiền” bị vô hiệu, hiển thị “Chưa đủ số dư tối thiểu để rút (10.000 VND)”.
-
-* A dưới 10.000, lớn hơn số dư khả dụng hoặc không phải số nguyên dương: báo lỗi tại form, không tạo Withdrawal, số dư không đổi.
+* Available=0: không rút; chỉ pending thì xem tiến độ, không rút pending.
+* ACTIVE available<10.000: khóa rút dù có/không pending. BANNED available dương dưới ngưỡng: chỉ rút toàn bộ.
+* Một phần dưới ngưỡng → 422 WITHDRAWAL_BELOW_MINIMUM; vượt available/không nguyên dương → lỗi, không Withdrawal, số dư không đổi.
 
 * Hai tab/hai thiết bị rút cùng lúc: các lần rút được xử lý lần lượt; lần nào làm tổng vượt số dư khả dụng thì bị từ chối với thông báo “Số dư không đủ”.
 
@@ -1017,7 +1016,7 @@ Chỉ người bán đã được duyệt và còn hoạt động mới sử d�
 
 * Khách hủy một đơn khác của Seller ngay sau khi Seller rút hết: khi hoàn tiền thành công, hệ thống trừ số dư chờ của đúng đơn bị hủy; số dư khả dụng và tổng đã rút không đổi (WD-06).
 
-* Seller bị cấm phạm vi SELLER: nếu còn đơn chưa hoàn tất hoặc số dư khả dụng thì được đăng nhập giới hạn, xem thông tin ví cần thiết và rút khả dụng nếu đáp ứng ngưỡng tối thiểu 10.000 VND. Số dư chờ chưa được rút; không có quyền kinh doanh khác. Cấm USER vẫn chặn đăng nhập.
+* BANNED không đóng băng available, được rút theo công thức trên. Pending/Settlement chưa apply vẫn giữ nghĩa vụ; rút hết và hết mọi nghĩa vụ thì J7 chuyển DISABLED.
 
 * Phát hiện lệch giữa số dư và tổng bút toán: hệ thống chặn rút và đánh dấu cần xử lý thủ công cho Admin.
 
@@ -1041,7 +1040,7 @@ Chỉ người bán đã được duyệt và còn hoạt động mới sử d�
 
 2. Hệ thống liệt kê các tài khoản Customer và Seller độc lập, hỗ trợ tìm theo tên/email/SĐT/trạng thái. Một người có thể xuất hiện ở hai danh sách bằng hai tài khoản riêng, không phải một tài khoản có hai vai trò.
 
-3. Admin chọn tài khoản để xem hồ sơ, số đơn, ví Seller và trạng thái/lý do cấm hiện tại. Lịch sử cấm/gỡ cấm lưu trong AdminAuditLog nội bộ, không có màn xem nhật ký.
+3. Admin chọn tài khoản để xem hồ sơ, số đơn, ví Seller, `accountStatus`, `accessMode`, lý do cấm, `bannedAt`, `disabledAt`, `restoreUntil` và `banImpact` theo UC-E03. Lịch sử cấm/gỡ cấm lưu trong AdminAuditLog nội bộ, không có màn xem nhật ký.
 
 4. Từ hồ sơ, quản trị viên có thể mở chức năng duyệt người bán hoặc cấm/gỡ cấm tài khoản.
 
@@ -1079,45 +1078,47 @@ Chỉ người bán đã được duyệt và còn hoạt động mới sử d�
 
 * Một Payment chung không được đếm lặp cho mỗi đơn/Seller; số hoàn tính theo kết quả thực tế của từng đơn; số đã rút tính theo các giao dịch Withdrawal.
 
-* Danh sách theo dõi riêng các Seller bị cấm và khoản tiền còn phải xử lý, bao gồm số dư chờ, số dư khả dụng và các giao dịch rút đã thực hiện; số dư khả dụng không tự động bị đóng băng khi cấm phạm vi SELLER.
+* Theo dõi Seller BANNED và nghĩa vụ pending/available/Settlement; không đóng băng available vì ban. Nguồn lỗi không hiển thị zero giả.
 
 **Kết quả mong đợi:** Phản ánh được thu một lần, hoàn theo đơn, hoa hồng theo đơn, rút tiền theo từng giao dịch; số liệu khớp bất biến tiền ở Database RBAC v5.0 mục 8.3 và WD-11.
 
-#### UC-E03 | Cấm và gỡ cấm tài khoản theo phạm vi
+#### UC-E03 | Cấm và gỡ cấm tài khoản
 
 *Vai trò: Quản trị viên · Ưu tiên: M*
 
-**Mục tiêu: Admin cấm/gỡ cấm theo phạm vi USER/CUSTOMER/SELLER, bảo đảm đơn chưa hoàn tất và số dư khả dụng Seller được xử lý trong giới hạn quyết định mới.**
+**Authority:** [Thẻ 15](coverage.md#the-15), quyết định 17/11/2026; thay thế policy cấm theo phạm vi và snapshot lịch sử. Đặc tả không chứng minh runtime đã triển khai.
 
-**Điều kiện:** Đã đăng nhập Admin; không cấm Admin.
+**Điều kiện:** Admin có quyền `account:moderate`; không cấm ADMIN, chỉ cấm Seller `APPROVED`. Tài khoản có `accountType` cố định; không chọn scope, không tác động tài khoản khác của cùng người, không có khóa khẩn cấp vượt nghĩa vụ.
 
 **LUỒNG CHÍNH**
 
-1. Admin chọn tài khoản riêng cần xử lý, phạm vi USER/CUSTOMER/SELLER, nhập lý do bắt buộc và xác nhận. Không suy ra lệnh cấm đối với các tài khoản vai trò khác của cùng một người.
+1. Admin mở detail Customer/Seller. `banImpact = {evaluatedAt,resultingAccountStatus,obligations}` cảnh báo snapshot; `obligations = {hasOpenOrders,hasPendingPayment,hasUnresolvedRefund,hasPendingFinance,pendingBalanceVnd,availableBalanceVnd}`. Customer có hai số dư bằng 0 và hasPendingFinance=false. Nguồn lỗi không hiển thị zero giả, không cho xác nhận.
+2. Popup hiển thị loại tài khoản, đơn/thanh toán/hoàn đang xử lý, pending/available Seller, trạng thái dự kiến và quyền còn lại; lý do bắt buộc 1..1000 ký tự; hai nút “Hủy” / “Xác nhận cấm”. BANNED chưa bắt đầu thời hạn; DISABLED giải thích 30 ngày từ chuyển trạng thái.
+3. `POST /identity/admin/ban/{userId}` body `{reason}` đọc lại nghĩa vụ trước commit, trả trạng thái thực tế kể cả khác preview. Không có nghĩa vụ đã được tất cả nguồn xác minh → DISABLED, thu hồi phiên; còn nghĩa vụ → BANNED với allowlist dưới đây. Dependency lỗi → 503, không ghi ban một phần. Request gửi `scope` → 400, không alias.
+4. Identity là owner duy nhất cập nhật cặp trạng thái, `authzVersion`, audit và Outbox trong cùng local transaction. `accountStatus` suy ra, không thêm cột: ACTIVE = users.ACTIVE + hồ sơ.ACTIVE; BANNED = users.ACTIVE + hồ sơ.BANNED; DISABLED = users.DISABLED + hồ sơ.BANNED. Seller.approval_status riêng, PENDING/REJECTED vẫn không login.
+5. Đầu đợt cấm ghi `banned_at`; lần đầu DISABLED ghi `disabled_at`, `restore_until = disabled_at + 30 ngày` UTC. Ban/job lặp không đổi mốc hoặc phát duplicate. `disabled_reason` và `ban_reason` là lý do cùng đợt cấm, không phải hai lệnh khóa độc lập.
+6. Admin xem `accountStatus`, mốc/deadline và chọn “Gỡ cấm”. `POST /identity/admin/unban/{userId}` body `{reason?: string <=1000}`: BANNED được gỡ bất kỳ lúc nào; DISABLED được gỡ khi `now <= restore_until`, quá hạn → 409 `ACCOUNT_RESTORE_WINDOW_EXPIRED`. UI khóa nút quá hạn kèm lý do. ACTIVE trả thành công idempotent. Unban hợp lệ không cần nguồn Order/Finance, vẫn kiểm tra tài khoản/Seller và local transaction.
+7. Unban thành công đưa ACTIVE, xóa mốc hiệu lực và lý do hiện tại, giữ audit; đợt cấm mới tạo mốc mới. Không phục hồi đơn hủy, Product HIDDEN/REMOVED hoặc quyền Seller chưa duyệt. Quá hạn không xóa tài khoản, dữ liệu, tiền hoặc đổi đơn.
 
-2. Với Customer, hệ thống kiểm tra có đơn chưa hoàn tất tại thời điểm cấm; đơn đã hoàn tất không tạo quyền đăng nhập ngoại lệ.
+**Contract phản hồi và phiên:** Hai lệnh ban/unban trả 200 trong envelope `data`: `{userId,accountType,accountStatus,userStatus,customerStatus|null,sellerStatus|null,accessMode,bannedAt|null,disabledAt|null,restoreUntil|null,authzVersion}`; ban trả thêm `obligations`. Giữ lỗi 401/403/404; Seller chưa duyệt trả 409 `INVALID_STATE_TRANSITION`. Admin detail và auth/self/authorization-context cũng cung cấp trạng thái/mốc phù hợp, không chỉ response ban; login/refresh thu hồi hoặc cấp phiên theo quyền hiện hành. Ban lặp không tạo sự kiện hoặc đợt cấm mới.
 
-3. Customer bị cấm còn đơn chưa hoàn tất: chỉ cho đăng nhập để xem và xử lý đúng đơn đó theo quy tắc thông thường, không được mua/thanh toán mới. Không còn đơn chưa hoàn tất: không đăng nhập được.
+**Nghĩa vụ hiện tại và quyền**
 
-4. Seller đã duyệt bị cấm phạm vi SELLER: chỉ được đăng nhập nếu còn đơn chưa hoàn tất hoặc số dư khả dụng; sau đăng nhập chỉ xử lý đơn đang dở và/hoặc rút tiền khả dụng, không bán mới. Không đóng băng số dư khả dụng chỉ vì cấm SELLER. Cấm phạm vi USER: khóa toàn bộ đăng nhập và thu hồi phiên; tác vụ hoàn tiền/đối soát vẫn chạy tự động.
+* Order chưa kết thúc: `AWAITING_PAYMENT`, `PAID`, `PACKING`, `DELIVERED`. `CONFIRMED`, `CANCELLED`, `PAYMENT_FAILED`, `EXPIRED` không tự giữ phiên; lịch sử từng trả tiền không cấp quyền.
+* Payment PENDING, SUCCESS chưa apply xong vào Order, thu muộn chưa hoàn xong; Refund PENDING hoặc FAILED chưa giải quyết vẫn là nghĩa vụ, kể cả Order CANCELLED/phiên đã đóng hoặc FULL_CHECKOUT.
+* Seller thêm Settlement PENDING/PENDING_REFUND, hiệu ứng tài chính chưa apply (kể cả giá trị 0), `pendingBalanceVnd > 0` hoặc `availableBalanceVnd > 0`. Không chỉ kiểm tra tổng tiền. Timeout, thiếu dữ liệu, 404 tài khoản/ví đáng lẽ tồn tại hoặc dữ liệu không nhất quán không chứng minh hết nghĩa vụ.
+* BANNED Customer chỉ xem đơn/phiên và Payment/Refund gắn nghĩa vụ đúng chủ; hủy/xác nhận theo state machine hiện hành. Không giỏ, checkout, thu mới, review hoặc toàn bộ lịch sử kết thúc. AWAITING_PAYMENT không cho bấm thanh toán; J1/J2/J2b tiếp tục. Public browsing không mở quyền mua sắm authenticated.
+* BANNED Seller chỉ xử lý đơn tồn đúng cửa hàng và thông tin tiền/biên nhận cần giải quyết nghĩa vụ; không sản phẩm, tồn kho, nhận đơn mới hoặc thống kê chung. Chỉ pending: xem tiến độ, không rút pending; chỉ available: ví/rút và biên nhận liên quan.
+* `accessMode`: ACTIVE → FULL; Customer có nghĩa vụ đơn → OPEN_ORDERS_ONLY; Seller có đơn và available → ORDERS_AND_WITHDRAWAL, chỉ đơn → OPEN_ORDERS_ONLY, chỉ available → WITHDRAWAL_ONLY; chỉ nghĩa vụ hệ thống/pending không có thao tác đơn/rút → OBLIGATIONS_READ_ONLY; DISABLED → LOGIN_BLOCKED. Đây không phải trạng thái cấm mới. Mỗi request tính allowlist hiện hành, kiểm tra ownership/state; nhãn có đơn không cho phép trả tiền AWAITING_PAYMENT. Refresh/login cùng policy, không tin quyền snapshot cũ. DISABLED login dùng ACCOUNT_DISABLED; thao tác ngoài allowlist dùng ACCOUNT_BANNED.
 
-5. Hệ thống gửi thông báo và lưu phạm vi, lý do, thời điểm cấm/gỡ cấm. Khi gỡ cấm, khôi phục quyền theo trạng thái Seller đã duyệt; không tự khôi phục đơn đã hủy.
+**Đối soát và sự kiện**
 
-**LUỒNG THAY THẾ / NGOẠI LỆ**
+* Identity lấy `GET /internal/v1/orders/accounts/{userId}/obligations?accountType=CUSTOMER|SELLER`: Order tổng hợp Order/CheckoutSession đúng chủ và xác minh Payment/Refund qua API, không join DB; kết quả `{hasOpenOrders,openOrderIds,hasPendingPayment,hasUnresolvedRefund,evaluatedAt,orderStateVersion}`. Seller thêm `GET /internal/v1/finance/sellers/{sellerId}/obligations` → `{hasPendingFinance,pendingBalanceVnd,availableBalanceVnd,evaluatedAt,financeStateVersion}`. Đây là contract đặc tả mới, không tuyên bố endpoint code có sẵn.
+* J7 do Identity định kỳ đối soát cả BANNED/DISABLED: hết nghĩa vụ đã xác minh → DISABLED; nghĩa vụ đến muộn → BANNED giới hạn, không tự unban, không chuyển ACTIVE. Login/refresh cũng kiểm tra nghĩa vụ muộn trước từ chối DISABLED. Cùng đợt cấm giữ disabled_at/restore_until kể cả DISABLED→BANNED→DISABLED; không gia hạn. Không đặt chu kỳ/SLA mới.
+* HTTP liên service ngoài transaction giữ khóa. Trước commit kiểm tra version/đợt cấm còn hiện hành để không ghi đè Admin unban. Nguồn lỗi giữ trạng thái, retry bền vững; request cần xác minh trả 503, không mở rộng quyền. Snapshot nhiều service không nguyên tử; hiệu ứng đến trễ phải được giữ bền vững, không mất tiền.
+* Tái sử dụng `customer.banned/unbanned`, `seller.banned/unbanned`, `user.disabled/enabled`, envelope/version/dedupe; payload liên quan thêm `accountStatus,accessMode,bannedAt,disabledAt,restoreUntil`. `user.enabled` do nghĩa vụ muộn mang BANNED, không phải unban; chỉ lệnh unban phát *.unbanned. Không tự hủy Order hoặc đóng băng available; Payment/Refund/jobs tiếp tục. Notification theo User/accountType độc lập, phân biệt quyền giới hạn với khôi phục toàn bộ và nêu deadline khi có.
 
-* Seller đã duyệt bị cấm khi còn đơn chưa hoàn tất: không tự hủy đơn chỉ vì bị cấm; cho đăng nhập giới hạn để xử lý đơn đang dở theo luồng giao/từ chối và hạn 7 ngày. Hủy/hoàn theo các điều kiện bình thường và từng Order; đơn của cửa hàng khác không ảnh hưởng.
-
-* Seller đã xác nhận “Đã giao”: tiếp tục chờ Customer xác nhận; khi Order đã\_xác\_nhận, tiền chuyển từ chờ sang khả dụng, Seller bị cấm phạm vi SELLER vẫn có thể rút trong phiên giới hạn.
-
-* Đơn đang có khoản hoàn chờ kết quả: tiếp tục đối soát; không xóa nghĩa vụ.
-
-* Cấm/gỡ cấm lặp an toàn; mọi thao tác có nhật ký, không tự hoàn tiền trùng.
-
-* Tài khoản Customer/Seller/Administrator độc lập; cấm một tài khoản hoặc phạm vi không tự động cấm tài khoản khác của cùng một người.
-
-* Chỉ được cấm Seller đã được duyệt. Hồ sơ Seller chờ duyệt hoặc bị từ chối không có thao tác “Cấm Seller”; các tài khoản Seller này vốn không được đăng nhập.
-
-**Kết quả mong đợi: Customer bị cấm chỉ đăng nhập nếu còn đơn chưa hoàn tất; Seller đã duyệt bị cấm chỉ đăng nhập nếu còn đơn chưa hoàn tất hoặc số dư khả dụng, chỉ được xử lý đơn/rút khả dụng; cấm USER chặn toàn bộ. Không làm mất số dư đã quyết toán hay tự hủy/hoàn đơn ngoài quy tắc thông thường.**
+**Kết quả:** bảo toàn nghĩa vụ và tiền; xem [API Identity](api_specs.md), [Database §3.1, §8.2D](database.md) cho contract hiệu lực.
 
 #### UC-E04 | Gỡ / khôi phục sản phẩm
 
@@ -1231,7 +1232,7 @@ Do UC-C02 bị loại bỏ, Admin không còn danh sách “Báo cáo vi phạm�
 
 * Một Payment có nhiều khoản hoàn của các đơn khác nhau: không cộng các khoản vượt tổng Payment; không hoàn trùng một đơn.
 
-* Seller bị cấm phạm vi SELLER vẫn được tự rút số dư khả dụng khi đáp ứng ngoại lệ; Admin không rút thay. Cấm toàn tài khoản USER vẫn chặn đăng nhập.
+* BANNED tự rút available theo UC-D05, không đợi unban; Admin không rút thay.
 
 * Không được tự nhập tay trạng thái đã hoàn, không sửa số dư ví, không tạo/hủy giao dịch rút hay bút toán thủ công.
 
@@ -1317,7 +1318,7 @@ Do UC-C02 bị loại bỏ, Admin không còn danh sách “Báo cáo vi phạm�
 
 * Seller bắt buộc được phép từ chối giao hàng với lý do; khi từ chối hoặc không xác nhận giao/từ chối trong 7 ngày, hệ thống hủy đơn và hoàn tiền đúng đơn đó.
 
-* Khách hủy hợp lệ, Seller từ chối hoặc không xử lý trước hạn J4: hoàn đúng Order đó; không tự hủy chỉ vì Seller bị cấm sau thanh toán.
+* Khách hủy hợp lệ, Seller từ chối, hết hạn J4 hoặc Order đã chứng minh invalid giao dịch khi áp dụng Payment SUCCESS theo UC-B06: hoàn đúng Order đủ điều kiện, Payment giữ SUCCESS, pending chỉ giảm khi Refund SUCCESS. Ban sau thu tiền hoặc lỗi nguồn không tự tạo hủy/Refund; thu muộn FULL_CHECKOUT vẫn theo nhánh riêng.
 
 * Thanh toán được xác nhận thành công muộn khi phiên đã hết hạn/hủy: hoàn toàn bộ Payment; không đồng thời tạo hoàn theo đơn; không có bút toán ví.
 
@@ -1331,11 +1332,11 @@ Do UC-C02 bị loại bỏ, Admin không còn danh sách “Báo cáo vi phạm�
 
 **Lưu ý nghiệp vụ:** Hoàn tiền chỉ được coi là thành công khi bộ giả lập trả kết quả thành công cho Refund (giai đoạn 1 luôn thành công ngay). Cập nhật Refund, Settlement và bút toán ví của đơn tách khỏi việc gọi bộ giả lập để không gây lặp khi kết nối gián đoạn.
 
-#### UC-G03 | Tự động xử lý đơn/giao dịch quá hạn
+#### UC-G03 | Tự động xử lý đơn/giao dịch quá hạn và đối soát tài khoản bị cấm
 
 *Vai trò: Hệ thống · Ưu tiên: M*
 
-**Mục tiêu:** Xử lý quá hạn thanh toán, hai thời hạn 7 ngày độc lập của người bán và khách trên từng đơn, và các giao dịch tiền chưa rõ kết quả.
+**Mục tiêu:** Xử lý quá hạn thanh toán, hai thời hạn 7 ngày độc lập của người bán và khách trên từng đơn, giao dịch tiền chưa rõ kết quả và vòng đời tài khoản bị cấm theo nghĩa vụ hiện tại.
 
 **Điều kiện:** Tác vụ định kỳ theo N-06 được kích hoạt.
 
@@ -1350,6 +1351,8 @@ Do UC-C02 bị loại bỏ, Admin không còn danh sách “Báo cáo vi phạm�
 4. J3 (Must): Order đã\_giao nhưng khách không chọn “Đã nhận hàng” trong 7 ngày kể từ lúc Seller xác nhận đã giao → tự chuyển sang “Đã xác nhận” và quyết toán đơn (UC-G04), tiền Seller chuyển sang khả dụng.
 
 5. J5/J6: tiếp tục kiểm tra các khoản hoàn tiền và email bị lỗi hoặc chưa rõ.
+
+6. J7 — Đối soát trạng thái tài khoản bị cấm, owner Identity: định kỳ xử lý BANNED↔DISABLED theo nghĩa vụ UC-E03; không tự unban/đụng ACTIVE. Retry an toàn, không reset deadline, kiểm tra version/đợt cấm trước commit; nguồn lỗi giữ trạng thái. Login/refresh/request dùng cùng policy, không cam kết SLA hay chu kỳ mới.
 
 **LUỒNG THAY THẾ / NGOẠI LỆ**
 
@@ -1383,7 +1386,7 @@ Do UC-C02 bị loại bỏ, Admin không còn danh sách “Báo cáo vi phạm�
 
 * Đơn bị hủy/đang hoàn: không chốt hoa hồng, không ghi có khả dụng.
 
-* Seller bị cấm phạm vi SELLER vẫn được quyết toán đơn đã giao khi đã\_xác\_nhận; số dư khả dụng không bị đóng băng chỉ vì cấm SELLER và Seller được rút khi đăng nhập giới hạn.
+* BANNED vẫn quyết toán đơn đủ điều kiện; available không đóng băng; nghĩa vụ tới muộn mở lại BANNED giới hạn theo UC-E03.
 
 * Sᵢ \= 0: chốt Settlement, không ghi bút toán cho ví Seller.
 
@@ -1399,9 +1402,11 @@ Do UC-C02 bị loại bỏ, Admin không còn danh sách “Báo cáo vi phạm�
 
 Truy vết dữ liệu (theo Database RBAC v5.0): CheckoutSession (3.6.1) → Order/OrderItem (3.6.2–3.6.3) → Reservation (3.6.5) → Payment/Refund (3.4) → trạng thái và hạn 7 ngày (8.2) → Settlement (3.5.1, 8.3) → Wallet/WalletTransaction (3.5.2–3.5.3) → Withdrawal (3.5.4). Hai mã job J3/J4 bắt buộc.
 
-Kiểm thử trọng yếu: 1 CheckoutSession/N Order/1 Payment; hoàn đúng đơn, không vượt tiền thu; giao/từ chối và xác nhận trong các mốc 7 ngày; ba tài khoản riêng cho ba vai trò; sai vai trò báo lỗi đăng nhập chung; Seller chờ duyệt/bị từ chối không đăng nhập, sau từ chối gửi hồ sơ mới; chỉ Seller đã duyệt mới được cấm; Customer bị cấm chỉ xử lý đơn chưa hoàn tất; Seller bị cấm chỉ xử lý đơn chưa hoàn tất/rút khả dụng; ảnh Seller dùng chung trường ảnh đại diện/logo; không rút tiền chờ, hoàn tiền không làm ví âm, rút lặp không trừ hai lần.
+Kiểm thử trọng yếu: 1 CheckoutSession/N Order/1 Payment; hoàn đúng đơn, không vượt tiền thu; giao/từ chối và xác nhận trong các mốc 7 ngày; ba tài khoản riêng cho ba vai trò; sai vai trò báo lỗi đăng nhập chung; Seller chờ duyệt/bị từ chối không đăng nhập, sau từ chối gửi hồ sơ mới; chỉ Seller đã duyệt mới được cấm. Quyền BANNED dựa nghĩa vụ Order/Payment/Refund/Finance hiện tại, không lịch sử thanh toán; J7 chuyển BANNED↔DISABLED không tự unban hoặc gia hạn; unban DISABLED trong 30 ngày từ lần đầu DISABLED của đợt cấm. Ảnh Seller dùng chung trường ảnh đại diện/logo; không rút pending, BANNED được rút toàn bộ available dương dưới 10.000, ACTIVE giữ ngưỡng cũ; hoàn tiền không làm ví âm, rút lặp không trừ hai lần. Đối chiếu đầy đủ B1–B11/P1–P2/O1–O3 tại §9.
 
 ## 8. Nhật ký quyết định cập nhật v5.0 – v5.5
+
+Các hàng phiên bản trước là **lịch sử**; policy cấm và ngoại lệ rút đã được Thẻ 15 thay tại UC-E03/D05 ngày 17/11/2026, không dùng scope hoặc điều kiện chỉ có đơn/available làm policy hiện hành.
 
 | Hạng mục | Quyết định | Áp dụng |
 | :---- | :---- | :---- |
@@ -1466,7 +1471,7 @@ Các tham số P-01…P-26, N-xx, P-COM-01 chưa được cung cấp vẫn giữ
 | S-DELIVERY-07 | 7 ngày kể từ Payment success: Seller phải xác nhận đã giao hoặc từ chối giao từng đơn; nếu không → hủy/hoàn đơn đó | Đã chốt |
 | S-RECEIPT-07 | 7 ngày kể từ Seller xác nhận đã giao: khách không phản hồi → đơn tự đã\_xác\_nhận | Đã chốt |
 | S-WALLET-01 (v5.2) | Tiền Seller chỉ chuyển sang khả dụng khi Order đã\_xác\_nhận; không có thời gian tạm giữ thêm sau xác nhận trong MVP vì không có đổi trả sau nhận hàng | Đã chốt trong v5.2 |
-| P-WD-01 (v5.2) | Số tiền tối thiểu mỗi lần rút \= 10.000 VND; tối đa \= số dư khả dụng; không giới hạn số lần/ngày | Đã chốt |
+| P-WD-01 | Ngưỡng chung 10.000 VND; tối đa available; ngoại lệ BANNED rút toàn bộ available dương dưới ngưỡng UC-D05; không giới hạn số lần/ngày | Đã chốt Thẻ 15 |
 | S-WD-INSTANT (v5.2) | Rút tiền giả lập hoàn tất ngay trong một transaction; không duyệt, không trạng thái chờ, không Payout | Đã chốt |
 | P-COM-01 | Tỷ lệ hoa hồng mặc định dạng bps | Chưa chốt, 500 bps hay 2.000 bps chỉ là ví dụ |
 | N-06 | Chu kỳ job nền | Chưa chốt; không suy diễn thêm |
@@ -1493,7 +1498,7 @@ Kịch bản nghiệm thu tối thiểu — dùng để QA/UAT đối chiếu c�
 | Hai đơn cùng lần thanh toán bị hủy ở các thời điểm khác nhau | Hai Refund khác nhau trên một Payment; không hoàn trùng/không vượt tiền thu |
 | Đơn A bị hủy, đơn B đã\_xác\_nhận | A hoàn tiền, B quyết toán và vào số dư khả dụng của Seller B |
 | Seller B đăng nhập | Chỉ thấy đơn B và ví B, không thấy đơn A dù cùng lần thanh toán |
-| Customer bị cấm, có/không có đơn chưa hoàn tất | Còn đơn chưa hoàn tất: đăng nhập giới hạn, chỉ xử lý đúng các đơn đó; không mua/thanh toán mới. Không còn đơn chưa hoàn tất: không đăng nhập. |
+| Customer BANNED có/không Order mở | Đánh giá cả Payment/Refund; còn nghĩa vụ → giới hạn UC-E03; mọi nguồn xác minh hết → DISABLED. |
 | Payment success đến muộn sau khi phiên hết hạn | Hoàn toàn bộ Payment; không tạo Refund theo đơn, không tạo Settlement/bút toán ví |
 | Tỷ lệ hoa hồng thay đổi sau checkout | Mỗi đơn dùng tỷ lệ snapshot tại lúc tạo đơn |
 | “Mua ngay” sản phẩm X số lượng 2, đặt hàng | Một CheckoutSession (nguồn\_checkout \= mua\_ngay), một Order, một OrderItem số lượng 2 |
@@ -1507,14 +1512,35 @@ Kịch bản nghiệm thu tối thiểu — dùng để QA/UAT đối chiếu c�
 | Seller rút 40.000 | Ngay khi xác nhận: khả dụng 0, đã rút 40.000; một Withdrawal và một bút toán WITHDRAWAL\_COMPLETED |
 | Sau khi Seller rút hết, khách hủy một đơn khác (chờ\_xử\_lý) của cùng Seller | Hoàn tiền thành công thì trừ ngăn chờ của đúng đơn đó; khả dụng/đã rút của Seller không đổi; không số dư âm |
 | Khách cố hủy đơn đã\_giao hoặc đã\_xác\_nhận | Bị từ chối; tiền đã khả dụng không bị thu hồi |
-| Seller rút 9.999 VND hoặc số tiền \> khả dụng | Từ chối; không tạo Withdrawal; số dư không đổi |
+| ACTIVE rút 9.999 hoặc Seller rút vượt available | Từ chối, không Withdrawal; ngoại lệ BANNED dưới ngưỡng chỉ toàn bộ available. |
 | Seller rút toàn bộ số dư đồng thời từ hai tab | Chỉ một lần thành công; lần còn lại báo không đủ số dư |
 | Bấm “Rút” lặp cùng idempotency\_key | Trả lại cùng giao dịch; ví chỉ bị trừ một lần |
-| Seller đã duyệt bị cấm khi còn số dư khả dụng | Đăng nhập giới hạn và rút số dư khả dụng nếu đáp ứng mức tối thiểu 10.000 VND; không bán mới, không rút số dư chờ. |
+| APPROVED BANNED còn available | Phiên giới hạn, rút theo UC-D05 kể cả toàn bộ available dương dưới ngưỡng; không bán mới/rút pending. |
 | Một người sử dụng cả Customer và Seller | Dùng hai tài khoản riêng với thông tin đăng nhập khác nhau, không gộp vai trò/phiên đăng nhập; Administrator (nếu có) cũng phải là tài khoản riêng. |
 | Seller đăng nhập khi hồ sơ chờ duyệt hoặc bị từ chối | Cả hai trạng thái đều không đăng nhập được. Khi từ chối: thông báo lý do qua email; muốn đăng ký lại phải nộp hồ sơ đăng ký mới, không sửa/nộp lại hồ sơ cũ. |
 | Tìm nút “Báo cáo” trên trang sản phẩm/người bán | Không tồn tại; không có API báo cáo vi phạm |
 | Đối chiếu tiền | Tổng thu \= đã hoàn \+ chờ hoàn toàn bộ phiên \+ Σ số dư chờ (gồm phần đơn đang chờ hoàn) \+ hoa hồng đã chốt \+ Σ khả dụng \+ Σ đã rút |
 
-**Lưu ý triển khai và QA/UAT: phải đồng bộ BRD, Database RBAC, API Identity/RBAC, quy tắc WD-09, UI Screens, wireframe và activity diagram với FRD v5.5. Bổ sung test: sai vai trò báo lỗi chung; Seller chờ duyệt/bị từ chối không đăng nhập; hồ sơ bị từ chối phải nộp hồ sơ mới; chỉ cấm Seller đã duyệt; Customer bị cấm có/không có đơn chưa hoàn tất; Seller bị cấm có/không có đơn chưa hoàn tất/số dư khả dụng; avatar và logo Seller dùng một trường users.avatar\_object\_key. Việc đăng ký lại Seller cần được chuẩn hóa trong API/Database trước khi code. Các quy tắc về Order, Payment/Refund và giả lập thanh toán vẫn theo Database 8.4, trừ quyền rút Seller bị cấm như v5.5.**
+**Đối chiếu đặc tả, không phải UAT/runtime pass:** authority và tình trạng đồng bộ các bề mặt tại [coverage](coverage.md#the-15). Các ca sau là yêu cầu nghiệm thu bổ sung, không tuyên bố code/migration đã triển khai.
+
+### Ca nghiệm thu Thẻ 15
+
+| Ca | Đầu vào | Kết quả bắt buộc |
+| :---- | :---- | :---- |
+| B1 | Customer chỉ CONFIRMED, không Payment/Refund dở | DISABLED, thu hồi phiên, lập disabledAt/restoreUntil; lịch sử không cấp ngoại lệ. |
+| B2 | Customer PAID/DELIVERED | BANNED đúng chủ, hủy PAID/xác nhận DELIVERED theo state; không giỏ/thu mới/review. |
+| B3 | CANCELLED, Refund FAILED | BANNED xem nghĩa vụ hoàn; Refund SUCCESS và mọi nguồn xong mới DISABLED. |
+| B4 | Seller không đơn thao tác, pending>0 hoặc effect chưa apply | BANNED/OBLIGATIONS_READ_ONLY, không rút pending; available sau đó mới rút. |
+| B5 | BANNED available=9.500 rút 9.500/5.000; ACTIVE rút 9.500 | BANNED toàn bộ 9.500 hợp lệ; hai yêu cầu còn lại WITHDRAWAL_BELOW_MINIMUM. |
+| B6 | Rút hết, hết nghĩa vụ, J7 hai lần | DISABLED một lần; không reset deadline/duplicate event/sửa ledger cũ. |
+| B7 | Unban đúng restoreUntil / sau 1 giây | 200 ACTIVE đúng hạn; sau hạn 409 ACCOUNT_RESTORE_WINDOW_EXPIRED; dữ liệu/tiền nguyên vẹn. |
+| B8 | BANNED >30 ngày chưa từng DISABLED | Vẫn xử lý nghĩa vụ/unban bất kỳ lúc nào; cửa sổ chưa bắt đầu. |
+| B9 | Order/Finance timeout, J7 đua Admin unban | Không đoán zero/disable hoặc ban một phần; job không ghi đè ACTIVE. |
+| B10 | DISABLED rồi available tới muộn | BANNED giới hạn, không unban; giữ mốc cùng đợt, lại DISABLED không gia hạn. |
+| B11 | PENDING/REJECTED hoặc ADMIN | Không ban/đổi approval/role; popup/API cùng điều kiện. |
+| P1 | Muốn SELLING, provision timeout/replay | Một Product HIDDEN/cùng productId; Inventory xác nhận và còn hợp lệ mới SELLING. |
+| P2 | REMOVED/Seller ban khi provision; validation/media lỗi trước tạo | Không tự publish; lỗi trước tạo không lưu Product dở. |
+| O1 | Payment SUCCESS, một Order invalid, Seller khác hợp lệ | Giữ Payment SUCCESS; chỉ invalid PAID/PACKING hủy/hoàn; đủ checkout.paid/order.cancelled; pending chỉ giảm khi Refund SUCCESS. |
+| O2 | Ban sau capture, event tới chậm | Không cancel/refund/suy invalid từ status hiện tại; giữ quyền xử lý/J4. |
+| O3 | Identity/Product lỗi, replay | Retry bền vững, không coi lỗi mạng invalid; không lặp SOLD/RESTOCK/Refund/ledger. |
 
