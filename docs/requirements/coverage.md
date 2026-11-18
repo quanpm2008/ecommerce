@@ -25,12 +25,37 @@ Mapping bổ sung: Identity AC-IDN-010/011 bao phủ deadline/J7/lỗi nguồn; 
 
 Kiểm chứng ngày 18/11/2026: 561 explicit ID duy nhất, giữ đủ 37 UC/17 G/11 WD/26 AT; manifest 5 nguồn hiện hành khớp SHA-256. Kiểm tra gốc vẫn FAIL tại đường dẫn lịch sử `business/UET FRD v5.4 - dong bo API DB.md` không tồn tại. Scan link tách 656 dẫn `business/` cũ, còn một link hiện trạng Catalog tới `ProductTestController.java` không tồn tại; không coi toàn bộ link repository đã pass. Không chạy runtime/UAT. Remote chưa thay đổi do browser timeout và giới hạn chỉnh sửa thiết kế; [bản vá/chi tiết kiểm chứng](../plans/active/the-15-docs-remote-patches.md) giữ trạng thái Blocked, không chuyển completed.
 
+<a id="the-16"></a>
+## Tham số Thẻ 16 — 18/11/2026
+
+Nguồn: [Thẻ 16 trên Google Docs](https://docs.google.com/document/d/1VukChbA8p9eOU_loe7y_RVCFvdkzIeMDQCWBoUn2nRI/edit?tab=t.m7xl31skw7qz) và yêu cầu áp dụng các quyết định này vào repository. [Bảng tham số](parameters.md) ghi các giá trị sử dụng và ngoại lệ. Khi một đoạn cũ cùng chủ đề còn để ngỏ hoặc khác giá trị, dùng quyết định Thẻ 16; không dùng ghi chú dev hoặc ví dụ để thay quyết định.
+
+- Hoa hồng chung 5% cho mọi ngành hàng/Seller; Category dùng 10 ngành hàng ban đầu, không có tỷ lệ riêng.
+- Khách lưu tối đa 3 địa chỉ; địa giới là dữ liệu tĩnh nạp sẵn trong DB Identity. Nguồn và phiên bản bộ dữ liệu phải được ghi rõ khi chuẩn bị dữ liệu.
+- Giỏ tối đa 50 dòng, mỗi dòng tối đa 99 đơn vị; giới hạn media, mô tả, hiển thị và cảnh báo dùng các con số đã chốt trong bảng tham số.
+- Mỗi chu kỳ hoàn tiền có lần đầu và tối đa 3 lần thử lại sau 1, 5 và 15 phút từ lỗi trước. Hết lượt thì khách đã thanh toán mở chu kỳ mới trên cùng khoản hoàn, không chuyển Admin. Kết quả chưa rõ chỉ được tra cứu, không coi timeout là thất bại.
+- Email lỗi tạm thời cũng được gửi lại tối đa 3 lần sau lần đầu, chờ 1, 5 và 15 phút. Thông báo trong ứng dụng giữ 30 ngày và hiển thị tối đa 50 bản gần nhất; không xóa email hoặc khóa chống trùng.
+
+P-01 vẫn dùng tạm 15 phút, chưa chốt. N-09, N-11 và P-37 giữ nguyên; các phần Should/Could và phân tích đã hoãn không tự trở thành Must. Đây là thay đổi yêu cầu tài liệu, không xác nhận code, migration hoặc test ứng dụng đã đáp ứng.
+
+| Phần team dev cần kiểm tra | Hồ sơ đọc trước | Kết quả cần kiểm chứng |
+|---|---|---|
+| Tài khoản và địa chỉ | [Identity](identity.md) | Liên kết reset hết hạn sau 30 phút; thêm địa chỉ thứ tư bị từ chối kể cả khi gửi đồng thời; mã địa giới được kiểm tra bằng dữ liệu trong DB; đăng nhập sai không gây khóa tạm. |
+| Sản phẩm, media và hiển thị | [Catalog](catalog.md#ac-cat-005), [ngưỡng bán chạy](catalog.md#ac-cat-006) | Kiểm tra biên số tệp/video, độ dài nội dung, 20 bản ghi/trang và điểm 1 chữ số thập phân; 500 lượt chưa bán chạy, 501 lượt đạt; tồn khả dụng ≤5 có cảnh báo. |
+| Giỏ và đơn | [Order](checkout-orders.md#ac-ord-008) | Dòng giỏ không vượt 99, giỏ không vượt 50 dòng, Mua ngay không chạm giỏ; giữ enum lý do và ghi chú tối đa 500 ký tự; cảnh báo khi còn không quá 24 giờ. |
+| Tiền và hoàn tiền | [Finance](finance.md), [Payment](payments.md) | Mọi ngành hàng dùng 5%; đơn cũ giữ tỷ lệ đã lưu. Lệnh hoàn không phát lại khi chưa rõ kết quả; hết lượt chỉ đúng khách chủ Payment mở chu kỳ mới trên cùng khoản hoàn. |
+| Email và thông báo | [Notification](notifications.md) | Lỗi tạm thời gửi lại 1/5/15 phút, dừng đúng điều kiện; giới hạn 50 bản/30 ngày không làm mất email, lịch sử hoặc khóa chống trùng. |
+
+Các tình huống này là tiêu chí để triển khai và kiểm tra, chưa phải kết quả test ứng dụng.
+
+Kiểm tra tài liệu Thẻ 16: 5 nguồn hiện hành khớp hash/số dòng; link/anchor còn truy cập được, mã và các giá trị tham số đã qua kiểm tra tĩnh. Các link lịch sử thiếu vẫn là giới hạn, không coi toàn bộ repository đã pass. Kết quả và phạm vi được ghi tại [kế hoạch hoàn tất](../plans/completed/the-16-parameters.md); chưa chạy test ứng dụng.
+
+
+
 ## Baseline và giới hạn kết luận
 
 Người dùng chấp nhận SAD v1.1 §7.1/D.1 và cây tài liệu ngày 11/11/2026.
-Nguồn Markdown dưới đây là input trực tiếp; không tuyên bố đã đọc chốt.txt,
-BRD, Parameter Register, Figma hoặc các DOCX/PDF _UPDATED được SAD D.1 dẫn.
-Chấp nhận baseline không làm các nguồn thiếu xuất hiện hoặc phê duyệt DELTA.
+Nguồn Markdown là input trực tiếp của lần lập baseline ngày 11/11/2026; lần đó chưa đọc chốt.txt, BRD, Parameter Register, Figma hoặc các DOCX/PDF _UPDATED được SAD D.1 dẫn. Thẻ 16 và các xác nhận bổ sung hiện đã được đưa vào [bảng tham số](parameters.md). Chấp nhận các giá trị này không phê duyệt các DELTA kỹ thuật còn mở.
 
 Mốc code đối chiếu: a79ab611f59d592c4d7fe407b8da96b3ef7290ae, nhánh main,
 worktree có staged rename architecture/→business/ và tài liệu untracked của người dùng.
@@ -38,25 +63,25 @@ Mọi kết luận code/test là khảo sát tĩnh ngày 11/11/2026, không kế
 
 ## Manifest nguồn
 
-Hash là SHA-256 toàn bộ bytes, chỉ phát hiện đổi nguồn. Ba hàng `business/...` là manifest lịch sử baseline 11/11/2026, không đổi đường dẫn/hash quá khứ thành giả định file hiện có. Ngày 16/11 hai nguồn kiến trúc chuyển vào `docs/requirements/`; ngày 18/11 cập nhật hash/line của nguồn kiến trúc và ba nguồn hiện hành sau hiệu chỉnh Thẻ 15. Nguồn lịch sử `docs/api.md`, `docs/database.md`, FRD v5.4 không bị sửa bởi công việc này.
+Hash là SHA-256 toàn bộ bytes, chỉ phát hiện đổi nguồn. Ba hàng `business/...` là manifest lịch sử baseline 11/11/2026, không đổi đường dẫn/hash quá khứ thành giả định file hiện có. Ngày 16/11 hai nguồn kiến trúc chuyển vào `docs/requirements/`; ngày 18/11 nguồn hiện hành được hiệu chỉnh theo Thẻ 15 và các tham số Thẻ 16. Nguồn lịch sử `docs/api.md`, `docs/database.md`, FRD v5.4 không bị sửa bởi công việc này.
 
 | Đường dẫn | Phiên bản / phạm vi | Dòng | SHA-256 |
 |---|---|---:|---|
 | `business/UET FRD v5.4 - dong bo API DB.md` | FRD v5.4, 06/11/2026; 37 UC (2 loại bỏ), nghiệp vụ/ngoại lệ | 1539 | `e4fbc0e7b16583e90da42e0ca0fb139f54b63682be9a5c8ca3a91ca283b07de9` |
 | `business/database.md` | Database RBAC v5.0, 25/10/2026; data dictionary/G/WD/state | 1055 | `033b8c01e69a8e6c9f783c51b29933ae8afe240e5f85e37423c60c4923e65ab1` |
 | `business/api.md` | API v1.0, 25/10/2026, có cập nhật sau metadata; contract để review | 2979 | `6cf4d3144537fcabf1e4aafd3f1e3886200166e6ad3cbe696dbd5463d12b4046` |
-| `docs/requirements/software-architecture.md` | SAD-ECOM-01 v1.1 + hiệu chỉnh Thẻ 15, 18/11/2026 | 1137 | `5c81048802cc35658bc3f3973ce8422646ca4f2cf806a6cf598eeaf7852a3bc9` |
-| `docs/requirements/system-architecture.md` | Kiến trúc hệ thống + hiệu chỉnh Thẻ 15, 18/11/2026 | 1141 | `1df9591c1a4cb5447ecd3a851dd2663396512d25eb2c50b11c0c46f2d521da44` |
+| `docs/requirements/software-architecture.md` | SAD-ECOM-01 v1.1 + Thẻ 15/Thẻ 16, 18/11/2026 | 1149 | `a6db580dc6aeaaea5aefed324d2ebec7e345f47ab4cc12dddce12e6dc5d40d9f` |
+| `docs/requirements/system-architecture.md` | Kiến trúc hệ thống + Thẻ 15/Thẻ 16, 18/11/2026 | 1154 | `f617e87f465fde125b9464d900b4c5b3f041d17fb08c36969b282fe36d294320` |
 
 ### Nguồn mới được thêm vào harness ngày 16/11/2026
 
 | Tài liệu | Phiên bản | Dòng | SHA-256 |
 |---|---|---:|---|
-| [docs/requirements/FRD.md](FRD.md) | FRD v5.5 + Thẻ 15, 18/11/2026 | 1546 | `8532c531cd333fd08ddf14ffa815f7c00a34943d71aa65d40bd2d428e6e8a14d` |
-| [docs/requirements/api_specs.md](api_specs.md) | API v1.1 + Thẻ 15, 18/11/2026 | 3043 | `e11ac577117a69f6a98dfb4c943ae5676d364964e1950a7f8719dadd7203bcee` |
-| [docs/requirements/database.md](database.md) | Database v5.1 + Thẻ 15, 18/11/2026 | 1098 | `ee6ff9b9fea62e2af7daf8019381f839fa441a7f9246e679f38cadf54592f491` |
+| [docs/requirements/FRD.md](FRD.md) | FRD v5.5 + Thẻ 15/Thẻ 16, 18/11/2026 | 1554 | `1e9bca1fdd3241c0847eb96e2c65d6d0d865b03a664aa4776cb5d85586047608` |
+| [docs/requirements/api_specs.md](api_specs.md) | API v1.1 + Thẻ 15/Thẻ 16, 18/11/2026 | 3067 | `58c0576bd46401838a012104ead47db647e5cdde2711d783a7fec296ff918819` |
+| [docs/requirements/database.md](database.md) | Database v5.1 + Thẻ 15/Thẻ 16, 18/11/2026 | 1120 | `4861f3ea2f9f5c978544309fd1d37d503ae8cd32c59f16106025d58e764d593b` |
 
-Các phần thuộc Thẻ 15 đã được đối chiếu ngữ nghĩa theo bảng trên; không xác nhận đã rà lại toàn bộ 377 clause/implementation theo nguồn mới. Các dẫn `Lx–y` chưa sửa bên dưới vẫn là snapshot cũ, không chuyển nguyên số dòng sang bản mới. Khi chạm phần ngoài phạm vi, đối chiếu authority trước triển khai, không suy diễn từ hash/ngày sửa. Các inventory nguồn cũ giữ tên/section cũ như provenance, không phải đề nghị dùng lại scope/đa vai trò/snapshot đã bị thay.
+Các phần thuộc Thẻ 15 và các tham số Thẻ 16 được hiệu chỉnh theo nguồn quyết định tương ứng; không xác nhận đã rà lại toàn bộ 377 clause/implementation theo nguồn mới. Các dẫn `Lx–y` chưa sửa bên dưới vẫn là snapshot cũ, không chuyển nguyên số dòng sang bản mới. Khi chạm phần ngoài phạm vi, đối chiếu authority trước triển khai, không suy diễn từ hash/ngày sửa. Các inventory nguồn cũ giữ tên/section cũ như provenance, không phải đề nghị dùng lại scope/đa vai trò/snapshot đã bị thay.
 
 ## UC và điều khoản đã chuyển
 
@@ -233,13 +258,13 @@ Các nội dung sau **đề xuất/cần review trước code**, không tự t�
 
 | Mã câu hỏi | Phạm vi / nguồn | Điều cần chốt, không suy diễn |
 |---|---|---|
-| OQ-001 | SAD §7.3; API §9.1; FRD §9 | P-01…P-26/N-xx thiếu Parameter Register đầy đủ. Giá trị TTL/giới hạn dev không là policy; chưa có đủ taxonomy để bịa tên/giá trị mọi P. |
-| OQ-002 | P-COM-01; Database §8.3 | Nguồn/rate hoa hồng bps, validation cấu hình; không tự chọn 500 hoặc 2.000 từ ví dụ. |
-| OQ-003 | SAD §3.1/6.7/A.6.2; P-26 | Chọn dataset địa giới nội bộ, xuất xứ/version/ngày nhập và cập nhật; baseline đã chọn nội bộ, không hỏi lại ngoài/nội bộ. |
+| OQ-001 | [Bảng tham số](parameters.md); SAD §7.3; API §9.1 | Các giá trị Thẻ 16 đã có quyết định. P-01 vẫn dùng tạm 15 phút; những giá trị chưa được quyết định riêng như P-02/P-03/P-04/P-06/P-08.1/P-08.2/P-08.4/P-SIM-01 vẫn giữ trạng thái hiện có. Không tự chốt cả nhóm. |
+| OQ-002 | P-COM-01; Database §8.3 | Mức chung đã chốt 500 bps = 5%, không còn mở về tỷ lệ hoặc theo ngành hàng. Nơi cấu hình, quyền sửa và lịch sử thay đổi cấu hình nếu bổ sung vẫn cần quyết định riêng. |
+| OQ-003 | SAD §3.1/6.7/A.6.2; P-26 | Địa giới dùng dữ liệu tĩnh trong DB Identity. Còn cần chọn bộ dữ liệu, ghi nguồn, phiên bản/ngày dữ liệu và cách cập nhật; không mở lại lựa chọn API bên ngoài. |
 | OQ-004 | SAD §6.3–6.4; DELTA-07 | Thuộc tính cookie/profile local, Origin/CORS/CSRF/key rotation và service credential cụ thể. JWT service trong A.3 vẫn đề xuất. |
 | OQ-005 | SAD §7.2; DELTA-01…06 | Review và đồng bộ quote/pay/internal charge/cart snapshot, worker, close-expired, event/inbox; không tự gán endpoint hoặc table mới. |
 | OQ-006 | SAD §6.7 thay API C-08/Database §5.2; A.6.1 | Baseline đã quy định unaccent/lowercase. Cần đồng bộ contract, quy tắc normalize/index và test; không hỏi lại có tìm không dấu, không tự coi đã có implementation hoặc đổi thành full-text. |
-| OQ-007 | P-19, N-06; SAD §7.3/A.6.4 | Retry/email demo access/retention/dedupe và job interval; không hứa exactly-once gửi email thật. |
+| OQ-007 | P-19/P-22, N-06; SAD §7.3/A.6.4 | Email đã chốt 3 lần gửi lại sau lần đầu, chờ 1/5/15 phút; in-app tối đa 50 bản gần nhất, giữ 30 ngày. Quyền xem và thời gian giữ bí mật của email demo, lịch job và cách vận hành còn cần quyết định riêng; không hứa exactly-once gửi email thật. |
 | OQ-008 | SAD §7.3, C.5; DELTA-09 | Cloud topology/DB role/Kafka/backup, retention, tải/p95/RPO/RTO; không kết luận SLO từ thiết kế. |
 | OQ-009 | identity-service/should.md A8; API enum vs DB §6 | Tên AuditAction khác nhau giữa source API và DB chưa được baseline hiệu chỉnh cụ thể; giữ mở, không tự rename enum/CHECK. |
 
@@ -248,12 +273,15 @@ phân tích, P-14/P-15 không chặn Must tra cứu vận hành. Bảng nguồn 
 
 | Tham số | Phạm vi | Cách xử lý trong thiết kế |
 |---|---|---|
-| P-01 | TTL giữ tồn | Cấu hình Order; ràng buộc với dispatch/J1/J2b |
-| P-02/P-03/P-04 | Chờ/query/thời gian tối đa Payment | Cấu hình Payment/Order; không biến HTTP timeout thành FAILED |
-| P-05/P-06 | Reset/access/refresh TTL | Cấu hình Identity; review cùng rotation/reuse |
-| P-08/P-09/P-10/P-11 | Media/địa chỉ/giỏ/phân trang | Bind validation/config; test biên theo giá trị được chốt |
-| P-19/P-21 | Retry email/lý do hủy-từ chối | Không hardcode ví dụ ngoài contract đã duyệt |
-| P-COM-01 | Hoa hồng | Nguồn Finance; snapshot Order; bắt buộc có khi bật checkout |
+| P-01 | TTL giữ tồn | Dùng tạm 15 phút, chưa chốt; ràng buộc với dispatch/J1/J2b |
+| P-02/P-03/P-04 | Chờ/query/thời gian tối đa Payment | Giữ trạng thái riêng; không biến HTTP timeout thành FAILED |
+| P-05 | Hạn đặt lại mật khẩu | 30 phút từ khi tạo, chỉ dùng một lần |
+| P-06 | Hạn access/refresh token | Giữ trạng thái hiện có; review cùng rotation/reuse |
+| P-08/P-09/P-10/P-11 | Media/địa chỉ/giỏ/phân trang | Dùng giới hạn đã chốt trong [bảng tham số](parameters.md); dung lượng/định dạng không tự chốt theo số lượng tệp |
+| P-14/P-15/P-16/P-36 | Thời gian, bán chạy và cảnh báo | GMT+7/thứ Hai/quý lịch; bán chạy trên 500 lượt bán; tồn thấp ≤5; sắp hết hạn ≤24 giờ. Không mở lại Reporting Service. |
+| P-19/P-21/P-22 | Email/lý do/thông báo | Email có 3 lần gửi lại 1/5/15 phút; ghi chú hủy/từ chối đơn tối đa 500 ký tự; in-app 50 bản/30 ngày |
+| P-RF-01 | Hoàn tiền | 3 lần thử lại sau lần đầu mỗi chu kỳ; khách mở chu kỳ mới, giữ Refund/số tiền/key và lịch sử |
+| P-COM-01 | Hoa hồng | Chung 500 bps = 5%; lưu cùng Order tại checkout, không tính lại đơn cũ |
 | P-SIM-01 | Độ trễ success muộn | Chỉ scenario test/demo được cấu hình |
 | N-06 | Chu kỳ job | Cấu hình; không mặc định lấy một phút từ ví dụ |
 | SAD-QUOTE-TTL | Hạn quoteToken | Tham số kỹ thuật mới, TBD |

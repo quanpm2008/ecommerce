@@ -5,6 +5,8 @@ Baseline: SAD v1.1 §7.1/D.1, được người dùng chấp nhận ngày 11/11/
 Các điều khoản UC-D01/REQ-CAT-003/AC-CAT-002 được đồng bộ ngày 18/11/2026 theo [Thẻ 15](coverage.md#the-15); đây là đặc tả, không phải xác nhận implementation.
 [Quy ước/thuật ngữ](README.md) · [Coverage và câu hỏi](coverage.md) · [Kỹ thuật/validation](../engineering.md).
 
+Giới hạn media/nội dung, tìm kiếm, hiển thị đánh giá và các ngưỡng theo [tham số đã chốt](parameters.md) từ Thẻ 16; không đổi phạm vi Should/Could hoặc quyết định hoãn Reporting.
+
 Đọc đúng UC dưới đây, quy tắc bổ sung và hàng AC liên quan; chỉ mở mục contract nguồn khi cần DTO/cột/endpoint chi tiết. Yêu cầu TO-BE không chứng minh code đã làm đúng.
 
 [UC-B01](#uc-b01) · [UC-C01](#uc-c01) · [UC-C02](#uc-c02) · [UC-D01](#uc-d01) · [UC-D03](#uc-d03) · [UC-E04](#uc-e04) · [UC-E05](#uc-e05) · [UC-E07](#uc-e07) · [UC-F01](#uc-f01)
@@ -62,10 +64,12 @@ Quy tắc chung G-09/G-11 ở [engineering](../engineering.md); G-10/G-13/G-15 �
 
 | Mã | Điều khoản | Nguồn / phân loại |
 |---|---|---|
-| <a id="req-cat-001"></a>REQ-CAT-001 | Product có một Seller, một Category, một giá VND >0; không SKU/variant. Category phẳng một cấp, tên unique; không xóa danh mục được Product tham chiếu. Danh mục nền cần seed dù UI CRUD là Should. | Yêu cầu baseline; [§3.2.1–3.2.2](../../business/database.md), L243–279 |
-| <a id="req-cat-002"></a>REQ-CAT-002 | Media có ít nhất một ảnh/video, lưu metadata/object_key và thứ tự, không lưu binary/presigned URL. Backend kiểm tra loại thực tế; P-08 chưa chốt. Cover là ảnh đầu tiên, chỉ video thì placeholder; MVP không transcode video. | Yêu cầu baseline; [§3.2.2](../../business/database.md), L258–279 |
+| <a id="req-cat-001"></a>REQ-CAT-001 | Product có một Seller, một Category, một giá VND >0; không SKU/variant. Category phẳng một cấp, tên unique; không xóa danh mục được Product tham chiếu. Seed đúng 10 ngành hàng tại P-21e dù UI CRUD là Should; số thứ tự 01–10 không thay categoryId UUID. | Baseline [§3.2.1–3.2.2](../../business/database.md), L243–279; [Tham số P-21e](parameters.md) |
+| <a id="req-cat-002"></a>REQ-CAT-002 | Sản phẩm có ít nhất một ảnh/video, tối đa 9 tệp gồm tối đa 2 video; mô tả tối đa 5.000 ký tự. Media lưu metadata/object_key và thứ tự, không lưu binary/presigned URL; backend kiểm tra loại thực tế. Chỉ chốt số lượng theo P-08.3/P-08.5, không tự chốt dung lượng/định dạng/thời lượng. Cover là ảnh đầu tiên, chỉ video thì placeholder; MVP không transcode video. | Baseline [§3.2.2](../../business/database.md), L258–279; [Tham số P-08.3/P-08.5](parameters.md) |
 | <a id="req-cat-003"></a>REQ-CAT-003 | Khởi tạo Product HIDDEN và ý định provision tồn bền vững; gọi Order sau commit, idempotent theo productId; timeout giữ HIDDEN/retry cùng ID. Chỉ bán sau xác nhận Inventory, không tự bật nếu Seller bị cấm/Product bị gỡ khi chờ. | Yêu cầu baseline; [§5.7](software-architecture.md), L580–590 |
-| <a id="req-cat-004"></a>REQ-CAT-004 | Search Product tại DB Product, Seller tại Identity; kiểm tra đủ G-06. Baseline SAD §6.7 quy định PostgreSQL unaccent/lowercase và tham số hóa, không Search Service; thay giới hạn case-insensitive của Database §5.2/API C-08. Contract và test tìm không dấu vẫn phải đồng bộ; phương án index/normalization chi tiết ở A.6 còn review. | Yêu cầu baseline; [§6.7 thay Database §5.2/API C-08](software-architecture.md), L687–704; [§5.2](../../business/database.md), L783–788; [§9 / C-08](../../business/api.md), L2885 |
+| <a id="req-cat-004"></a>REQ-CAT-004 | Search Product tại DB Product, Seller tại Identity; kiểm tra đủ G-06. Tìm theo tên, lọc danh mục và khoảng giá; mặc định 20 sản phẩm/trang, sắp xếp mới nhất; lựa chọn sắp xếp khác giữ theo API (P-11). Baseline SAD §6.7 vẫn quy định PostgreSQL unaccent/lowercase và tham số hóa, không Search Service; thay giới hạn case-insensitive của Database §5.2/API C-08. Contract/test tìm không dấu phải đồng bộ; index/normalization chi tiết A.6 còn review. | [Tham số P-11](parameters.md); baseline [§6.7 thay Database §5.2/API C-08](software-architecture.md); [§9 / C-08](../../business/api.md) |
+
+Nếu hiển thị bán chạy (P-15), dùng **số lượng bán**, không dùng doanh thu: phải **trên 500**, đúng 500 chưa đạt. Không tự thêm kỳ tính hoặc trạng thái đơn được tính. Các thống kê theo kỳ dùng **GMT+7**, tuần bắt đầu thứ Hai và quý theo lịch (P-14); các giá trị này không kéo Reporting hay màn phân tích đã hoãn vào Must. Xem [tham số đã chốt](parameters.md).
 
 ## Acceptance criteria để triển khai/kiểm chứng
 
@@ -73,10 +77,12 @@ Các AC sau là diễn giải kiểm chứng từ điều khoản cùng mã UC/R
 
 | Mã AC | Liên kết yêu cầu | Given | When | Then |
 |---|---|---|---|---|
-| <a id="ac-cat-001"></a>AC-CAT-001 | UC-B01; G-06; REQ-CAT-004 | Product SELLING; các tổ hợp Seller/User/role hợp lệ và không hợp lệ | Search tên với chữ hoa/thường, có/không dấu; mở detail | Kết quả theo unaccent/lowercase baseline, đủ G-06 và không lộ sản phẩm không bán được; dữ liệu tồn hiển thị không thay quyền giữ tồn Order. Contract/test tìm không dấu chưa được triển khai không phải lý do bỏ yêu cầu. |
-| <a id="ac-cat-002"></a>AC-CAT-002 | UC-D01; REQ-CAT-001/002/003 | Seller ACTIVE/APPROVED, danh mục/media hợp lệ; yêu cầu SELLING | Tạo/sửa; provision timeout, replay cùng key; Seller bị cấm hoặc Product REMOVED khi chờ | Một Product HIDDEN và công việc bền vững; retry cùng productId/Idempotency-Key, Inventory idempotent; chỉ áp dụng trạng thái yêu cầu sau xác nhận tồn và kiểm tra lại Seller/Product. BANNED/DISABLED hoặc REMOVED không tự SELLING. Validation/media lỗi trước chấp nhận không lưu Product; giá nguyên dương, chỉ owner sửa, không đổi snapshot đơn cũ. |
-| <a id="ac-cat-003"></a>AC-CAT-003 | UC-D03; G-04 | on_hand≥reserved và version hiện hành | Nhập số âm/lẻ/<reserved hoặc version cũ | Từ chối, không ghi đè; update hợp lệ có lịch sử; test tranh checkout không oversell. |
+| <a id="ac-cat-001"></a>AC-CAT-001 | UC-B01; G-06; REQ-CAT-004 | Product SELLING; các tổ hợp Seller/User/role hợp lệ và không hợp lệ | Search tên hoa/thường, có/không dấu; lọc danh mục/khoảng giá, không truyền paging/sort; mở detail | Kết quả theo unaccent/lowercase baseline, mặc định 20 sản phẩm/trang và mới nhất, bộ lọc áp dụng đúng; đủ G-06, không lộ sản phẩm không bán được. Dữ liệu tồn hiển thị không thay quyền giữ tồn Order. Contract/test tìm không dấu chưa triển khai không là lý do bỏ yêu cầu. |
+| <a id="ac-cat-002"></a>AC-CAT-002 | UC-D01; REQ-CAT-001/002/003 | Seller ACTIVE/APPROVED, danh mục hợp lệ; media 9/10 tệp, 2/3 video, mô tả 5.000/5.001 ký tự; yêu cầu SELLING | Tạo/sửa; provision timeout, replay cùng key; Seller bị cấm hoặc Product REMOVED khi chờ | Cho tối đa 9 tệp/2 video và 5.000 ký tự; vượt biên bị từ chối trước chấp nhận. Một Product HIDDEN và công việc bền vững; retry cùng productId/Idempotency-Key, Inventory idempotent; chỉ áp dụng trạng thái yêu cầu sau xác nhận tồn và kiểm tra lại Seller/Product. BANNED/DISABLED hoặc REMOVED không tự SELLING. Validation/media lỗi trước chấp nhận không lưu Product; giá nguyên dương, chỉ owner sửa, không đổi snapshot đơn cũ. |
+| <a id="ac-cat-003"></a>AC-CAT-003 | UC-D03; G-04 | on_hand≥reserved và version hiện hành; available lần lượt 6 và 5 | Nhập số âm/lẻ/<reserved hoặc version cũ; xem cảnh báo tồn | Dữ liệu sai bị từ chối, không ghi đè; update hợp lệ có lịch sử; test tranh checkout không oversell. Cảnh báo tồn kho thấp khi available≤5, không cảnh báo tại 6; dùng on_hand−reserved, không chỉ on_hand (P-16). |
 | <a id="ac-cat-004"></a>AC-CAT-004 | UC-E04 | Product REMOVED, ngày gỡ xác định | Seller tự bật; Admin khôi phục trong/sau 30 ngày | Seller không khôi phục; Admin đúng hạn chỉ về HIDDEN, quá hạn từ chối; đơn đã trả tiền không tự đổi tiến độ. |
+| <a id="ac-cat-005"></a>AC-CAT-005 | UC-C01; P-08.3/P-08.5/P-12 (Should) | Customer có OrderItem CONFIRMED đúng sản phẩm, chưa đánh giá; nội dung 1.000/1.001 ký tự, media 5/6 tệp hoặc 1/2 video | Tạo review rồi xem review/thẻ sản phẩm | Tối đa 1.000 ký tự, 5 tệp gồm tối đa 1 video; vượt biên bị từ chối. Tên người đánh giá che một phần; điểm trên thẻ là trung bình cộng, hiển thị 1 chữ số thập phân. Không đổi unique Customer/Product hoặc quyền Should. |
+| <a id="ac-cat-006"></a>AC-CAT-006 | P-14/P-15; phạm vi thống kê hiện hành | Sản phẩm có lượng bán 500 và 501, doanh thu khác nhau | Xác định bán chạy; hiển thị kỳ thống kê nếu triển khai | Chỉ lượng bán >500 đạt ngưỡng, không xếp theo doanh thu; không suy thêm kỳ/trạng thái đơn được tính. Kỳ dùng GMT+7, tuần từ thứ Hai, quý lịch; không biến Reporting đã hoãn thành Must. |
 
 ### AT nguồn thuộc hồ sơ này
 
@@ -90,7 +96,7 @@ Các AT bao phủ nhiều service; hồ sơ này là đầu mối đọc, không
 
 - SAD §6.7 đã quy định unaccent/lowercase; API C-08 và Database §5.2 chưa đồng bộ. Đây là gap contract/implementation, không còn câu hỏi có hỗ trợ tìm không dấu hay không. Phương án index chi tiết trong A.6 vẫn review; chưa có migration/test cho Product.
 - Inventory thuộc Order, không thêm field tồn chính thức hoặc repository Order vào Product để tránh gọi HTTP.
-- P-08 media, P-10 số lượng, P-11 paging, P-12 review còn tham số; không hardcode ví dụ dev. Review/Category CRUD/gợi ý chỉ ranh giới Should/Could.
+- P-08.3/P-08.5, P-11/P-12/P-14/P-15/P-16 và danh mục nền P-21e đã chốt tại [parameters.md](parameters.md). Dung lượng/định dạng/thời lượng media và chi tiết kỹ thuật chưa chốt giữ nguyên câu hỏi tương ứng; không hardcode ví dụ dev. Review/Category CRUD/gợi ý vẫn Should/Could.
 
 ## Đặc tả UC và ngoại lệ
 
@@ -107,8 +113,8 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 | <a id="uc-b01.goal-01"></a>UC-B01.GOAL-01 | Mục tiêu | Khách tìm kiếm, lọc và xem thông tin sản phẩm phù hợp nhu cầu. | [UC-B01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L513 |
 | <a id="uc-b01.pre-01"></a>UC-B01.PRE-01 | Điều kiện | Không bắt buộc đăng nhập. | [UC-B01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L515 |
 | <a id="uc-b01.main-01"></a>UC-B01.MAIN-01 | Luồng chính | Khách mở trang sản phẩm hoặc nhập tên cần tìm. | [UC-B01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L519 |
-| <a id="uc-b01.main-02"></a>UC-B01.MAIN-02 | Luồng chính | Hệ thống hiển thị các sản phẩm còn được phép bán, hỗ trợ lọc theo danh mục, khoảng giá, sắp xếp và phân trang. | [UC-B01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L521 |
-| <a id="uc-b01.main-03"></a>UC-B01.MAIN-03 | Luồng chính | Khách chọn sản phẩm để xem giá, hình ảnh/video, mô tả, trạng thái còn hàng và thông tin người bán; từ trang chi tiết có thể chọn số lượng rồi “Thêm vào giỏ hàng” (UC-B03) hoặc “Mua ngay” (UC-B10). | [UC-B01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L523 |
+| <a id="uc-b01.main-02"></a>UC-B01.MAIN-02 | Luồng chính | Hiển thị sản phẩm còn được phép bán; tìm theo tên, lọc danh mục và khoảng giá. Mặc định 20 sản phẩm/trang, sắp xếp mới nhất; các lựa chọn sắp xếp khác theo API. | [FRD UC-B01](FRD.md); [Tham số P-11](parameters.md) |
+| <a id="uc-b01.main-03"></a>UC-B01.MAIN-03 | Luồng chính | Khách chọn sản phẩm để xem giá, media, mô tả, trạng thái còn hàng và người bán; chọn số lượng rồi “Thêm vào giỏ hàng” (UC-B03) hoặc “Mua ngay” (UC-B10). Khi triển khai review Should, thẻ sản phẩm hiển thị điểm trung bình cộng với 1 chữ số thập phân; danh sách review che một phần tên người đánh giá. | [FRD UC-B01](FRD.md); [Tham số P-12](parameters.md) |
 | <a id="uc-b01.alt-01"></a>UC-B01.ALT-01 | Ngoại lệ | Không có kết quả: hệ thống hiển thị thông báo phù hợp. | [UC-B01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L527 |
 | <a id="uc-b01.alt-02"></a>UC-B01.ALT-02 | Ngoại lệ | Sản phẩm hết hàng: vẫn có thể xuất hiện kèm nhãn “Hết hàng”; khách có thể đưa vào giỏ nhưng chưa được thanh toán; nút “Mua ngay” bị vô hiệu. | [UC-B01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L529 |
 | <a id="uc-b01.alt-03"></a>UC-B01.ALT-03 | Ngoại lệ | Sản phẩm không có ảnh tĩnh: hiển thị ảnh minh họa mặc định. | [UC-B01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L531 |
@@ -122,7 +128,7 @@ Nguồn: [§6 / UC-C01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20
 
 Khách đánh giá sản phẩm đã nhận từ người bán.
 
-Should: chỉ Customer có OrderItem thuộc Order CONFIRMED, đúng product, unique Customer/Product; rating 1–5, nội dung/media tùy chọn; không sửa review. Chưa đặc tả đầy đủ AC/UI Should.
+Should: chỉ Customer có OrderItem thuộc Order CONFIRMED, đúng product, unique Customer/Product; rating 1–5, nội dung/media tùy chọn; không sửa review. Nội dung tối đa 1.000 ký tự; tối đa 5 tệp gồm tối đa 1 video. Tên người đánh giá được che một phần; điểm trên thẻ sản phẩm là trung bình cộng với 1 chữ số thập phân (P-12). Không tự chốt dung lượng/định dạng/thời lượng media hoặc cách che tên chi tiết; xem [P-08.3/P-08.5/P-12](parameters.md). AC-CAT-005 chỉ bao phủ các biên này, chưa đặc tả đầy đủ UI/AC Should.
 
 <a id="uc-c02"></a>
 ## UC-C02 — Báo cáo sản phẩm/Seller vi phạm — ĐÃ LOẠI BỎ (v5.2)
@@ -143,8 +149,8 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 | <a id="uc-d01.goal-01"></a>UC-D01.GOAL-01 | Mục tiêu | Người bán tạo và cập nhật sản phẩm thuộc gian hàng của mình. | [UC-D01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L883 |
 | <a id="uc-d01.pre-01"></a>UC-D01.PRE-01 | Điều kiện | Seller APPROVED và accountStatus ACTIVE mới được tạo/sửa sản phẩm hoặc tồn kho; BANNED/DISABLED không được bán/publish dù còn phiên giới hạn nghĩa vụ. | [FRD UC-D01/E03](FRD.md); [Thẻ 15](coverage.md#the-15) |
 | <a id="uc-d01.main-01"></a>UC-D01.MAIN-01 | Luồng chính | Người bán mở “Sản phẩm của tôi”, chọn thêm mới hoặc một sản phẩm hiện có. | [UC-D01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L889 |
-| <a id="uc-d01.main-02"></a>UC-D01.MAIN-02 | Luồng chính | Người bán nhập tên, giá, mô tả, danh mục, tồn kho và tối thiểu một ảnh hoặc video. | [UC-D01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L891 |
-| <a id="uc-d01.main-03"></a>UC-D01.MAIN-03 | Luồng chính | Hệ thống kiểm tra các thông tin bắt buộc, giá và số lượng hợp lệ, định dạng/giới hạn tệp. | [UC-D01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L893 |
+| <a id="uc-d01.main-02"></a>UC-D01.MAIN-02 | Luồng chính | Người bán nhập tên, giá, mô tả tối đa 5.000 ký tự, danh mục, tồn kho và tối thiểu một ảnh hoặc video; tổng tối đa 9 tệp, gồm tối đa 2 video. | [FRD UC-D01](FRD.md); [Tham số P-08.3/P-08.5](parameters.md) |
+| <a id="uc-d01.main-03"></a>UC-D01.MAIN-03 | Luồng chính | Kiểm tra thông tin bắt buộc, giá/số lượng hợp lệ, mô tả không quá 5.000 ký tự, tối đa 9 tệp/2 video và loại/giới hạn tệp tương ứng; không dùng số lượng đã chốt để suy ra dung lượng/định dạng/thời lượng. | [FRD UC-D01](FRD.md); [Tham số P-08](parameters.md) |
 | <a id="uc-d01.main-04"></a>UC-D01.MAIN-04 | Luồng chính | Tạo mới sau validation: ghi Product HIDDEN cùng ý định provision bền vững trong local transaction; sau commit gọi POST /internal/v1/inventory. Order provision idempotent theo productId. Chỉ sau xác nhận Inventory và kiểm tra Seller/Product còn hợp lệ mới áp dụng trạng thái Seller yêu cầu. Cập nhật sản phẩm hiện có theo quyền/state hiện hành, không tạo Product hay provision mới. | [FRD UC-D01](FRD.md); [API provisioning](api_specs.md); [SAD §5.7/A.6](software-architecture.md) |
 | <a id="uc-d01.alt-01"></a>UC-D01.ALT-01 | Ngoại lệ | Sản phẩm đã bị quản trị viên gỡ: người bán xem lý do nhưng không được sửa hoặc bật bán lại. | [UC-D01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L899 |
 | <a id="uc-d01.alt-02"></a>UC-D01.ALT-02 | Ngoại lệ | Giá thay đổi: chỉ áp dụng cho lượt mua mới, không làm thay đổi giá trong các đơn trước đó. | [UC-D01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L901 |
@@ -164,7 +170,7 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 |---|---|---|---|
 | <a id="uc-d03.goal-01"></a>UC-D03.GOAL-01 | Mục tiêu | Người bán theo dõi và điều chỉnh số lượng hàng hiện có. | [UC-D03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L949 |
 | <a id="uc-d03.pre-01"></a>UC-D03.PRE-01 | Điều kiện | Người bán đang hoạt động và chọn sản phẩm thuộc mình. | [UC-D03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L951 |
-| <a id="uc-d03.main-01"></a>UC-D03.MAIN-01 | Luồng chính | Người bán mở mục “Tồn kho”, xem số lượng hiện tại và số đang được giữ cho các đơn chờ thanh toán. | [UC-D03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L955 |
+| <a id="uc-d03.main-01"></a>UC-D03.MAIN-01 | Luồng chính | Người bán mở “Tồn kho”, xem on_hand, lượng reserved cho đơn chờ thanh toán và available=on_hand−reserved. Cảnh báo tồn kho thấp khi available còn 5 sản phẩm trở xuống (P-16). | [FRD UC-D03](FRD.md); [Tham số P-16](parameters.md) |
 | <a id="uc-d03.main-02"></a>UC-D03.MAIN-02 | Luồng chính | Khi nhập hàng hoặc kiểm kê, người bán nhập số lượng tồn kho mới. | [UC-D03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L957 |
 | <a id="uc-d03.main-03"></a>UC-D03.MAIN-03 | Luồng chính | Hệ thống kiểm tra số lượng hợp lệ và không thấp hơn lượng hàng đã giữ cho khách. | [UC-D03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L959 |
 | <a id="uc-d03.main-04"></a>UC-D03.MAIN-04 | Luồng chính | Hệ thống lưu số lượng mới và ghi nhận lịch sử điều chỉnh. | [UC-D03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L961 |
@@ -207,7 +213,7 @@ Nguồn: [§6 / UC-E07](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20
 
 Quản trị viên duy trì danh sách danh mục sản phẩm.
 
-Should: CRUD Category Admin một cấp ở Product; không thêm service. Must vẫn cần seed danh mục và kiểm tra danh mục hợp lệ khi tạo Product. Không xóa danh mục đang được tham chiếu.
+Should: CRUD Category Admin một cấp ở Product; không thêm service. Must vẫn cần seed đúng 10 ngành hàng tại [P-21e](parameters.md) và kiểm tra danh mục hợp lệ khi tạo Product; Category không có tỷ lệ hoa hồng riêng. Không xóa danh mục đang được tham chiếu.
 
 <a id="uc-f01"></a>
 ## UC-F01 — Gợi ý sản phẩm liên quan

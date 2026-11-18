@@ -12,7 +12,7 @@ chấp nhận ngày 11/11/2026; nội dung quyết định không đổi khi chu
 | Auth, phiên, User/Seller, hồ sơ, địa chỉ, Admin/ban | [identity](requirements/identity.md) | Quyền/thuật ngữ, Order/Finance obligations, Notification |
 | Product, search, media, tồn hiển thị | [catalog](requirements/catalog.md) | G-06 ở Identity; Inventory tại Order |
 | Cart, BUY_NOW, quote/pay, kho, giao/hủy/nhận, deadline | [checkout-orders](requirements/checkout-orders.md) | Payment, Finance, Identity, Notification |
-| Simulator/Payment/Refund, Admin retry | [payments](requirements/payments.md) | Order state và Finance pending |
+| Simulator/Payment/Refund, khách thử lại hoàn tiền | [payments](requirements/payments.md) | Order state và Finance pending |
 | Settlement, ví, rút tiền, rounding, đối soát | [finance](requirements/finance.md) | Payment/Order nguồn, Identity ban |
 | Email demo, event/delivery/retry | [notifications](requirements/notifications.md) | Producer và Identity contact/reset secret |
 | Library, package, DB owner, test/local run | [engineering](engineering.md) | POM/config/code/test và runbook hiện có |
@@ -22,6 +22,7 @@ chấp nhận ngày 11/11/2026; nội dung quyết định không đổi khi chu
 | Entity, field, bất biến và state machine tại nguồn | [Database v5.1](requirements/database.md) | FRD, API và ownership trong engineering |
 | Phạm vi, thuật ngữ, mã, phân loại bằng chứng | [requirements README](requirements/README.md) | Coverage khi có xung đột/TBD |
 | Kiểm tra nguồn, độ phủ, phần chưa chuyển | [coverage](requirements/coverage.md) | Section nguồn được dẫn, không tự chọn policy |
+| Giá trị tham số đã chốt: giới hạn, hoa hồng, thử lại, địa giới | [parameters](requirements/parameters.md) | Hồ sơ nghiệp vụ và contract tương ứng |
 
 ## Authority và nguồn
 
@@ -34,7 +35,8 @@ chấp nhận ngày 11/11/2026; nội dung quyết định không đổi khi chu
   [API v1.1](requirements/api_specs.md): giao tiếp/DTO/lỗi;
   [System Architecture](requirements/system-architecture.md): thành phần/boundary.
 - Ba nguồn trên mang phiên bản gốc ngày 16/11/2026; [Thẻ 15](requirements/coverage.md#the-15) cập nhật phần ban theo nghĩa vụ/J7, rút số dư nhỏ, HIDDEN/provision và trigger sau thu theo quyết định được duyệt ngày 17/11/2026. Các phần này ưu tiên hơn đoạn cũ cùng chủ đề.
-- Các phần ngoài phạm vi Thẻ 15 của hồ sơ và coverage còn có nguồn/số dòng baseline 11/11/2026, chưa xác nhận đồng bộ toàn bộ. Đối chiếu authority trước khi code; tài liệu không chứng minh implementation.
+- [Thẻ 16 và các xác nhận ngày 18/11/2026](requirements/parameters.md) chốt các giới hạn, hoa hồng chung 5%, thử lại hoàn tiền/email và danh mục địa giới tĩnh. Các quyết định này ưu tiên hơn đoạn cũ còn ghi dùng tạm hoặc chưa chốt cùng chủ đề; P-01 vẫn dùng tạm 15 phút, N-09/N-11/P-37 không đổi.
+- Các phần ngoài phạm vi Thẻ 15 và Thẻ 16 của hồ sơ và coverage còn có nguồn/số dòng baseline 11/11/2026, chưa xác nhận đồng bộ toàn bộ. Đối chiếu authority trước khi code; tài liệu không chứng minh implementation.
 - Code/migrations, [Identity OpenAPI](../identity-service/openapi.json), test,
   POM/Compose chứng minh hiện trạng, không tự thay yêu cầu nguồn.
 - [README](../README.md) và [Identity RUN](../identity-service/RUN.md): vận hành

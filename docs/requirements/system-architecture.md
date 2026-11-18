@@ -39,6 +39,8 @@ Phạm vi thiết kế hướng đến phiên bản sản phẩm khả dụng t�
 
 Thanh toán, số dư ví, quyết toán và rút tiền được mô phỏng để phục vụ học tập và kiểm thử. Các thao tác này không đại diện cho giao dịch chuyển tiền thực tế với ngân hàng hoặc tổ chức thanh toán.
 
+Các giới hạn và lịch thử lại lấy từ [Tham số đã chốt](parameters.md), theo xác nhận ngày 18/11/2026; đây là yêu cầu thiết kế, không xác nhận code đã đáp ứng. Review, quản trị Category qua giao diện và in-app vẫn là Should; Reporting/phân tích vẫn hoãn theo SAD.
+
 ## 1.4. Phạm vi kỹ thuật và giới hạn
 
 ### 1.4.1. Phạm vi kỹ thuật
@@ -76,6 +78,8 @@ Kiến trúc phải hỗ trợ hành trình mua bán nhiều cửa hàng và b�
 | Quy trình đơn hàng kéo dài qua nhiều bước | Trạng thái nghiệp vụ phải được lưu bền vững; tác vụ nền xử lý hết hạn và các bước cần tiếp tục sau sự cố. |
 | Thanh toán, đơn hàng và ví thuộc các miền khác nhau | Mỗi service cập nhật dữ liệu sở hữu trong transaction cục bộ; việc đồng bộ giữa service phải có cơ chế thử lại, chống lặp và xử lý trạng thái lệch. |
 | Tài khoản hoặc hồ sơ có thể bị hạn chế sau khi đăng nhập | Token hợp lệ về chữ ký chưa đủ để cho phép thao tác; cần kiểm tra phiên, phiên bản quyền và trạng thái hiện hành. |
+| Hoa hồng chung 5% = 500 bps | Finance cung cấp cùng tỷ lệ cho mọi Seller/ngành hàng; Order snapshot tại checkout, Finance tính từ snapshot, không tra Category hoặc tính lại đơn cũ. Làm tròn nửa lên một lần trên tổng Order: `C = floor((G × 500 + 5000) / 10000)`, `S = G − C`. |
+| Hoàn tiền có chu kỳ thử lại do khách mở | Payment giữ cùng Refund/số tiền/key cho ORDER và FULL_CHECKOUT; Admin không thử lại thay khách. |
 
 Các yêu cầu này là cơ sở để phân chia service, xác định quyền sở hữu dữ liệu và lựa chọn cơ chế tích hợp. Chi tiết luồng xử lý được trình bày ở các phần kiến trúc dữ liệu và luồng nghiệp vụ.
 
@@ -88,6 +92,8 @@ Hệ thống phải xác thực người gọi và kiểm tra quyền tại back
 Theo thiết kế MVP, các service lấy ngữ cảnh phân quyền hiện hành từ Identity và không cache quyết định quyền. Khi không thể xác minh ngữ cảnh này, API bảo vệ phải từ chối xử lý với lỗi dịch vụ không sẵn sàng. Lựa chọn này ưu tiên tính đúng đắn của quyền truy cập, đồng thời tạo phụ thuộc về độ trễ và tính sẵn sàng vào Identity.
 
 API nội bộ phải xác thực service gọi. Khi triển khai Cloud, thông tin kết nối, khóa ký và credential phải được cấp qua cấu hình bảo mật; các giá trị dùng cho dev không được sử dụng như cấu hình vận hành chính thức.
+
+Liên kết reset mật khẩu hiệu lực 30 phút và chỉ dùng một lần. Không khóa tạm tài khoản do đăng nhập sai nhiều lần; vẫn giữ rate limit/chống lạm dụng, tách biệt với ban do Admin.
 
 ### 2.2.2. Tính nhất quán và độ tin cậy
 
@@ -361,6 +367,7 @@ Gateway và Discovery không quản lý trạng thái đơn hàng, thanh toán h
 | Service | Trách nhiệm chính | Dữ liệu sở hữu | Tích hợp tiêu biểu |
 |---|---|---|---|
 | Identity | Đăng ký/xác thực, phiên, RBAC, hồ sơ Customer/Seller, địa chỉ, xét duyệt và ban/unban theo nghĩa vụ. | User, Customer, Seller, CustomerAddress, Role, Permission, UserRole, RolePermission; phiên/audit/Outbox Identity. | Cung cấp authorization context; hỏi Order/Finance về nghĩa vụ hiện tại ở ban/login/refresh/J7; phát event vòng đời tài khoản và Seller. |
+| Identity — dữ liệu hỗ trợ | Danh mục địa giới tĩnh nạp sẵn trong DB Identity, hai cấp tỉnh/thành và phường/xã/đặc khu, không quận/huyện; API/validation đọc cùng dataset, không gọi ngoài. | Ghi nguồn/version khi chuẩn bị dữ liệu; Customer tối đa 3 địa chỉ hiện có, hard delete không tính giới hạn. | Order giữ snapshot cả mã và tên địa giới; không coi adapter hiện tại là đã triển khai dataset mới. |
 | Product | Danh mục, sản phẩm, tìm kiếm và đánh giá; xử lý API media thuộc sản phẩm. | Category, Product, Review. | Kiểm tra Seller qua Identity; lấy và cập nhật tồn kho qua Order; kiểm tra điều kiện đánh giá từ Order. |
 | Cart | Thêm, sửa, xóa và cung cấp nội dung giỏ hàng. | Cart, CartItem. | Lấy sản phẩm từ Product, tồn khả dụng từ Order; nhận `checkout.paid` để cập nhật các mục đã mua. |
 | Order | Checkout nhiều cửa hàng, tách đơn, giữ tồn, chuyển trạng thái đơn và xử lý các mốc hết hạn. | CheckoutSession, Order, OrderItem, Inventory, Reservation, StockMovement. | Lấy thông tin từ Identity, Product và Finance; nhận kết quả từ Payment; phát event đơn hàng và checkout. |
@@ -614,6 +621,8 @@ flowchart LR
 
 Catalog Management phối hợp Order theo [SAD §5.7/A.6.1](software-architecture.md): Product ghi HIDDEN và công việc provision bền vững cùng transaction, gọi khởi tạo Inventory sau commit, giữ `productId` qua retry. Chỉ áp dụng trạng thái Seller yêu cầu khi Inventory xác nhận và Seller/Product còn hợp lệ; timeout giữ HIDDEN, ban/REMOVED trong lúc đợi không tự bật SELLING. Review Management hỏi Order về điều kiện đánh giá. Search dùng truy vấn database Product, không có Search Service riêng; trạng thái/tồn hiện hành không là cam kết giữ hàng.
 
+Danh mục nền phải seed đúng 10 ngành hàng tại [P-21e](parameters.md#danh-mục-ban-đầu--p-21e), dùng UUID, không có commission riêng theo Category dù chưa làm CRUD Admin. Product tối đa 9 tệp/2 video và mô tả 5.000 ký tự; Review Should tối đa 5 tệp/1 video, nội dung 1.000 ký tự. Dung lượng/định dạng/thời lượng chưa tự được chốt. Danh sách Product mặc định 20/trang, mới nhất trước, tìm tên/lọc Category/khoảng giá; không thay baseline unaccent/OQ-006. Cart tối đa 50 dòng, 1–99 đơn vị/dòng, thêm trùng cộng dồn không vượt 99; BUY_NOW tối đa 99, không tạo dòng giỏ và checkout vẫn kiểm tra tồn.
+
 ### 3.8.3. Cart Service
 
 Cart quản lý giỏ hiện tại và phản ứng với `checkout.paid`. Không cần tạo một workflow thanh toán hoặc tồn kho riêng trong Cart.
@@ -749,6 +758,8 @@ flowchart LR
 
 Application lưu ý định và khóa chống lặp trước khi gọi `PaymentGateway`; Result Handler cập nhật kết quả cùng Outbox trong transaction riêng. Simulator nằm trong cùng service, không phải nhà cung cấp bên ngoài; dữ liệu kết quả đến trễ được lưu theo giai đoạn giả lập. Khi timeout, job tra cứu trước khi retry. Không dùng một transaction bao trùm việc gọi adapter và cập nhật các service khác, cũng không triển khai callback public cho bộ giả lập theo contract hiện hành.
 
+Theo P-RF-01, mỗi chu kỳ hoàn có một lần đầu và tối đa 3 retry sau 1, 5, 15 phút tính từ thất bại trước. Chỉ gửi lại khi lỗi rõ ràng; timeout/PENDING tiếp tục query, không tính query vào lượt. Hết lượt dừng tự động và thông báo khách đã thanh toán; khách bấm **Thử lại hoàn tiền** mở chu kỳ mới cho cùng Refund/số tiền/key, reset bộ đếm nhưng giữ lịch sử. Áp dụng ORDER và FULL_CHECKOUT, Admin không thao tác thay khách. Chỉ giảm pending khi gateway xác nhận SUCCESS; khoảng 21 phút chỉ là ước tính, không phải deadline kết luận thất bại.
+
 ### 3.8.6. Finance Service
 
 Finance tập trung logic tiền vào các component quyết toán, ví và rút tiền. Mọi component có thể tác động số dư phải sử dụng cùng quy tắc ghi bút toán.
@@ -845,6 +856,8 @@ flowchart LR
 ```
 
 Notification Creation commit thông báo và dấu chống lặp trước khi worker gửi email. Query/State chỉ quản lý thông báo của chính người dùng; xóa in-app không xóa bản ghi chống lặp hoặc hủy email tương ứng. Email transport là phụ thuộc chưa chọn, không được hiểu là đã tích hợp Amazon SES. Nếu gửi thành công nhưng mất xác nhận, retry vẫn có nguy cơ gửi email lặp tùy khả năng của transport; Inbox không tự bảo đảm một email chỉ được nhận đúng một lần.
+
+Email có một lần đầu và tối đa 3 lần gửi lại sau 1, 5, 15 phút từ lỗi trước; chỉ retry lỗi tạm thời và không sớm hơn Retry-After. Lỗi vĩnh viễn hoặc token/link hết hạn thì dừng ngay; hết lượt ghi thất bại, không đổi trạng thái nghiệp vụ, giữ cùng thông báo/key. Email demo và retention bí mật vẫn cần quyết định riêng. In-app Should hiển thị tối đa 50 thông báo gần nhất, giữ nội dung 30 ngày; không xóa email, cắt lịch retry hoặc làm mất dedupe, không áp dụng retention này cho reset URL.
 
 ### 3.8.8. Gateway Service
 

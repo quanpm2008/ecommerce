@@ -5,6 +5,8 @@ Baseline: SAD v1.1 §7.1/D.1, được người dùng chấp nhận ngày 11/11/
 
 Các điều khoản tài khoản bị cấm dưới đây theo [Thẻ 15](coverage.md#the-15) và nguồn FRD/API/Database hiệu lực: bảo toàn nghĩa vụ, không đóng băng available vì ban và ngoại lệ rút toàn bộ số dư nhỏ. Đây là đặc tả, không chứng minh runtime đã triển khai.
 
+Hoa hồng và các quy ước P-14/P-15 theo [tham số đã chốt](parameters.md). Các giá trị này không mở rộng phạm vi Reporting đã hoãn theo ADR-05.
+
 Đọc đúng UC dưới đây, quy tắc bổ sung và hàng AC liên quan; chỉ mở mục contract nguồn khi cần DTO/cột/endpoint chi tiết. Yêu cầu TO-BE không chứng minh code đã làm đúng.
 
 [UC-D04](#uc-d04) · [UC-D05](#uc-d05) · [UC-E02](#uc-e02) · [UC-G04](#uc-g04)
@@ -53,10 +55,11 @@ Quy tắc chung G-09/G-11 ở [engineering](../engineering.md); G-10/G-13/G-15 �
 
 | Mã | Điều khoản | Nguồn / phân loại |
 |---|---|---|
-| <a id="req-fin-001"></a>REQ-FIN-001 | G=Order.total_amount_vnd; r=commission_bps_snapshot, 0≤r≤10.000; C=floor((G×r+5.000)/10.000), S=G−C. Làm tròn nửa lên một lần trên tổng đơn bằng số nguyên, kiểm tra tràn; P-COM-01 chưa chốt, ví dụ 500/2.000bps không là mặc định. | Yêu cầu baseline; [§8.3; SAD §6.6](../../business/database.md), L1011–1013; [§6.6](software-architecture.md), L665–681 |
+| <a id="req-fin-001"></a>REQ-FIN-001 | G=Order.total_amount_vnd; P-COM-01 là hoa hồng chung 5%=500 bps cho mọi Category và Seller, chụp vào commission_bps_snapshot của từng Order khi checkout. Finance dùng r đã chụp, không tra tỷ lệ từ Category/Seller hiện tại và không tính lại đơn cũ. C=floor((G×r+5.000)/10.000), S=G−C; đơn checkout theo quyết định này dùng r=500. Làm tròn nửa lên một lần trên tổng đơn bằng số nguyên, kiểm tra tràn; r của snapshot lịch sử vẫn trong 0…10.000. | [P-COM-01](parameters.md); [§8.3; SAD §6.6](../../business/database.md), L1011–1013; [§6.6](software-architecture.md), L665–681 |
 | <a id="req-fin-002"></a>REQ-FIN-002 | Finance tạo pending từ checkout.paid của Order, không từ payment.succeeded. Một Settlement/Order, một Wallet VND/Seller và một PLATFORM Wallet. Seller.approved tạo ví idempotent; sự kiện đến trước ví phải chờ/xác minh đáng tin cậy, không bỏ mất tiền. | Yêu cầu baseline; [§6.6](software-architecture.md), L665–681 |
 | <a id="req-fin-003"></a>REQ-FIN-003 | Tiền chỉ vào available khi CONFIRMED; hủy hợp lệ sau thu chỉ đổi PENDING_REFUND, chưa trừ pending. Refund SUCCESS mới REFUND_DEBIT đúng Order. Ban sau thu không tự hủy/hoàn/đóng băng available: Seller BANNED vẫn xử lý đơn tồn/quyết toán/rút available theo allowlist và WD-03/09, không đợi unban. Settlement PENDING/PENDING_REFUND/hiệu ứng chưa apply kể cả 0, pending>0 hoặc available>0 giữ nghĩa vụ với Identity; nguồn lỗi không được báo hết nghĩa vụ. | [FRD UC-D05/E03/G04](FRD.md); [Database §8.2B/§8.3](database.md); [API §3.2/§7.1](api_specs.md); [Thẻ 15](coverage.md#the-15) |
 | <a id="req-fin-004"></a>REQ-FIN-004 | Đối soát qua HTTP không có snapshot nguyên tử xuyên DB; event lag có thể lệch tạm. Thiếu nguồn không được balanced=true; không tự thêm bút toán sửa lệch. Các field trạng thái/mốc đối soát chi tiết trong SAD §6.6 là đề xuất cần review. | Yêu cầu baseline; [§6.6](software-architecture.md), L683–685 |
+| <a id="req-fin-005"></a>REQ-FIN-005 | P-14 dùng GMT+7, tuần bắt đầu thứ Hai, quý theo lịch. P-15 xác định bán chạy theo số lượng bán, không theo doanh thu; sản phẩm phải trên 500 lượt bán, đúng 500 chưa đạt. Không tự quy định kỳ đo hoặc trạng thái đơn được tính khi nguồn chưa chốt. Các giá trị này áp dụng khi triển khai phần phân tích tương ứng; Reporting, biểu đồ, top sản phẩm và export vẫn hoãn theo ADR-05, không là DoD Must. | [P-14/P-15](parameters.md); [ADR-05](software-architecture.md) |
 
 ### WD-01…WD-11
 
@@ -77,6 +80,8 @@ Quy tắc chung G-09/G-11 ở [engineering](../engineering.md); G-10/G-13/G-15 �
 ### Công thức bảo toàn và thời điểm ghi ví
 
 [Database §8.3](database.md); Finance áp dụng Payment SUCCESS thông qua `checkout.paid` do Order phát, không trực tiếp từ `payment.succeeded` (REQ-FIN-002).
+
+Ví dụ P-COM-01 với r=500, tính trên tổng đơn, không làm tròn từng dòng: G=100.000 VND → C=5.000, S=95.000; G=9 → C=0, S=9; G=10 → C=1, S=9 (0,5 làm tròn lên). Thay đổi Category/Seller sau checkout không thay các kết quả từ snapshot.
 
 | SỰ KIỆN | SETTLEMENT | VÍ SELLER | VÍ NỀN TẢNG |
 | :---- | :---- | :---- | :---- |
@@ -110,6 +115,7 @@ Các AC sau là diễn giải kiểm chứng từ điều khoản cùng mã UC/R
 | <a id="ac-fin-002"></a>AC-FIN-002 | UC-D05; WD-01…11; B5 | ACTIVE/BANNED APPROVED, available=9.500 hoặc ≥10.000; hai tab | BANNED rút 9.500/5.000; ACTIVE rút 9.500; gửi lẻ/>available, cùng/khác key | BANNED rút toàn bộ 9.500 hợp lệ; rút 5.000 hoặc ACTIVE rút 9.500 →422 WITHDRAWAL_BELOW_MINIMUM. Wallet giữ minWithdrawalVnd=10000, ngoại lệ allowBelowMinimumFullWithdrawal=true/canWithdraw=true/withdrawDisabledReason=null, UI khóa amount=toàn bộ available. Một atomic debit+Withdrawal+ledger, không âm; cùng key/payload trả giao dịch cũ, khác payload 409; lỗi rollback, không giới hạn lần/ngày. |
 | <a id="ac-fin-003"></a>AC-FIN-003 | UC-G04; REQ-FIN-001/002/003; B4 | Order CONFIRMED, commission snapshot, Seller BANNED; Settlement/hiệu ứng pending kể cả S=0 | Replay/sai thứ tự order.confirmed/checkout.paid; hỏi nghĩa vụ | Một Settlement/Order và release; pending→available đúng rounding, chờ phụ thuộc bền vững không mất effect. Ban không đóng băng/chặn rút available; chưa apply hoặc PENDING/PENDING_REFUND dù 0 vẫn hasPendingFinance=true/OBLIGATIONS_READ_ONLY khi không có thao tác đơn/rút. S=0 không tạo bút toán Seller bằng 0; pending không được rút. |
 | <a id="ac-fin-004"></a>AC-FIN-004 | REQ-FIN-003; WD-09; B6/B9/B10 | Seller rút hết, còn/không còn hiệu ứng tài chính; Finance timeout hoặc DISABLED có available muộn | Identity/J7 hỏi nghĩa vụ, job chạy lại hoặc đồng thời unban | Chỉ mọi nguồn xác minh hết mới DISABLED một lần, không reset deadline/phát duplicate/đổi ledger. Lỗi/404 ví đáng lẽ tồn tại không là zero; giữ trạng thái/retry, request cần xác minh 503, job không ghi đè Admin unban. Available muộn →BANNED/WITHDRAWAL_ONLY không unban, giữ mốc cùng đợt, xử lý hết quay DISABLED không gia hạn. |
+| <a id="ac-fin-005"></a>AC-FIN-005 | REQ-FIN-001; UC-G04 | Các Order của nhiều Category/Seller checkout theo P-COM-01, tổng G=100.000/9/10 VND | Tạo snapshot, đổi thông tin Category/Seller rồi quyết toán/replay | Mỗi Order snapshot 500 bps; C/S tương ứng 5.000/95.000, 0/9, 1/9; tính một lần trên tổng đơn, không lấy tỷ lệ hiện hành hay tính lại đơn cũ; mỗi hiệu ứng ghi sổ một lần. |
 
 ### AT nguồn thuộc hồ sơ này
 
@@ -125,7 +131,7 @@ Các AT bao phủ nhiều service; hồ sơ này là đầu mối đọc, không
 ## Chênh lệch, đề xuất và câu hỏi còn mở
 
 - ADR-05 đã giới hạn D04/E02 vào tra cứu vận hành/đối soát; top sản phẩm, biểu đồ, export và Reporting hoãn. Không cần user quyết định lại phần đã được baseline supersede.
-- P-COM-01 chưa có tỷ lệ được chốt; không dùng ví dụ để bật checkout thật. Field COMPLETE/INCOMPLETE/DIFFERENCE và mốc đối soát chi tiết là đề xuất, cần contract trước code.
+- P-COM-01 đã chốt 5%=500 bps dùng chung tại [parameters.md](parameters.md); không còn chọn tỷ lệ riêng theo Category/Seller. Field COMPLETE/INCOMPLETE/DIFFERENCE và mốc đối soát chi tiết vẫn là đề xuất, cần contract trước code.
 - FRD G04 nói cùng transaction với Order; baseline yêu cầu transaction Finance riêng nhận order.confirmed. Đã hiệu chỉnh clause tương ứng; không sửa file FRD.
 - E08 do payments.md sở hữu; Finance chỉ cung cấp dữ liệu đối soát, Admin không sửa tay ví/bút toán hay rút hộ.
 
@@ -150,7 +156,7 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 | <a id="uc-d04.alt-01"></a>UC-D04.ALT-01 | Ngoại lệ | Một lần thanh toán chung bao gồm đơn của nhiều Seller: chỉ tính Order.tổng_tiền của Seller đang xem, không tính toàn bộ Payment như doanh số của Seller. | [UC-D04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L993 |
 | <a id="uc-d04.alt-02"></a>UC-D04.ALT-02 | Ngoại lệ | Đơn bị hủy: không tính doanh số hoàn thành/hoa hồng, hiển thị tiền đã hoặc đang hoàn khách; không làm giảm số dư khả dụng. | [UC-D04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L995 |
 | <a id="uc-d04.alt-03"></a>UC-D04.ALT-03 | Ngoại lệ | Không có giao dịch: danh sách trống và số dư thực tế; không dựng read model kỳ thống kê chỉ để đáp ứng phần phân tích đã hoãn. | [UC-D04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L997; **baseline thay thế/hiệu chỉnh:** [§1.2, ADR-05](software-architecture.md), L75–81 |
-| <a id="uc-d04.post-01"></a>UC-D04.POST-01 | Hậu điều kiện | Σ khoản người bán được nhận của các đơn đã quyết toán = số dư khả dụng \+ đã rút (WD-11); P-14/P-15 vẫn chờ chốt. | [UC-D04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L999 |
+| <a id="uc-d04.post-01"></a>UC-D04.POST-01 | Hậu điều kiện | Σ khoản người bán được nhận của các đơn đã quyết toán = số dư khả dụng \+ đã rút (WD-11). P-14 dùng GMT+7, tuần thứ Hai, quý theo lịch; P-15 bán chạy theo số lượng trên 500, không theo doanh thu, đúng 500 chưa đạt. Các quy ước này không làm phần top sản phẩm/Reporting đã hoãn thành Must; kỳ đo và trạng thái đơn được tính chưa được nguồn chốt. | [UC-D04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L999; [P-14/P-15](parameters.md); [ADR-05](software-architecture.md) |
 
 <a id="uc-d05"></a>
 ## UC-D05 — Ví người bán và rút tiền (giả lập)
@@ -213,7 +219,7 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 |---|---|---|---|
 | <a id="uc-g04.goal-01"></a>UC-G04.GOAL-01 | Mục tiêu | Chốt hoa hồng và khoản Seller được nhận khi một đơn được xác nhận nhận hàng, chuyển tiền của Seller từ số dư chờ sang số dư khả dụng. | [UC-G04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1387 |
 | <a id="uc-g04.pre-01"></a>UC-G04.PRE-01 | Điều kiện | Order đã_xác_nhận bởi khách hoặc J3; Payment chung success và đơn không bị hủy/hoàn; Settlement đang chờ_quyết_toán. | [UC-G04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1389 |
-| <a id="uc-g04.main-01"></a>UC-G04.MAIN-01 | Luồng chính | Khi đơn đạt “Đã xác nhận”, hệ thống tính hoa hồng và tiền người bán được hưởng trên tổng tiền của đơn theo tỷ lệ chụp lúc checkout. | [UC-G04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1393 |
+| <a id="uc-g04.main-01"></a>UC-G04.MAIN-01 | Luồng chính | Khi đơn đạt “Đã xác nhận”, hệ thống tính hoa hồng và tiền người bán được hưởng trên tổng tiền của đơn theo snapshot checkout; các đơn checkout theo P-COM-01 chụp 5%=500 bps cho mọi Category/Seller. Finance không tra tỷ lệ hiện tại hoặc tính lại đơn cũ; làm tròn theo REQ-FIN-001. | [UC-G04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1393; [P-COM-01](parameters.md) |
 | <a id="uc-g04.main-02"></a>UC-G04.MAIN-02 | Luồng chính | Order ghi CONFIRMED và Outbox trong local transaction; Finance xử lý order.confirmed, chuyển Settlement SETTLED, Seller pending −Sᵢ/available +Sᵢ, PLATFORM pending −Cᵢ/available +Cᵢ và SETTLEMENT_RELEASED trong transaction Finance. Không gộp transaction Order và Finance. | [UC-G04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1395; **baseline thay thế/hiệu chỉnh:** [§5.5, §6.6](software-architecture.md), L559–570; [§6.6](software-architecture.md), L665–685 |
 | <a id="uc-g04.main-03"></a>UC-G04.MAIN-03 | Luồng chính | Hệ thống gửi Seller thông báo tiền đã khả dụng; không phát lệnh chi tự động. | [UC-G04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1397 |
 | <a id="uc-g04.main-04"></a>UC-G04.MAIN-04 | Luồng chính | Seller có thể rút số dư khả dụng bất kỳ lúc nào theo UC-D05. | [UC-G04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1399 |

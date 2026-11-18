@@ -9,6 +9,8 @@ và tìm accepted authority trước; các check tài liệu dưới đây khôn
 
 Phần ban/J7, rút số dư nhỏ, provision Product và trigger sau thu được hiệu chỉnh bởi [quyết định Thẻ 15](requirements/coverage.md#the-15). Contract Order/Finance obligations tại [API §7.1–7.3](requirements/api_specs.md) thay phụ thuộc has-paid-order; không dùng snapshot lịch sử để xác định quyền. Đây là đặc tả, không xác nhận code đã theo contract mới.
 
+Tham số nghiệp vụ hiện hành lấy từ [parameters.md](requirements/parameters.md), thay các số còn mở/khác giá trị trong hồ sơ cũ cùng chủ đề. Đây là yêu cầu cho triển khai, không phải bằng chứng code đã đáp ứng; không thay ADR, quote/pay, 7 service, phạm vi Should/Could hay phần phân tích đã hoãn.
+
 ## Công nghệ/library đã chốt và hiện trạng
 
 Nguồn quy định: SAD §1.3, §2.2–2.4, §4.2, §6.4 và A.2. Phiên bản đang có trong
@@ -46,6 +48,16 @@ ngoài transaction ghi dữ liệu, giữ ý định bền vững và event cùn
 Consumer áp dụng dữ liệu và dấu đã xử lý cùng transaction của mình. Không gộp
 Refund/Order/Settlement vào transaction xuyên service. Tên lớp/worker và bảng
 kỹ thuật chi tiết trong phụ lục SAD là đề xuất, không bắt code tạo đúng tên.
+
+Các giới hạn phải được thực thi ở service sở hữu, không chỉ ở frontend:
+
+- Finance cung cấp hoa hồng chung 5% = 500 bps; Order snapshot khi checkout, Finance dùng snapshot và làm tròn nửa lên một lần trên tổng đơn, không tra Category hay tính lại đơn cũ.
+- Payment: mỗi chu kỳ Refund có một lần đầu + tối đa 3 retry sau 1/5/15 phút từ lỗi trước; chỉ gửi lại lỗi rõ ràng, query PENDING/timeout không tính lượt. Hết lượt báo khách; chỉ khách đã thanh toán mở chu kỳ mới, cùng Refund/số tiền/key và giữ lịch sử, cho ORDER/FULL_CHECKOUT. Admin không retry thay khách; chỉ SUCCESS mới giảm pending.
+- Notification: email một lần đầu + tối đa 3 retry 1/5/15 phút cho lỗi tạm thời, tôn trọng Retry-After; dừng lỗi vĩnh viễn/token hết hạn, giữ cùng key và không rollback nghiệp vụ. In-app Should giữ 50 gần nhất/30 ngày mà không mất email/lịch retry/dedupe; không dùng retention này cho bí mật email demo.
+- Identity: reset một lần/30 phút, không khóa tạm do sai mật khẩu (vẫn chống lạm dụng); tối đa 3 địa chỉ hiện có. Nạp địa giới tĩnh vào DB Identity, hai cấp tỉnh/thành và phường/xã/đặc khu, không quận/huyện; tra cứu/validation dùng cùng dataset có nguồn/version, không gọi ngoài. Order snapshot mã và tên.
+- Product seed đúng 10 ngành hàng ở P-21e với UUID, không hoa hồng theo Category. Product tối đa 9 tệp/2 video, mô tả 5.000 ký tự; Review Should tối đa 5 tệp/1 video, nội dung 1.000 ký tự. Cart tối đa 50 dòng, 1–99 đơn vị/dòng; thêm trùng cộng dồn không vượt 99, BUY_NOW tối đa 99 và không tạo dòng giỏ.
+
+P-01 vẫn tạm 15 phút/chưa chốt; không suy dung lượng/định dạng/thời lượng media từ số tệp. N-09, N-11, P-37 và baseline tìm không dấu/OQ-006 giữ nguyên. Lịch job/HTTP budget/lease khác lịch retry nghiệp vụ đã chốt. Các quan sát implementation bên dưới, kể cả FakeRegionProvider, không phải xác nhận yêu cầu mới đã được triển khai.
 
 | Mã nguồn | Quy tắc đã xác nhận | Nguồn |
 |---|---|---|

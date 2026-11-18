@@ -24,7 +24,9 @@ Xung đột còn lại vào [coverage](coverage.md#cau-hoi), không chọn ngu�
 | [API](api_specs.md) | v1.1 | Quy ước giao tiếp, quyền, endpoint, DTO, lỗi, API nội bộ và sự kiện |
 | [Database](database.md) | v5.1 | Entity/field, ownership, ràng buộc, G/WD, state machine và dòng tiền |
 
-Phần ban theo nghĩa vụ/J7, rút số dư nhỏ, HIDDEN/provision và trigger Order sau thu đã được hiệu chỉnh theo [Thẻ 15](coverage.md#the-15), quyết định được duyệt ngày 17/11/2026. Các phần còn lại của hồ sơ và bảng truy vết vẫn có nguồn/số dòng baseline 11/11/2026, chưa xác nhận đồng bộ toàn bộ; không tự suy ra code đã được cập nhật.
+Phần ban theo nghĩa vụ/J7, rút số dư nhỏ, HIDDEN/provision và trigger Order sau thu đã được hiệu chỉnh theo [Thẻ 15](coverage.md#the-15), quyết định được duyệt ngày 17/11/2026. Các tham số được cập nhật theo Thẻ 16 như phần dưới; ngoài hai phạm vi này, hồ sơ và bảng truy vết vẫn có nguồn/số dòng baseline 11/11/2026, chưa xác nhận đồng bộ toàn bộ. Không tự suy ra code đã được cập nhật.
+
+Các giá trị trong [bảng tham số](parameters.md) lấy từ Thẻ 16 và xác nhận của người dùng ngày 18/11/2026, thay phần khác giá trị hoặc còn để ngỏ trong nguồn cũ cùng chủ đề. Hoa hồng chung là 5%; khách đã thanh toán tự mở chu kỳ thử lại hoàn tiền khi hết lượt, Admin chỉ xem tiến độ. P-01 vẫn dùng tạm 15 phút; không thay N-09, N-11 hoặc P-37. Những thay đổi này không tự mở rộng phần Should/Could hoặc thay các quyết định kiến trúc khác.
 
 | Trục | Nhãn | Ý nghĩa |
 |---|---|---|
@@ -42,10 +44,11 @@ Phần ban theo nghĩa vụ/J7, rút số dư nhỏ, HIDDEN/provision và trigge
 | Auth, Seller, quyền, hồ sơ, địa chỉ, ban | [identity](identity.md) | Order/Finance obligations, Notification |
 | Product, search, media, tồn hiển thị | [catalog](catalog.md) | Identity G-06, Order Inventory, checkout |
 | Cart/BUY_NOW, preview/pay, tồn, hủy/giao/nhận, deadline | [checkout-orders](checkout-orders.md) | Payment, Finance, Identity, Notification |
-| Charge/refund/simulator, Admin retry | [payments](payments.md) | Order CLOSED/PAID, Finance pending, Notification |
+| Charge/refund/simulator, khách thử lại hoàn tiền | [payments](payments.md) | Order CLOSED/PAID, Finance pending, Notification |
 | Settlement, ví, rounding, withdrawal, đối soát | [finance](finance.md) | Payment/Order nguồn, Identity, Notification |
 | Email demo/event/delivery | [notifications](notifications.md) | Event producer, Identity contact/secret |
 | Library, package, ownership, validation | [engineering](../engineering.md) | POM/config/test thực tế; không dùng thiết kế làm hiện trạng |
+| Giá trị tham số, giới hạn và lịch thử lại | [parameters](parameters.md) | Hồ sơ nghiệp vụ và contract theo service |
 | Kiến trúc phần mềm/hệ thống, quyết định và boundary | [SAD](software-architecture.md), [System Architecture](system-architecture.md) | SAD §7.1/D.1 và coverage khi có xung đột |
 
 ## Thuật ngữ chung
@@ -85,9 +88,9 @@ Idempotency replay cũng phải kiểm tra quyền hiện hành trước khi tr�
 
 | Vai trò | Permission được seed | Điều kiện |
 | :---- | :---- | :---- |
-| CUSTOMER | customer:profile:own; cart:manage:own; checkout:create:own; payment:create:own; order:read:own; order:cancel:own; order:confirm:own; review:write:own; notification:read:own | Đúng accountType/owner; ACTIVE mua bình thường, BANNED chỉ nghĩa vụ hiện tại theo G-14, DISABLED không truy cập API bảo vệ. |
+| CUSTOMER | customer:profile:own; cart:manage:own; checkout:create:own; payment:create:own; refund:retry:own; order:read:own; order:cancel:own; order:confirm:own; review:write:own; notification:read:own | Đúng accountType/owner; ACTIVE mua bình thường, BANNED chỉ nghĩa vụ hiện tại theo G-14. Chỉ khách đã thanh toán được mở chu kỳ thử lại Refund của mình khi hết lượt tự động; DISABLED không truy cập API bảo vệ. |
 | SELLER | seller:profile:own; product:manage:own; inventory:manage:own; order:fulfill:own; wallet:read:own; withdrawal:create:own; notification:read:own | Chỉ cấp khi duyệt; đúng accountType/owner, APPROVED/ACTIVE bán bình thường; BANNED chỉ đơn/tiền nghĩa vụ theo allowlist, không rút pending; DISABLED chặn truy cập. |
-| ADMIN | seller:approve; account:moderate; product:moderate; category:manage; operations:read:any; refund:retry; notification:read:own | Admin nội bộ; không tự duyệt; audit mọi thao tác, không sửa số dư hoặc xác nhận tay đã hoàn. |
+| ADMIN | seller:approve; account:moderate; product:moderate; category:manage; operations:read:any; operations:annotate; notification:read:own | Admin nội bộ; không tự duyệt; audit thao tác quản trị. Hoàn tiền chỉ được xem tiến độ, không thử lại thay khách, sửa số dư hoặc xác nhận tay đã hoàn. `operations:annotate` chỉ ghi chú xử lý khoản thu, không đổi kết quả hoàn tiền. |
 
 Seller PENDING/REJECTED không login; chỉ Seller APPROVED được cấm. Xem [G-14](identity.md#g-14) và [WD-09](finance.md#wd-09) về nghĩa vụ hiện tại, hạn khôi phục và ngoại lệ rút toàn bộ available dưới 10.000đ. J7/login/refresh kiểm tra lại nghĩa vụ, không dùng snapshot lịch sử đã thanh toán; nguồn lỗi không suy ra đã hết nghĩa vụ.
 

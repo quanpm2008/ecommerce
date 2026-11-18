@@ -72,13 +72,15 @@ Software Architecture mô tả cách tổ chức phần mềm bên trong hệ th
 
 Không sao chép toàn bộ DTO/data dictionary vào SAD. Các phần bổ sung chưa có trong API/Database được gom tại mục 7.2 để review, không sửa ngầm hồ sơ nguồn. Danh mục nguồn, quy tắc ưu tiên và giới hạn đọc tại phụ lục D.1.
 
+Các giá trị nghiệp vụ đã chốt ngày 18/11/2026 lấy từ [Tham số đã chốt](parameters.md), thay các giá trị cũ cùng chủ đề; không thay ADR, phạm vi Should/Could hay xác nhận implementation đã hoàn tất.
+
 ### 1.2. Phạm vi phiên bản MVP
 
 Bao gồm tài khoản LOCAL, đăng nhập/đăng xuất, đổi/đặt lại mật khẩu, hồ sơ và địa chỉ; đăng ký/duyệt Seller, cấm/gỡ cấm theo nghĩa vụ hiện tại ([Thẻ 15](coverage.md#the-15)); xem/tìm Product và Seller; quản lý sản phẩm và tồn kho; giỏ, Mua ngay, checkout, thanh toán giả lập; xử lý/hủy/từ chối/xác nhận đơn; hoàn tiền và đối soát; quyết toán, ví và rút tiền giả lập; email demo và các tác vụ nền bắt buộc.
 
 Theo S6, phần D04/E02 được giới hạn ở tra cứu vận hành: danh sách và chi tiết đơn, Payment/Refund, Settlement, Wallet, WalletTransaction, Withdrawal và đối soát tiền. Không đưa biểu đồ doanh thu, top sản phẩm, export phân tích hay Reporting Service vào MVP.
 
-Should/Could chỉ có ranh giới mở rộng: Google login; Review; quản lý danh mục qua giao diện Admin; in-app Notification; gợi ý sản phẩm; phần can thiệp Admin ngoài xử lý hoàn tiền lỗi. Danh mục nền cho sản phẩm vẫn phải được seed/migration có kiểm soát; việc chưa xây CRUD Admin không làm mất dữ liệu danh mục cần cho luồng Must.
+Should/Could chỉ có ranh giới mở rộng: Google login; Review; quản lý danh mục qua giao diện Admin; in-app Notification; gợi ý sản phẩm; phần can thiệp Admin ngoài phạm vi đã chốt. Admin không thử lại hoàn tiền thay khách. Danh mục nền phải seed đúng 10 ngành hàng tại [P-21e](parameters.md#danh-mục-ban-đầu--p-21e), dùng UUID và không có hoa hồng riêng theo Category; việc chưa xây CRUD Admin không làm mất dữ liệu cần cho luồng Must.
 
 ### 1.3. Ràng buộc và nền tảng đã chốt
 
@@ -213,6 +215,8 @@ Mỗi hồ sơ dưới đây có cùng cấu trúc: trách nhiệm, module ứng
 
 **Ranh giới nhất quán.** Tạo User/Customer/role hoặc approve Seller/role/authzVersion/audit/Outbox trong transaction Identity. Shared PK chỉ nối hồ sơ với User đúng accountType, không hồ sơ chồng lấp. Ban cập nhật cặp User/profile theo §6.2: BANNED giữ User ACTIVE; DISABLED đặt User DISABLED khi xác minh hết nghĩa vụ. Không có lệnh scope độc lập.
 
+Liên kết reset dùng một lần, hết hạn sau 30 phút. Không khóa tạm tài khoản vì nhập sai mật khẩu nhiều lần; vẫn áp dụng rate limit/chống lạm dụng, tách biệt với ban của Admin. Mỗi Customer giữ tối đa 3 địa chỉ hiện có; địa chỉ đã hard delete không còn tính vào giới hạn.
+
 **Tra cứu tiếp.** Mục 6.1–6.3; địa chỉ/địa giới ở mục 6.7; chi tiết đăng ký, token và khóa quyền ở phụ lục A.3.
 
 ### 3.2. Product — sản phẩm và tìm kiếm
@@ -246,6 +250,8 @@ Mỗi hồ sơ dưới đây có cùng cấu trúc: trách nhiệm, module ứng
 **Kết nối.** Gọi Product/Identity/Order qua REST để hiển thị dữ liệu hiện hành. Order đọc snapshot Cart qua internal API đề xuất. Cart nhận checkout.paid bằng Kafka; BUY_NOW không gọi hoặc cập nhật Cart.
 
 **Ranh giới nhất quán.** Cart mutation và dấu Inbox nằm trong DB Cart. Xóa rồi thêm lại tạo dòng mới để không giảm nhầm. Giữ lượng khách thêm sau snapshot; event lặp không giảm lần hai.
+
+Mỗi giỏ tối đa 50 dòng sản phẩm khác nhau, mỗi dòng 1–99 đơn vị; thêm cùng sản phẩm cộng vào dòng hiện có nhưng không vượt 99. BUY_NOW tối đa 99 đơn vị của một sản phẩm, không tạo dòng giỏ. Checkout vẫn kiểm tra tồn thực tế.
 
 **Tra cứu tiếp.** Mục 5.1 và 6.5; chi tiết snapshot/dedupe ở phụ lục A.5.
 
@@ -525,7 +531,9 @@ Order CANCELLED sau thu ghi RESTOCK + Outbox order.cancelled, không chờ refun
 
 Trong khóa Payment, bảo đảm tổng nghĩa vụ đã tạo, kể cả FAILED sẽ retry, không vượt amount; FULL_CHECKOUT và ORDER không cùng tồn tại cho một Payment. Dedupe business key độc lập eventId. Refund gọi simulator ngoài transaction, lưu kết quả và outbox refund.succeeded/failed cùng transaction. Timeout query trước retry, giữ key và cùng Refund, không tạo khoản hoàn thay thế.
 
-Order CANCELLED chỉ chứng minh hủy nghiệp vụ, không chứng minh đã trả tiền khách. API hiển thị refundStatus từ Payment; dependency lỗi phải báo chưa xác minh, không hiển thị SUCCESS mặc định. Admin E08 chỉ yêu cầu đối soát/retry qua Payment, có permission/audit; không sửa trực tiếp Refund SUCCESS hoặc Wallet.
+Order CANCELLED chỉ chứng minh hủy nghiệp vụ, không chứng minh đã trả tiền khách. API hiển thị refundStatus từ Payment; dependency lỗi phải báo chưa xác minh, không hiển thị SUCCESS mặc định. Admin chỉ giám sát/tra cứu theo quyền, không thử lại thay khách hoặc sửa trực tiếp Refund SUCCESS hay Wallet.
+
+Theo P-RF-01, mỗi chu kỳ có một lần thực hiện đầu và tối đa 3 lần thử lại sau 1, 5, 15 phút tính từ thất bại trước. Chỉ gửi lại khi thất bại rõ ràng; PENDING/timeout tiếp tục query, không tính query vào lượt thử lại. Hết lượt thì dừng tự động và thông báo khách đã thanh toán. Khách bấm **Thử lại hoàn tiền** mở chu kỳ mới cho cùng Refund, số tiền và key; đặt lại bộ đếm nhưng giữ lịch sử. Áp dụng cả ORDER và FULL_CHECKOUT. Khoảng 21 phút chỉ là ước tính, không phải deadline để kết luận thất bại; pending chỉ giảm khi gateway xác nhận SUCCESS.
 
 Trước thu chỉ được hủy cả CheckoutSession khi không có Payment đang cần đối soát. Sau thu hủy đúng Order đủ điều kiện, không hủy các Seller khác. Các bước theo thứ tự nghiệp vụ:
 
@@ -671,7 +679,7 @@ Giữa các service không có transaction chung. Dữ liệu nguồn và event 
 
 Finance tạo tiền chờ từ **checkout.paid của Order**, không từ payment.succeeded trực tiếp. Điều này tránh tạo quyền tiền Seller cho thanh toán muộn đã CLOSED. Một Settlement mỗi Order, một Wallet VND mỗi Seller và một Wallet PLATFORM. Seller approved tạo ví idempotent; nếu checkout đến trước event tạo ví, giữ chờ phụ thuộc hoặc tạo ví sau xác minh đáng tin cậy, không mất khoản chờ.
 
-Với tổng Order G và commission snapshot r bps: `C = floor((G × r + 5.000) / 10.000)`; `S = G − C`. Tính nguyên, kiểm tra tràn, không dùng float. Tỷ lệ r là P-COM-01/TBD; không chọn 500 hoặc 2.000 bps từ ví dụ. Snapshot tại checkout không đổi khi cấu hình hoa hồng thay đổi.
+Với tổng Order G và commission snapshot r = **500 bps (5%)** dùng chung cho mọi Seller/ngành hàng: `C = floor((G × 500 + 5.000) / 10.000)`; `S = G − C`. Làm tròn nửa lên một lần trên tổng đơn, tính nguyên, kiểm tra tràn, không dùng float. Order lưu tỷ lệ tại checkout; Finance dùng snapshot đó, không tra Category hoặc tính lại đơn cũ theo cấu hình mới.
 
 | Đầu vào | Transaction Finance |
 |---|---|
@@ -747,21 +755,19 @@ Những delta này không sửa ngầm file nguồn. Trước code, người ph�
 
 | Tham số | Phạm vi | Cách xử lý trong thiết kế |
 |---|---|---|
-| P-01 | TTL giữ tồn | Cấu hình Order; ràng buộc với dispatch/J1/J2b |
+| P-01 | TTL giữ tồn | Tạm dùng 15 phút, chưa chốt; ràng buộc với dispatch/J1/J2b |
 | P-02/P-03/P-04 | Chờ/query/thời gian tối đa Payment | Cấu hình Payment/Order; không biến HTTP timeout thành FAILED |
-| P-05/P-06 | Reset/access/refresh TTL | Cấu hình Identity; review cùng rotation/reuse |
-| P-08/P-09/P-10/P-11 | Media/địa chỉ/giỏ/phân trang | Bind validation/config; test biên theo giá trị được chốt |
-| P-19/P-21 | Retry email/lý do hủy-từ chối | Không hardcode ví dụ ngoài contract đã duyệt |
-| P-COM-01 | Hoa hồng | Nguồn Finance; snapshot Order; bắt buộc có khi bật checkout |
+| P-06 | Access/refresh TTL | Cấu hình Identity; review cùng rotation/reuse |
+| P-08.1/P-08.2/P-08.4 | Dung lượng/định dạng/thời lượng media còn mở | Không suy từ giới hạn số tệp đã chốt |
 | P-SIM-01 | Độ trễ success muộn | Chỉ scenario test/demo được cấu hình |
 | N-06 | Chu kỳ job | Cấu hình; không mặc định lấy một phút từ ví dụ |
 | SAD-QUOTE-TTL | Hạn quoteToken | Tham số kỹ thuật mới, TBD |
-| SAD-HTTP/RETRY/LEASE | HTTP budgets, backoff, worker lease | TBD theo đo đạc; lease không bảo đảm thay idempotency |
+| SAD-HTTP/RETRY/LEASE | HTTP budgets, backoff kỹ thuật, worker lease | TBD theo đo đạc; không thay lịch retry email/Refund đã chốt; lease không bảo đảm thay idempotency |
 | SAD-RETENTION | Outbox/Inbox/idempotency/audit/secret event | Phải bao phủ retry/replay và chính sách dữ liệu |
 | SAD-NFR | Tải mục tiêu, p95, error budget, RPO/RTO | Chốt trước kiểm thử tải và phát hành cloud |
 | SAD-SECURITY | Issuer/audience/algorithm/key rotation/CORS/cookie | Review theo môi trường, không có secret mặc định |
 
-P-WD-01=10.000 VND và hai hạn 7 ngày đã chốt, không đưa lại vào danh sách TBD. P-14/P-15 cho phân tích được hoãn theo phạm vi S6. Các giới hạn khác không được suy ra từ sample dev. Thứ tự timeout phải được kiểm tra để HTTP budget không vô tình ngắn hơn tác vụ bắt buộc; quá budget trả trạng thái đang xử lý khi công việc đã được lưu.
+Các tham số đã chốt nằm tại [parameters.md](parameters.md), không đưa lại vào TBD. P-WD-01=10.000 VND và hai hạn 7 ngày giữ nguyên. P-14 (GMT+7, tuần thứ Hai, quý lịch) và P-15 (bán chạy theo số lượng, trên 500 lượt bán) không làm phần phân tích đã hoãn theo S6 thành Must. N-09, N-11 và P-37 giữ yêu cầu/câu hỏi hiện hành. Các giới hạn khác không được suy từ sample dev. Thứ tự timeout phải được kiểm tra để HTTP budget không vô tình ngắn hơn tác vụ bắt buộc; quá budget trả trạng thái đang xử lý khi công việc đã được lưu.
 
 ### 7.4. Rủi ro và đánh đổi
 
@@ -923,6 +929,8 @@ Product chỉ có một giá/sản phẩm, không SKU/variant. Tạo sản phẩ
 
 Seller đổi SELLING/HIDDEN chỉ trên sản phẩm của mình; REMOVED do Admin không được Seller tự bật lại. Theo S4 §8.2E, Admin chỉ khôi phục trong 30 ngày từ removed_at và về HIDDEN, ghi audit; không tự phục hồi thành SELLING. Sản phẩm được đơn tham chiếu giữ lịch sử, không xóa vật lý. Danh mục dùng cho tạo sản phẩm phải đang khả dụng theo contract; chưa làm UI quản lý Category không được bỏ kiểm tra này.
 
+Mô tả Product tối đa 5.000 ký tự. Khi làm Review (Should), nội dung tối đa 1.000 ký tự, điểm trung bình cộng hiển thị 1 chữ số thập phân và tên người đánh giá che một phần. Danh sách Product mặc định 20 sản phẩm/trang, mới nhất trước; tìm tên, lọc Category/khoảng giá và giữ các sort khác theo API. Không thay baseline tìm không dấu/OQ-006. Tồn khả dụng ≤5 là ngưỡng cảnh báo thấp; cảnh báo sắp hết hạn khi còn không quá 24 giờ trước hạn xử lý 7 ngày, không đổi deadline.
+
 Tìm Product tại DB Product, Seller tại Identity; normalize chữ thường và unaccent trên query/dữ liệu so khớp; escape `%`, `_` khi tìm chuỗi literal. Predicate bán được phải xét Product, Seller approval/status, User và role theo G-06; batch lấy trạng thái để giảm N+1. Không trả số total giả khi lọc Seller sau phân trang: contract phải nêu rõ cách đếm/lấy bù, hoặc dùng dữ liệu projection chỉ làm ứng viên rồi xác minh trạng thái hiện hành trước trả. Giải pháp MVP ưu tiên đúng trước tối ưu.
 
 Migration bật unaccent ở DB cần tìm kiếm; ban đầu query chuẩn hóa tham số và đo với dữ liệu demo. Không tự khai hàm unaccent là IMMUTABLE để lập index khi chưa kiểm chứng; chỉ thêm cột chuẩn hóa/index hoặc pg_trgm sau đo đạc và quyết định riêng. Không thêm Search Service. Tồn hiển thị lấy Order, checkout vẫn giữ tồn chính thức.
@@ -931,11 +939,13 @@ Migration bật unaccent ở DB cần tìm kiếm; ban đầu query chuẩn hóa
 
 CustomerAddress thuộc Identity; xóa vật lý theo nguồn đã hiệu chỉnh. Order giữ snapshot địa chỉ và tên địa giới để đọc lịch sử dù địa chỉ bị xóa. Địa chỉ đề xuất mặc định là địa chỉ có last_used_at mới nhất; nếu chưa dùng địa chỉ nào thì lấy created_at nhỏ nhất, thêm ID làm tie-break ổn định. Không thêm cờ is_default hoặc API đặt mặc định mới vì S4 §3.1.4 dùng quy tắc suy ra này. Touch lastUsedAt sau checkout commit là idempotent theo checkoutSessionId, không làm rollback Order khi Identity tạm lỗi; lưu công việc retry nếu cần. Xóa/thay địa chỉ sau snapshot không sửa địa chỉ của đơn cũ.
 
-RegionCatalog đọc dataset tỉnh/thành và phường/xã nội bộ có version, kiểm tra ward thuộc province. Không gọi API địa giới ngoài khi request nghiệp vụ. Dataset không hợp lệ hoặc chưa cấu hình thì báo dịch vụ chưa sẵn sàng, không mặc định chấp nhận mọi mã. Dataset phải có nguồn/xuất xứ, version, ngày nhập và quy trình cập nhật được review; giá trị cụ thể TBD.
+RegionCatalog đọc danh mục địa giới tĩnh nạp sẵn trong DB Identity: tỉnh/thành và phường/xã/đặc khu trực thuộc, không có quận/huyện. API tra cứu và validation dùng cùng dataset, kiểm tra cấp dưới thuộc tỉnh/thành; không gọi API địa giới ngoài. Order snapshot cả mã và tên. Dataset thiếu/không hợp lệ thì báo chưa sẵn sàng, không chấp nhận mọi mã. Ghi nguồn, version, ngày nhập và quy trình cập nhật khi chuẩn bị dữ liệu; nguồn/version cụ thể vẫn cần review.
 
 #### A.6.3. Media
 
 Identity quản lý logo Seller, Product quản lý media sản phẩm và mở rộng Review sau. FE lấy presigned URL rồi upload trực tiếp object storage. Khi gắn media, service kiểm tra owner/purpose/object tồn tại/loại thực tế và giới hạn được chốt; không tin MIME client. Trả URL đọc phù hợp, không trả thông tin storage credential. Dọn object chưa gắn theo cấu hình retention; không xóa object đang được tham chiếu. Cloud storage là AWS theo phương án triển khai; storage S3-compatible hiện có chỉ là cấu hình dev.
+
+Product tối đa 9 tệp, trong đó tối đa 2 video; Review tối đa 5 tệp, trong đó tối đa 1 video. Dung lượng, định dạng và thời lượng không được suy ra từ các giới hạn số lượng này.
 
 #### A.6.4. Notification và email demo
 
@@ -943,7 +953,9 @@ Nhận event, xác định recipientUserId/accountType và template allowlist, l
 
 Secret reset mật khẩu chỉ đi đường nội bộ hạn chế quyền; log và màn vận hành chung không chứa token/link đầy đủ. Demo cần cách xem email reset giới hạn cho môi trường demo để kiểm thử, không mở endpoint công khai đọc mọi email. Sau này đổi email adapter thật không đồng nghĩa có exactly-once email: crash sau nhà cung cấp nhận nhưng trước lưu SENT có thể gửi lại; cần provider idempotency nếu có hoặc chấp nhận at-least-once delivery được nêu rõ.
 
-In-app là Should: giữ điểm mở rộng channel, unread/read/delete và soft delete theo S3 khi triển khai sau; không bắt MVP có chuông thông báo. Email lỗi không đảo Order PAID hoặc Withdrawal đã commit.
+P-19: một lần gửi đầu và tối đa 3 lần gửi lại sau 1, 5, 15 phút từ lỗi trước; chỉ retry lỗi tạm thời và không sớm hơn Retry-After nếu có. Dừng với lỗi vĩnh viễn hoặc token/link hết hạn; hết lượt ghi thất bại, không đổi trạng thái nghiệp vụ. Giữ cùng notification/key chống trùng. Cách xem email demo và retention bí mật vẫn cần quyết định riêng.
+
+In-app là Should: khi triển khai, giữ unread/read/delete và soft delete theo S3, hiển thị tối đa 50 thông báo gần nhất và giữ nội dung 30 ngày; không bắt MVP có chuông thông báo. Giới hạn này không xóa email, cắt lịch retry hay làm mất khóa chống trùng, không áp dụng cho token/reset URL. Email lỗi không đảo Order PAID hoặc Withdrawal đã commit.
 
 ### A.7. Ranh giới mở rộng Should/Could
 
@@ -996,7 +1008,7 @@ Không cần một microservice test riêng. Kiểm thử failure injection tạ
 | AT-10 | Timeout/PENDING và J1 chạy đồng thời dispatch | Không nhả chỉ vì đọc NONE cũ; không thu mới; phục hồi qua J2/J2b |
 | AT-11 | CLOSED rồi LATE_SUCCESS | Một FULL_CHECKOUT; không mở lại, không SOLD/Settlement; hoàn được theo dõi tới cuối |
 | AT-12 | Customer hủy tranh PACKING/J4/Seller từ chối | Một chuyển hợp lệ; đúng RESTOCK và nghĩa vụ Refund một lần |
-| AT-13 | Refund timeout/FAIL/retry lặp | Cùng nghĩa vụ/key; tổng hoàn không vượt thu; pending chỉ giảm khi SUCCESS |
+| AT-13 | Refund timeout/FAIL, hết lượt và khách mở chu kỳ mới | Query không tính lượt; tối đa 3 retry 1/5/15 phút mỗi chu kỳ, Admin không retry; cùng Refund/key/số tiền và giữ lịch sử cho ORDER/FULL_CHECKOUT; pending chỉ giảm khi SUCCESS, tổng hoàn không vượt thu |
 | AT-14 | Refund/confirmed đến Finance trước checkout.paid | WAITING_DEPENDENCY bền vững; tiếp tục đủ bút toán sau, không số dư âm |
 | AT-15 | Hai Order cùng Payment, một hủy một xác nhận | Refund riêng đơn hủy; đơn kia SETTLED; không đổi tổng gốc hoặc hoàn chồng |
 | AT-16 | Customer xác nhận cùng J3 | Một CONFIRMED và một SETTLEMENT_RELEASED; due_at đúng 7 ngày |
@@ -1005,7 +1017,7 @@ Không cần một microservice test riêng. Kiểm thử failure injection tạ
 | AT-19 | Giỏ thay đổi/xóa-thêm lại, BUY_NOW | Giảm đúng dòng snapshot còn tồn tại; giữ dòng mới; BUY_NOW không gọi/đổi Cart |
 | AT-20 | Tạo Product nhưng Inventory timeout | Product HIDDEN, retry cùng ID, không bán trước khi tồn sẵn sàng |
 | AT-21 | Event lặp ID và khác ID cùng nghĩa vụ | Một mutation kho/Settlement/ledger; không chỉ dựa eventId |
-| AT-22 | Kafka/Notification lỗi rồi khôi phục | Outbox không mất; email demo không rollback giao dịch; backlog xử lý được |
+| AT-22 | Kafka/Notification lỗi rồi khôi phục | Outbox không mất; email retry tối đa 3 lần 1/5/15 phút, tôn trọng Retry-After và dừng lỗi vĩnh viễn/link hết hạn; cùng key, không rollback nghiệp vụ; in-app Should giữ 50 gần nhất/30 ngày mà không mất dedupe |
 | AT-23 | Bảo toàn tiền sau các luồng hỗn hợp | Ledger/Wallet/Settlement/Payment/Refund/Withdrawal khớp khi đã hội tụ |
 | AT-24 | Restart và migration/restore diễn tập | Key và giao dịch còn dùng được; không mất ý định hoặc tác động lặp |
 | AT-25 | Cookie/CORS/CSRF và service allowlist | Sai origin/audience/caller bị chặn; internal không public; không lộ refresh token JSON |
@@ -1075,8 +1087,8 @@ Mỗi mốc là vertical slice có hợp đồng và bằng chứng kiểm thử
 | J2/J2b | Payment phối hợp Order | Query PENDING; giới hạn chờ theo P-04; đóng phiên có xác nhận; tiếp tục theo dõi success muộn |
 | J3 tự xác nhận | Order | DELIVERED quá hạn 7 ngày; CONFIRMED SYSTEM một lần |
 | J4 Seller quá hạn | Order | PAID/PACKING quá 7 ngày từ paid_at; hủy, RESTOCK, nghĩa vụ refund |
-| J5 refund | Payment | Query trước retry; cùng Refund/key; manual review khi vượt chính sách |
-| J6 email | Notification | Gửi/retry delivery PENDING/FAILED theo cấu hình |
+| J5 refund | Payment | Query PENDING/timeout không tính lượt; retry lỗi rõ ràng tối đa 3 lần/chu kỳ theo 1/5/15 phút; hết lượt dừng và báo khách, chỉ khách mở chu kỳ mới cùng Refund/key |
+| J6 email | Notification | Một gửi đầu + tối đa 3 retry 1/5/15 phút cho lỗi tạm thời, tôn trọng Retry-After; dừng lỗi vĩnh viễn/token hết hạn và ghi thất bại khi hết lượt |
 | CHECKOUT_CHARGE | Order | Tiếp tục ý định pay sau commit/crash; không tạo workflow mới |
 | PAYMENT_ORDER_APPLICATION | Payment | SUCCESS chưa chốt áp dụng Order hoặc FULL_CHECKOUT; theo dõi tới kết quả |
 | Outbox/Inbox retry | Mỗi service cần | Phát/tiếp tục event, phục hồi phụ thuộc, không bỏ khoản tiền/kho |
