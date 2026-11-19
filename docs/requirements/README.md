@@ -26,7 +26,7 @@ Xung đột còn lại vào [coverage](coverage.md#cau-hoi), không chọn ngu�
 
 Phần ban theo nghĩa vụ/J7, rút số dư nhỏ, HIDDEN/provision và trigger Order sau thu đã được hiệu chỉnh theo [Thẻ 15](coverage.md#the-15), quyết định được duyệt ngày 17/11/2026. Các tham số được cập nhật theo Thẻ 16 như phần dưới; ngoài hai phạm vi này, hồ sơ và bảng truy vết vẫn có nguồn/số dòng baseline 11/11/2026, chưa xác nhận đồng bộ toàn bộ. Không tự suy ra code đã được cập nhật.
 
-Các giá trị trong [bảng tham số](parameters.md) lấy từ Thẻ 16 và xác nhận của người dùng ngày 18/11/2026, thay phần khác giá trị hoặc còn để ngỏ trong nguồn cũ cùng chủ đề. Hoa hồng chung là 5%; khách đã thanh toán tự mở chu kỳ thử lại hoàn tiền khi hết lượt, Admin chỉ xem tiến độ. P-01 vẫn dùng tạm 15 phút; không thay N-09, N-11 hoặc P-37. Những thay đổi này không tự mở rộng phần Should/Could hoặc thay các quyết định kiến trúc khác.
+Các giá trị trong [bảng tham số](parameters.md) lấy từ Thẻ 16 và xác nhận của người dùng ngày 18–19/11/2026, thay phần khác giá trị hoặc còn để ngỏ trong nguồn cũ cùng chủ đề. Hoa hồng chung là 5%; khách đã thanh toán tự mở chu kỳ thử lại hoàn tiền khi hết lượt, Admin chỉ xem tiến độ. P-37 chốt tìm theo tên sản phẩm và tên cửa hàng không phân biệt dấu tiếng Việt, không phân biệt hoa thường. P-01 vẫn dùng tạm 15 phút; không thay N-09 hoặc N-11. Những thay đổi này không tự mở rộng phần Should/Could hoặc thay các quyết định kiến trúc khác.
 
 | Trục | Nhãn | Ý nghĩa |
 |---|---|---|

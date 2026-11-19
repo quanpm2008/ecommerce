@@ -185,7 +185,7 @@ Kiểm tra bảo toàn ngày 12: tổng thu 100.000 \= 50.000 đã hoàn \+ 2.50
 | :---- | :---- |
 | P-COM-01 | Đã chốt 500 bps = 5%, chung mọi Seller/ngành hàng; Order lưu snapshot. |
 | N-06 | Chu kỳ job nền; không tự giả định lịch chạy. |
-| P-xx / N-xx | [parameters.md](parameters.md) thay các giá trị cũ cùng chủ đề. P-01 vẫn tạm 15 phút chưa chốt; các mục mở khác giữ trạng thái riêng, N-09/N-11/P-37 không đổi. |
+| P-xx / N-xx | [parameters.md](parameters.md) thay các giá trị cũ cùng chủ đề. P-01 vẫn tạm 15 phút chưa chốt; các mục mở khác giữ trạng thái riêng, N-09/N-11 không đổi. P-37 chốt ngày 19/11/2026: tìm tên sản phẩm và tên cửa hàng không phân biệt dấu tiếng Việt và hoa thường. |
 | BRD / UI flow | Cần đồng bộ BRD, UI flow, wireframe và activity diagram với mô hình tách đơn (v5.0), mua ngay (v5.1), ví và rút tiền, bỏ báo cáo vi phạm (v5.2). |
 
 ## Ma trận truy vết tóm tắt
@@ -513,7 +513,7 @@ Cách đọc: Mỗi use case trình bày mục tiêu, điều kiện, các bư�
 
 * Sản phẩm vừa bị ẩn/gỡ trong lúc khách xem: khi thêm giỏ, hệ thống báo sản phẩm không còn bán.
 
-**Kết quả mong đợi:** Danh sách không hiển thị sản phẩm của người bán chưa được duyệt hoặc bị cấm; tìm kiếm không phân biệt dấu tiếng Việt.
+**Kết quả mong đợi:** Danh sách không hiển thị sản phẩm của người bán chưa được duyệt hoặc bị cấm; tìm theo tên sản phẩm không phân biệt dấu tiếng Việt và hoa thường (P-37, chốt 19/11/2026). Chuẩn hóa cả từ khóa và tên để so khớp: bỏ dấu tiếng Việt, đổi đ/Đ thành d và chuyển về chữ thường; giữ nguyên tên lưu và hiển thị. Ví dụ “dien thoai”, “Điện Thoại” và “ĐIỆN THOẠI” cho cùng kết quả.
 
 #### UC-B02 | Tìm kiếm và xem người bán
 
@@ -525,7 +525,7 @@ Cách đọc: Mỗi use case trình bày mục tiêu, điều kiện, các bư�
 
 **LUỒNG CHÍNH**
 
-1. Khách tìm kiếm người bán theo tên cửa hàng hoặc chọn tên cửa hàng từ một sản phẩm.
+1. Khách tìm kiếm người bán theo tên cửa hàng hoặc chọn tên cửa hàng từ một sản phẩm. Tìm tên cửa hàng áp dụng cùng quy tắc P-37 như tên sản phẩm: không phân biệt dấu tiếng Việt và hoa thường; chuẩn hóa cả từ khóa và tên để so khớp, giữ nguyên tên lưu và hiển thị.
 
 2. Hệ thống hiển thị trang người bán với tên cửa hàng, ảnh đại diện tài khoản Seller dùng làm logo, mô tả và các sản phẩm đang bán.
 
@@ -1466,7 +1466,7 @@ FRD v5.5 áp dụng Quyết định mới FRD Conflicts. Quyết định \#6 ch�
 
 ## 9. Thông số bổ sung và kịch bản nghiệm thu
 
-[parameters.md](parameters.md) là nguồn giá trị đã chốt Thẻ 16 và xác nhận người dùng 18/11/2026, thay phần để ngỏ/giá trị cũ cùng chủ đề. P-01 vẫn tạm 15 phút chưa chốt, tham số khác còn mở giữ trạng thái riêng; N-09/N-11/P-37 không đổi. Hạn Seller 7 ngày tính từ Payment success; hạn khách 7 ngày từ Seller xác nhận đã giao.
+[parameters.md](parameters.md) là nguồn giá trị đã chốt Thẻ 16 và xác nhận người dùng 18/11/2026, bổ sung quyết định P-37 ngày 19/11/2026, thay phần để ngỏ/giá trị cũ cùng chủ đề. P-01 vẫn tạm 15 phút chưa chốt, tham số khác còn mở giữ trạng thái riêng; N-09/N-11 không đổi. P-37 yêu cầu tìm tên sản phẩm và tên cửa hàng không phân biệt dấu tiếng Việt và hoa thường. Hạn Seller 7 ngày tính từ Payment success; hạn khách 7 ngày từ Seller xác nhận đã giao.
 
 | Thông số | Quy định | Trạng thái |
 | :---- | :---- | :---- |

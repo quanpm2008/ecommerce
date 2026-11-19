@@ -1,6 +1,6 @@
 # Đồng bộ tài liệu Thẻ 15 — thực thi và bản vá remote
 
-Ngày khởi tạo: 17/11/2026; tiếp tục ngày 18/11/2026. Trạng thái: Blocked remote; repository và bản vá bàn giao đã hoàn tất, không có bằng chứng lưu thay đổi trên Drive/Figma.
+Ngày khởi tạo: 17/11/2026; tiếp tục ngày 18/11/2026. Trạng thái: Google Docs text hoàn tất; 12 thẻ đã lưu/đọc lại 225 đoạn hoặc ô mục tiêu. Repository đã hoàn tất. Chỉ Figma/drawio còn Blocked do quyền chỉnh sửa thiết kế; không chuyển toàn kế hoạch completed.
 
 ## Kết quả cần đạt
 Đồng bộ ban/unban theo nghĩa vụ, UC-D01 HIDDEN/provision và trigger Order áp dụng Payment SUCCESS trong tài liệu hiệu lực repository và các tài sản Drive/Figma liên quan. Không sửa code/migration/generated OpenAPI; không tuyên bố runtime pass.
@@ -15,7 +15,7 @@ Ngày khởi tạo: 17/11/2026; tiếp tục ngày 18/11/2026. Trạng thái: Bl
 4. Đối chiếu B1–B11, P1–P2, O1–O3; kiểm tra link/hash và ghi rõ giới hạn remote.
 
 ## Tiến độ
-- Remote: các lần mở browser/relay không vào được editing context; không có text tab hay tài sản thiết kế nào được xác nhận đã sửa. Không suy ra thiếu quyền Google Docs từ nút Đăng nhập. Bằng chứng lỗi và bản vá từng section/frame ở dưới.
+- Google Docs: browser own đã mở lại được editing context, không cần plugin Google Docs. Đã sửa trực tiếp 12 thẻ qua giao diện find/replace giới hạn Thẻ hiện tại; chờ Đã lưu vào Drive rồi export kiểm tra từng nhóm. Thẻ 15 giữ ghi chú gốc/mục 4 trống và thêm kết luận 1–3. Native keyboard.type làm mất dấu đã được sửa bằng input Unicode; export xác nhận không còn text hỏng.
 - FRD/Database/API đã hoàn tất contract và đối chiếu 16 ca B1–B11/P1–P2/O1–O3 ở mức đặc tả. Các hồ sơ Identity/Finance/Checkout/Catalog/Payments đã đồng bộ và kiểm tra ngữ nghĩa bởi owner; không chạy code.
 - Authority đã ghi và xác minh tại coverage #the-15. Các bản nguồn lịch sử giữ nguyên; ba nguồn hiệu lực được phân quyền theo file để tránh ghi đè lẫn nhau. Chưa thay đổi Java/migration/generated OpenAPI.
 - Figma wireframe/mockup: lần khảo sát trước bấm Edit file menu mở “Sign up for Figma”; drawio Drive chỉ có viewer/download/print và Đăng nhập. Chưa ghi tài sản thiết kế. Lượt tiếp tục: mở Chromium thất bại do cài browser timeout; mở browser own cũng timeout. Không coi đây là từ chối quyền Google Docs.
@@ -31,8 +31,29 @@ Giữ nguyên các tài liệu nguồn lịch sử docs/api.md, docs/database.md
 - Kiểm tra coverage gốc **FAIL**: `FileNotFoundError: business/UET FRD v5.4 - dong bo API DB.md`. Không sửa validator để giả pass; không dọn nguồn lịch sử ngoài phạm vi.
 - Kiểm tra link có nhận diện heading Markdown: 561 explicit ID duy nhất; giữ đủ 37 UC, 17 G, 11 WD, 26 AT. Có 656 dẫn legacy `business/` được tách ra và không tuyên bố đã sửa. Ngoài chúng, một tham chiếu implementation chưa giải quyết: `docs/requirements/catalog.md` → `product-service/src/main/java/com/example/product_service/ProductTestController.java` không tồn tại; vùng khảo sát lịch sử 11/11, không thuộc thay đổi Thẻ 15.
 - Đã sửa link mới Database §7.1 trỏ nhầm heading API; kiểm tra cuối **PASS** các local link của bản vá remote và SHA-256 của cả 5 nguồn hiện hành trong manifest coverage.
-- Không chạy Java/Maven/Docker, migration hoặc UAT. Không có screenshot sau sửa Figma/drawio vì không ghi được tài sản. Các export remote chỉ chứng minh nội dung đã đọc, không chứng minh đã cập nhật.
-- Repository và nội dung bàn giao đã hoàn tất phần truy cập được. Phần remote giữ Blocked/active: cần editing context hoạt động cho Google Docs và quyền chỉnh sửa tài sản thiết kế, áp dụng bản vá rồi export/screenshot để đóng. Không tự đăng nhập, thay sharing hoặc tạo bản sao tài sản.
+- Không chạy Java/Maven/Docker, migration hoặc UAT. Đã quan sát hình Thẻ 15/API sau sửa và kiểm tra tiếng Việt qua export; không có screenshot sau sửa Figma/drawio vì chưa ghi tài sản thiết kế.
+- Lỗi browser timeout thuộc lượt trước. Lượt này Google Docs đã lưu đầy đủ các replacement mục tiêu và xác nhận nhãn operation ban/unban không còn “theo phạm vi”; ModerationScope chỉ còn trong ghi chú xóa enum, không alias hiện hành. Figma/drawio giữ Blocked riêng, không tự đăng nhập/đổi sharing/tạo bản sao.
+
+### Bằng chứng lưu Google Docs
+
+| Thẻ | Tab ID | Đoạn/ô mục tiêu đã đọc lại |
+|---|---|---:|
+| Thẻ 15 | t.9bkh3t22k4xx | 3 |
+| BRD | t.2s7rnjrns26s | 5 |
+| Parameter | t.p9ko6i2o5nha | 18 |
+| UI Screens | t.f8uuqznbc6wb | 23 |
+| Simulated Gateway | t.q3f13lnppt6i | 2 |
+| FRD Conflicts | t.mlnt08f3uyfw | 8 |
+| Database Conflicts | t.m3dk44mmot8v | 3 |
+| Wireframe Conflicts | t.v9y8iapgln4y | 7 |
+| Kế hoạch tổng quan | t.75ndkt4teod6 | 2 |
+| FRD | t.z7ee2ts69665 | 63 |
+| Database | t.np00hnkiu90 | 30 |
+| API Spec | t.ysygluyhdxdg | 61 |
+
+Mỗi nhóm được thực hiện bằng UI, không gọi internal write API hoặc thay model trang bằng script. Export sau lưu xác nhận toàn bộ text replacement, không chỉ trạng thái toolbar. Hai vị trí heading J1–J6 trong Parameter được đổi có chủ đích thành J1–J7; hai nhãn phiên giới hạn Customer trong API được đổi thành nghĩa vụ Order/Payment/Refund. Đây là số khối mục tiêu, không số API/feature runtime đã pass.
+
+Thiết kế hệ thống giữ no-op vì trang trống; hai thẻ link Activity/Figma giữ nguyên link, chưa sửa tài sản được liên kết. Nội dung bản vá text ở dưới là bản bàn giao chuẩn bị trước lần áp dụng; các câu “chưa áp dụng” trong trích dẫn ghi nhận thời điểm chuẩn bị, không thay trạng thái thực tế trong bảng này.
 
 ## Bản vá remote — thiết kế chưa áp dụng
 

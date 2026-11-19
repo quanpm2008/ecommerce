@@ -226,7 +226,7 @@ Liên kết reset dùng một lần, hết hạn sau 30 phút. Không khóa tạ
 | Module ứng dụng | Trách nhiệm |
 |---|---|
 | Sản phẩm | Tạo/sửa/ẩn/bật bán, ownership Seller, gỡ/khôi phục của Admin. |
-| Danh mục và tìm kiếm | Đọc danh mục nền; tìm Product không dấu/không phân biệt hoa thường bằng PostgreSQL unaccent. |
+| Danh mục và tìm kiếm | Đọc danh mục nền; tìm tên sản phẩm không dấu/không phân biệt hoa thường theo P-37, dùng PostgreSQL unaccent/lowercase. |
 | Khởi tạo tồn | Lưu việc yêu cầu Order tạo Inventory và giữ Product HIDDEN đến khi xác nhận. |
 | Media | Ký upload URL, kiểm tra object trước khi gắn; Review là điểm mở rộng Should. |
 
@@ -767,7 +767,7 @@ Những delta này không sửa ngầm file nguồn. Trước code, người ph�
 | SAD-NFR | Tải mục tiêu, p95, error budget, RPO/RTO | Chốt trước kiểm thử tải và phát hành cloud |
 | SAD-SECURITY | Issuer/audience/algorithm/key rotation/CORS/cookie | Review theo môi trường, không có secret mặc định |
 
-Các tham số đã chốt nằm tại [parameters.md](parameters.md), không đưa lại vào TBD. P-WD-01=10.000 VND và hai hạn 7 ngày giữ nguyên. P-14 (GMT+7, tuần thứ Hai, quý lịch) và P-15 (bán chạy theo số lượng, trên 500 lượt bán) không làm phần phân tích đã hoãn theo S6 thành Must. N-09, N-11 và P-37 giữ yêu cầu/câu hỏi hiện hành. Các giới hạn khác không được suy từ sample dev. Thứ tự timeout phải được kiểm tra để HTTP budget không vô tình ngắn hơn tác vụ bắt buộc; quá budget trả trạng thái đang xử lý khi công việc đã được lưu.
+Các tham số đã chốt nằm tại [parameters.md](parameters.md), không đưa lại vào TBD. P-WD-01=10.000 VND và hai hạn 7 ngày giữ nguyên. P-14 (GMT+7, tuần thứ Hai, quý lịch) và P-15 (bán chạy theo số lượng, trên 500 lượt bán) không làm phần phân tích đã hoãn theo S6 thành Must. N-09 và N-11 giữ yêu cầu/câu hỏi hiện hành. P-37 đã chốt ngày 19/11/2026: tìm tên sản phẩm và tên cửa hàng không phân biệt dấu tiếng Việt và hoa thường, theo A.6.1; phần chọn index của OQ-006 vẫn cần review. Các giới hạn khác không được suy từ sample dev. Thứ tự timeout phải được kiểm tra để HTTP budget không vô tình ngắn hơn tác vụ bắt buộc; quá budget trả trạng thái đang xử lý khi công việc đã được lưu.
 
 ### 7.4. Rủi ro và đánh đổi
 
@@ -929,9 +929,11 @@ Product chỉ có một giá/sản phẩm, không SKU/variant. Tạo sản phẩ
 
 Seller đổi SELLING/HIDDEN chỉ trên sản phẩm của mình; REMOVED do Admin không được Seller tự bật lại. Theo S4 §8.2E, Admin chỉ khôi phục trong 30 ngày từ removed_at và về HIDDEN, ghi audit; không tự phục hồi thành SELLING. Sản phẩm được đơn tham chiếu giữ lịch sử, không xóa vật lý. Danh mục dùng cho tạo sản phẩm phải đang khả dụng theo contract; chưa làm UI quản lý Category không được bỏ kiểm tra này.
 
-Mô tả Product tối đa 5.000 ký tự. Khi làm Review (Should), nội dung tối đa 1.000 ký tự, điểm trung bình cộng hiển thị 1 chữ số thập phân và tên người đánh giá che một phần. Danh sách Product mặc định 20 sản phẩm/trang, mới nhất trước; tìm tên, lọc Category/khoảng giá và giữ các sort khác theo API. Không thay baseline tìm không dấu/OQ-006. Tồn khả dụng ≤5 là ngưỡng cảnh báo thấp; cảnh báo sắp hết hạn khi còn không quá 24 giờ trước hạn xử lý 7 ngày, không đổi deadline.
+Mô tả Product tối đa 5.000 ký tự. Khi làm Review (Should), nội dung tối đa 1.000 ký tự, điểm trung bình cộng hiển thị 1 chữ số thập phân và tên người đánh giá che một phần. Danh sách Product mặc định 20 sản phẩm/trang, mới nhất trước; tìm tên theo P-37, lọc Category/khoảng giá và giữ các sort khác theo API. Tồn khả dụng ≤5 là ngưỡng cảnh báo thấp; cảnh báo sắp hết hạn khi còn không quá 24 giờ trước hạn xử lý 7 ngày, không đổi deadline.
 
-Tìm Product tại DB Product, Seller tại Identity; normalize chữ thường và unaccent trên query/dữ liệu so khớp; escape `%`, `_` khi tìm chuỗi literal. Predicate bán được phải xét Product, Seller approval/status, User và role theo G-06; batch lấy trạng thái để giảm N+1. Không trả số total giả khi lọc Seller sau phân trang: contract phải nêu rõ cách đếm/lấy bù, hoặc dùng dữ liệu projection chỉ làm ứng viên rồi xác minh trạng thái hiện hành trước trả. Giải pháp MVP ưu tiên đúng trước tối ưu.
+P-37 chốt ngày 19/11/2026: tìm theo tên sản phẩm và tên cửa hàng không phân biệt dấu tiếng Việt và hoa thường. Chuẩn hóa cả từ khóa và tên dùng để so khớp: bỏ dấu, đổi `đ`/`Đ` thành `d`, chuyển về chữ thường; giữ nguyên tên lưu và hiển thị. Ví dụ `dien thoai`, `Điện Thoại` và `ĐIỆN THOẠI` cho cùng kết quả khi các điều kiện lọc khác giống nhau.
+
+Tìm Product tại DB Product, tên cửa hàng tại Identity; baseline là PostgreSQL unaccent/lowercase trên query và tên dùng để so khớp, đáp ứng cả quy tắc `đ`/`Đ` → `d`; escape `%`, `_` khi tìm chuỗi literal. Predicate bán được phải xét Product, Seller approval/status, User và role theo G-06; batch lấy trạng thái để giảm N+1. Không trả số total giả khi lọc Seller sau phân trang: contract phải nêu rõ cách đếm/lấy bù, hoặc dùng dữ liệu projection chỉ làm ứng viên rồi xác minh trạng thái hiện hành trước trả. Giải pháp MVP ưu tiên đúng trước tối ưu. Đây là yêu cầu thiết kế, chưa xác nhận implementation hoặc kiểm thử runtime đã đáp ứng P-37.
 
 Migration bật unaccent ở DB cần tìm kiếm; ban đầu query chuẩn hóa tham số và đo với dữ liệu demo. Không tự khai hàm unaccent là IMMUTABLE để lập index khi chưa kiểm chứng; chỉ thêm cột chuẩn hóa/index hoặc pg_trgm sau đo đạc và quyết định riêng. Không thêm Search Service. Tồn hiển thị lấy Order, checkout vẫn giữ tồn chính thức.
 

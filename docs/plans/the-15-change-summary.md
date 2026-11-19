@@ -1,7 +1,5 @@
 # Tóm tắt chỉnh sửa tài liệu theo Thẻ 15
 
-Ngày tổng hợp: 18/11/2026. Phạm vi đã sửa: **tài liệu trong repository**, không phải code triển khai. **Google Docs, Figma và drawio chưa được cập nhật trực tiếp.**
-
 ## Nội dung thay đổi
 
 | Nhóm | Trước chỉnh sửa | Sau chỉnh sửa trong đặc tả | Tài liệu chính |
@@ -33,18 +31,4 @@ Ngày tổng hợp: 18/11/2026. Phạm vi đã sửa: **tài liệu trong reposi
 | [README nghiệp vụ](../requirements/README.md), [bản đồ tài liệu](../README.md), [engineering.md](../engineering.md) | Thuật ngữ, ma trận quyền, dependency và authority hiệu lực |
 | [coverage.md](../requirements/coverage.md#the-15) | Quyết định Thẻ 15, mapping nguồn/AC/trạng thái, manifest 5 nguồn hiện hành và giới hạn kiểm chứng |
 | Bốn tài liệu Identity: progress, checklist, dependency graph, session flowgraph | Chỉ thêm cảnh báo implementation chưa được kiểm chứng theo contract mới; không đổi checkbox hoặc mô tả code thành tính năng đã triển khai |
-| [Bản bàn giao remote](active/the-15-docs-remote-patches.md), [index kế hoạch](README.md) | Lưu bản vá từng thẻ/frame/sơ đồ, bằng chứng lỗi truy cập và trạng thái Blocked remote |
 
-## Phần chưa áp dụng và kết quả kiểm chứng
-
-| Hạng mục | Trạng thái thực tế |
-|---|---|
-| Google Docs và các bảng BRD/Parameter/UI/Conflicts | **Chưa sửa remote**; browser không mở được editing context do timeout. Đã chuẩn bị replacement/mapping từng section trong bản bàn giao |
-| Figma wireframe/mockup, drawio Activity Diagram | **Chưa sửa tài sản gốc**, chưa có screenshot sau sửa; có bản vá từng màn/trang và bằng chứng giới hạn chỉnh sửa |
-| Đối chiếu nghiệp vụ | Đã đối chiếu 16 tình huống ở mức **đặc tả**, không phải test ứng dụng |
-| ID và manifest | 561 explicit ID duy nhất; giữ đủ 37 UC, 17 G, 11 WD, 26 AT; SHA-256 của 5 nguồn hiện hành khớp manifest |
-| Link | Local link trong bản bàn giao hợp lệ. Kiểm tra gốc vẫn lỗi đường dẫn lịch sử business/...; 656 dẫn legacy chưa được dọn, còn link ProductTestController.java không tồn tại |
-| Code, migration, generated OpenAPI, runtime/UAT | Không sửa code/migration/generated OpenAPI; không chạy Maven/Docker/runtime/UAT |
-| Nguồn lịch sử | Giữ nguyên docs/api.md, docs/database.md và FRD v5.4; không viết lại lịch sử thành policy mới |
-
-Chi tiết và nội dung sẵn sàng áp dụng remote: [the-15-docs-remote-patches.md](active/the-15-docs-remote-patches.md).

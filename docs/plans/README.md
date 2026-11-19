@@ -30,4 +30,4 @@ decision into `docs/decisions/`; keep task-local choices in the plan.
 
 ## Active Plans
 
-- [Đồng bộ Thẻ 15 — tiến độ và bản vá remote](active/the-15-docs-remote-patches.md): Blocked remote; repository đã hiệu chỉnh/đối chiếu đặc tả, Drive/Figma chưa cập nhật. Bản vá từng thẻ/frame và giới hạn kiểm chứng được lưu trong cùng file.
+- [Đồng bộ Thẻ 15 — tiến độ và bản vá remote](active/the-15-docs-remote-patches.md): repository và 12 thẻ Google Docs đã sửa/đối chiếu sau lưu; chỉ Figma/drawio còn Blocked. Bằng chứng từng thẻ và bản vá thiết kế nằm trong cùng file.

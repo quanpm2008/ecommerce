@@ -64,7 +64,7 @@ Identity sở hữu User và RBAC trong PostgreSQL. Mỗi User (user\_id/email/p
 
 Một User có tối đa một role đang hiệu lực; người dùng nhiều vai trò cần nhiều tài khoản và email độc lập. CUSTOMER được cấp khi tạo User+Customer; SELLER chỉ cấp sau duyệt; ADMIN chỉ do quy trình nội bộ trên tài khoản riêng. Không có gộp quyền, không tạo hồ sơ Customer cho User SELLER hoặc ngược lại.
 
-Giá trị nghiệp vụ đã chốt theo [parameters.md](parameters.md), thay các giá trị cũ cùng chủ đề trong đặc tả; đây là yêu cầu triển khai, không phải migration đã chạy. P-01 vẫn tạm 15 phút chưa chốt; N-09/N-11/P-37 và phạm vi Reporting/Should/Could không đổi.
+Giá trị nghiệp vụ đã chốt theo [parameters.md](parameters.md), thay các giá trị cũ cùng chủ đề trong đặc tả; đây là yêu cầu triển khai, không phải migration đã chạy. P-01 vẫn tạm 15 phút chưa chốt; N-09/N-11 và phạm vi Reporting/Should/Could không đổi. P-37 chốt ngày 19/11/2026: tìm tên sản phẩm và tên cửa hàng không phân biệt dấu tiếng Việt và hoa thường, theo §5.2.
 
 #### 3.1.1 User
 
@@ -298,7 +298,7 @@ Sản phẩm thuộc một Seller, một giá hiện tại, không có SKU hoặ
 | media | JSONB | Có | — | Mảng metadata có thứ tự: object\_key, media\_type IMAGE/VIDEO, sort\_order, is\_cover; không lưu binary hoặc URL ký tạm thời. |
 | created\_at, updated\_at | TIMESTAMPTZ | Có | — | Dấu thời gian đồng bộ và audit. |
 
-Ràng buộc: price\_vnd >0; chỉ Product thỏa G-06 được mua. Media 1–9 tệp, tối đa 2 video (P-08.3); mỗi phần tử có loại/object\_key/thứ tự/MIME/dung lượng/thời lượng video, backend kiểm tra file thực. Dung lượng/định dạng/thời lượng giữ trạng thái riêng, chưa chốt bởi P-08.3. Ảnh bìa là IMAGE đầu tiên, chỉ video dùng placeholder; MVP không chuyển mã. Điểm là trung bình cộng Review, hiển thị 1 chữ số thập phân (P-12), không lưu cột riêng; tên reviewer che một phần. Seller chỉ sửa sản phẩm mình. Tìm theo product\_name LIKE/ILIKE, lọc danh mục/khoảng giá, mặc định 20 sản phẩm/trang mới nhất (P-11); quy tắc search tại 5.2 không đổi.
+Ràng buộc: price\_vnd >0; chỉ Product thỏa G-06 được mua. Media 1–9 tệp, tối đa 2 video (P-08.3); mỗi phần tử có loại/object\_key/thứ tự/MIME/dung lượng/thời lượng video, backend kiểm tra file thực. Dung lượng/định dạng/thời lượng giữ trạng thái riêng, chưa chốt bởi P-08.3. Ảnh bìa là IMAGE đầu tiên, chỉ video dùng placeholder; MVP không chuyển mã. Điểm là trung bình cộng Review, hiển thị 1 chữ số thập phân (P-12), không lưu cột riêng; tên reviewer che một phần. Seller chỉ sửa sản phẩm mình. Tìm theo product\_name không phân biệt dấu tiếng Việt và hoa thường: chuẩn hóa cả từ khóa và tên trước LIKE theo §5.2 (P-37, chốt 19/11/2026); lọc danh mục/khoảng giá, mặc định 20 sản phẩm/trang mới nhất (P-11).
 
 Tạo mới UC-D01 sau validation/media: ghi Product HIDDEN cùng công việc provision bền vững trong local transaction; sau commit gọi `POST /internal/v1/inventory`. Order provision idempotent theo productId. Chỉ khi Inventory xác nhận và Seller/Product còn hợp lệ mới áp dụng trạng thái Seller yêu cầu. Timeout giữ một Product HIDDEN, retry cùng productId và Idempotency-Key, không tạo Product mới hay rollback giả xuyên DB. Seller bị ban hoặc Product REMOVED trong lúc chờ thì hoàn tất Inventory không tự bật SELLING. Lỗi validation/media trước chấp nhận tạo không lưu Product; câu “không lưu dở dang” không áp dụng cho Product hợp lệ HIDDEN đang đợi tồn. Cập nhật Product hiện có không tạo lại/provision Product mới. Dùng cơ chế [SAD §5.7/A.6](software-architecture.md), không thêm trạng thái, endpoint hoặc job provision thứ hai.
 
@@ -812,9 +812,9 @@ Mọi API kiểm tra account\_type theo kênh, role duy nhất, cặp trạng th
 
 ### 5.2 Tìm kiếm đơn giản trong database
 
-Product Service tìm Product theo product\_name bằng truy vấn tham số hóa với ILIKE, hoặc LIKE trên giá trị chuẩn hóa chữ thường. Nếu tìm Seller theo tên, Identity và Seller cung cấp API tương tự trên tên cửa hàng (users.full\_name của User có Seller hợp lệ); không join trực tiếp database giữa service. Escape ký tự % và \_ nếu từ khóa được hiểu là chuỗi literal. Giới hạn độ dài từ khóa, kích thước trang và sắp xếp ổn định để phân trang.
+Product Service tìm Product theo product\_name bằng truy vấn tham số hóa. Theo P-37 chốt ngày 19/11/2026, phải chuẩn hóa cả từ khóa và tên trước khi so khớp bằng LIKE: bỏ dấu tiếng Việt, đổi đ/Đ thành d và chuyển về chữ thường. ILIKE đơn thuần không đủ để đáp ứng yêu cầu không phân biệt dấu tiếng Việt. Ví dụ “dien thoai”, “Điện Thoại” và “ĐIỆN THOẠI” phải cho cùng kết quả. Chỉ chuẩn hóa để tìm kiếm, giữ nguyên tên lưu và hiển thị. Identity cung cấp API tìm Seller tương tự trên tên cửa hàng (users.full\_name của User có Seller hợp lệ); không join trực tiếp database giữa service. Escape ký tự % và \_ nếu từ khóa được hiểu là chuỗi literal. Giới hạn độ dài từ khóa, kích thước trang và sắp xếp ổn định để phân trang.
 
-Kết quả Product phải áp dụng đầy đủ G-06, gồm User ACTIVE, quyền SELLER và Seller APPROVED, ACTIVE qua API sở hữu. Có thể xác minh theo lô và tiếp tục lấy trang để tránh đưa shop không hợp lệ vào kết quả. Tồn hiển thị lấy từ Order service khi cần; checkout luôn kiểm tra lại giá, Seller và tồn chính thức. Không triển khai full-text, gợi ý từ khóa, sửa lỗi chính tả, OpenSearch hoặc pipeline đồng bộ search trong MVP. Tìm không dấu chưa được cam kết trong phạm vi LIKE cơ bản.
+Kết quả Product phải áp dụng đầy đủ G-06, gồm User ACTIVE, quyền SELLER và Seller APPROVED, ACTIVE qua API sở hữu. Có thể xác minh theo lô và tiếp tục lấy trang để tránh đưa shop không hợp lệ vào kết quả. Tồn hiển thị lấy từ Order service khi cần; checkout luôn kiểm tra lại giá, Seller và tồn chính thức. Không triển khai full-text, gợi ý từ khóa, sửa lỗi chính tả, OpenSearch hoặc pipeline đồng bộ search trong MVP. Đây là yêu cầu triển khai tìm kiếm, không xác nhận code hoặc migration đã có.
 
 ### 5.3 Giỏ hàng, Mua ngay và checkout
 
@@ -977,7 +977,7 @@ Các bảng sau hỗ trợ bảo mật và độ tin cậy, không tính vào 30
 | OrderSeller và SellerOrder | Loại bỏ toàn bộ entity cũ; chuyển seller\_id, trạng thái, thời hạn và xử lý tiền sang Order. |
 | Checkout và Payment | Bổ sung từ điển CheckoutSession còn thiếu; quan hệ 1 checkout có N Order và tối đa 1 Payment. Bỏ UQ sai trên Order.checkout\_session\_id. |
 | Hoàn và quyết toán | Refund theo Order hoặc FULL\_CHECKOUT; Settlement theo Order. Finance ghi pending lúc Payment SUCCESS, chuyển available khi Order CONFIRMED và giảm pending sau Refund SUCCESS; không thêm PaymentAllocation. |
-| Search | Hoãn service và projection; LIKE hoặc ILIKE tại DB của Product Service và Identity theo đối tượng. |
+| Search | Hoãn service và projection; tìm tại DB của Product Service và Identity theo đối tượng. Chuẩn hóa cả từ khóa và tên trước LIKE theo §5.2 để không phân biệt dấu tiếng Việt và hoa thường (P-37, chốt 19/11/2026); ILIKE đơn thuần không đủ. |
 | Reporting / báo cáo vi phạm | Reporting Service và ba projection vẫn tạm hoãn. Loại bỏ UC-C02 (Customer báo cáo Product/Seller), UC-E05 (Admin xử lý báo cáo từ Customer) và entity ViolationReport/Report; duy trì tra cứu vận hành qua API. |
 | Cart (4.6) | Bỏ giỏ khách vãng lai theo FRD UC-B03: bỏ owner\_type, guest\_token\_hash, merged\_into\_cart\_id, expires\_at, trạng thái MERGED/EXPIRED và luồng merge; mỗi Customer đúng một giỏ. Thêm bảng trạng thái dòng giỏ (chuyển từ FRD 4.7). |
 | Trạng thái Order (4.6) | Theo FRD: thêm PACKING, PAYMENT\_FAILED, EXPIRED; thêm packing\_at, confirmed\_by, cancelled\_by\_type, needs\_manual\_review. CheckoutSession.close\_reason thành enum PAYMENT\_FAILED / EXPIRED / CANCELLED\_BY\_CUSTOMER; thêm address\_id, paid\_at. |
@@ -999,7 +999,7 @@ Các bảng sau hỗ trợ bảo mật và độ tin cậy, không tính vào 30
 
 * MVP dùng bộ giả lập thanh toán nội bộ cho thanh toán và hoàn tiền; rút tiền là giao dịch giả lập tức thời. Nếu sau MVP chuyển rút tiền sang cổng chi trả thật, phải bổ sung trạng thái giao dịch rút, ngăn "đang rút", cơ chế đối soát/retry và chính sách đích nhận; nếu có đổi trả/chargeback sau Order CONFIRMED thì cần thêm thời gian tạm giữ và cơ chế xử lý số dư âm (WD-07, mục 8.3).
 
-* P-COM-01 đã chốt chung 5%=500 bps và P-19/P-RF-01 đã chốt retry theo [parameters.md](parameters.md). Timeout đối soát P-04, lịch cloud và các tham số còn mở giữ riêng; N-09/N-11/P-37 không đổi.
+* P-COM-01 đã chốt chung 5%=500 bps và P-19/P-RF-01 đã chốt retry theo [parameters.md](parameters.md). P-37 chốt ngày 19/11/2026 cho tên sản phẩm và tên cửa hàng tại §5.2. Timeout đối soát P-04, lịch cloud và các tham số còn mở giữ riêng; N-09/N-11 không đổi.
 
 * Email của Seller REJECTED giữ tại User Seller; đăng ký lại tạo SellerApplication mới cho cùng seller\_id sau xác minh email, không sửa hồ sơ cũ. Không tự chọn giá trị các tham số mở; các API/FRD phải đồng bộ tài khoản riêng và ngoại lệ ban/withdraw.
 

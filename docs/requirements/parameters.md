@@ -1,6 +1,6 @@
 # Các tham số đã chốt
 
-Nguồn: [Thẻ 16](https://docs.google.com/document/d/1VukChbA8p9eOU_loe7y_RVCFvdkzIeMDQCWBoUn2nRI/edit?tab=t.m7xl31skw7qz) và các xác nhận của người dùng ngày 18/11/2026. Các giá trị dưới đây thay phần còn để ngỏ hoặc khác giá trị trong tài liệu cũ cùng chủ đề. Đây là yêu cầu cho team dev, không phải xác nhận hệ thống đã triển khai.
+Nguồn: [Thẻ 16](https://docs.google.com/document/d/1VukChbA8p9eOU_loe7y_RVCFvdkzIeMDQCWBoUn2nRI/edit?tab=t.m7xl31skw7qz) và các xác nhận của người dùng ngày 18/11/2026; P-37 được chốt bổ sung ngày 19/11/2026. Các giá trị dưới đây thay phần còn để ngỏ hoặc khác giá trị trong tài liệu cũ cùng chủ đề. Đây là yêu cầu cho team dev, không phải xác nhận hệ thống đã triển khai.
 
 ## Giá trị sử dụng
 
@@ -12,7 +12,7 @@ Nguồn: [Thẻ 16](https://docs.google.com/document/d/1VukChbA8p9eOU_loe7y_RVCF
 | P-08.5 | Mô tả sản phẩm tối đa **5.000 ký tự**; nội dung đánh giá tối đa **1.000 ký tự**. |
 | P-09 | Mỗi khách hàng được lưu tối đa **3 địa chỉ** hiện có. Xóa hẳn địa chỉ thì địa chỉ đó không còn tính vào giới hạn; đơn cũ giữ bản chụp địa chỉ. |
 | P-10 | Mỗi dòng giỏ có **1–99 đơn vị**; mỗi giỏ tối đa **50 dòng sản phẩm khác nhau**. Thêm lại cùng sản phẩm thì cộng vào dòng hiện có, không vượt 99. Mua ngay cũng tối đa 99 đơn vị của một sản phẩm và không tạo dòng giỏ. Checkout vẫn kiểm tra tồn kho thực tế. |
-| P-11 | Mặc định **20 sản phẩm/trang**, tìm theo tên, lọc danh mục và khoảng giá; sắp xếp mặc định mới nhất. Các lựa chọn sắp xếp khác giữ theo API. Không đổi yêu cầu tìm không dấu trong lần sửa này. |
+| P-11 | Mặc định **20 sản phẩm/trang**, tìm theo tên, lọc danh mục và khoảng giá; sắp xếp mặc định mới nhất. Các lựa chọn sắp xếp khác giữ theo API. Quy tắc dấu và hoa/thường theo P-37. |
 | P-12 | Hiển thị điểm đánh giá trung bình cộng với **1 chữ số thập phân** trên thẻ sản phẩm; tên người đánh giá được che một phần. |
 | P-14 | Dùng **GMT+7**; tuần bắt đầu thứ Hai, quý theo lịch. |
 | P-15 | Xác định bán chạy theo **số lượng bán**, không phải doanh thu; sản phẩm phải có **trên 500 lượt bán**, đúng 500 chưa đạt. Không tự thêm cách tính kỳ hoặc trạng thái đơn được tính khi nguồn chưa quy định. |
@@ -25,6 +25,7 @@ Nguồn: [Thẻ 16](https://docs.google.com/document/d/1VukChbA8p9eOU_loe7y_RVCF
 | P-22 | Thông báo trong ứng dụng hiển thị tối đa **50 thông báo gần nhất**, giữ nội dung **30 ngày**. Giới hạn này không xóa email, cắt lịch gửi lại hoặc làm mất khóa chống trùng. In-app vẫn là Should. |
 | P-26 | Nạp sẵn danh mục địa giới tĩnh vào **DB của Identity**. Dùng mô hình hai cấp: tỉnh/thành và phường/xã/đặc khu thuộc tỉnh/thành, không có quận/huyện. API và kiểm tra địa chỉ đọc cùng bộ dữ liệu này, không gọi API địa giới bên ngoài. Ghi rõ nguồn và phiên bản khi chuẩn bị dữ liệu; Order giữ cả mã và tên tại lúc đặt hàng. |
 | P-36 | Cảnh báo đơn sắp hết hạn khi thời gian xử lý còn **không quá 24 giờ** trước hạn 7 ngày. |
+| P-37 | **Đã chốt 19/11/2026:** tìm theo tên sản phẩm và tên cửa hàng **không phân biệt dấu tiếng Việt, không phân biệt hoa thường**. Ví dụ: `dien thoai`, `Điện Thoại` và `ĐIỆN THOẠI` cho cùng kết quả. Chuẩn hóa cả từ khóa và tên khi so khớp: bỏ dấu tiếng Việt, chuyển đ/Đ thành d và chuyển về chữ thường; giữ nguyên tên lưu và hiển thị. |
 
 Các ngưỡng thống kê không tự làm Reporting Service hay các màn phân tích thành bắt buộc; giữ phạm vi đã được chấp nhận trong SAD. Các giới hạn review và in-app áp dụng khi triển khai phần Should tương ứng.
 
@@ -75,5 +76,5 @@ Mô tả bổ sung là tùy chọn, riêng Khác phải có mô tả không rỗ
 
 - **P-01:** vẫn dùng tạm **15 phút**, chưa chốt.
 - P-02/P-03/P-04, P-06, P-08.1/P-08.2/P-08.4, P-SIM-01 và các chi tiết kỹ thuật chưa được quyết định riêng giữ trạng thái hiện có. Không lấy câu giao Tech Lead quyết làm một giá trị số.
-- **N-09, N-11 và P-37:** không thay đổi trong lần sửa này. Giữ yêu cầu và các câu hỏi hiện hành tại tài liệu sở hữu.
+- **N-09 và N-11:** không thay đổi trong lần sửa này. Giữ yêu cầu và các câu hỏi hiện hành tại tài liệu sở hữu.
 - Chu kỳ chạy job khác với thời gian chờ giữa các lần thử lại. Lịch cloud, thời gian chờ HTTP, khóa worker và cách cấu hình vẫn cần quyết định ở phạm vi tương ứng.

@@ -35,7 +35,7 @@ chấp nhận ngày 11/11/2026; nội dung quyết định không đổi khi chu
   [API v1.1](requirements/api_specs.md): giao tiếp/DTO/lỗi;
   [System Architecture](requirements/system-architecture.md): thành phần/boundary.
 - Ba nguồn trên mang phiên bản gốc ngày 16/11/2026; [Thẻ 15](requirements/coverage.md#the-15) cập nhật phần ban theo nghĩa vụ/J7, rút số dư nhỏ, HIDDEN/provision và trigger sau thu theo quyết định được duyệt ngày 17/11/2026. Các phần này ưu tiên hơn đoạn cũ cùng chủ đề.
-- [Thẻ 16 và các xác nhận ngày 18/11/2026](requirements/parameters.md) chốt các giới hạn, hoa hồng chung 5%, thử lại hoàn tiền/email và danh mục địa giới tĩnh. Các quyết định này ưu tiên hơn đoạn cũ còn ghi dùng tạm hoặc chưa chốt cùng chủ đề; P-01 vẫn dùng tạm 15 phút, N-09/N-11/P-37 không đổi.
+- [Thẻ 16 và các xác nhận ngày 18–19/11/2026](requirements/parameters.md) chốt các giới hạn, hoa hồng chung 5%, thử lại hoàn tiền/email, danh mục địa giới tĩnh và P-37: tìm tên sản phẩm/tên cửa hàng không phân biệt dấu tiếng Việt, không phân biệt hoa thường. Các quyết định này ưu tiên hơn đoạn cũ còn ghi dùng tạm hoặc chưa chốt cùng chủ đề; P-01 vẫn dùng tạm 15 phút, N-09/N-11 không đổi.
 - Các phần ngoài phạm vi Thẻ 15 và Thẻ 16 của hồ sơ và coverage còn có nguồn/số dòng baseline 11/11/2026, chưa xác nhận đồng bộ toàn bộ. Đối chiếu authority trước khi code; tài liệu không chứng minh implementation.
 - Code/migrations, [Identity OpenAPI](../identity-service/openapi.json), test,
   POM/Compose chứng minh hiện trạng, không tự thay yêu cầu nguồn.

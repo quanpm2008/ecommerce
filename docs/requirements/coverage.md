@@ -13,20 +13,20 @@ Nguồn: [Thẻ 15](https://docs.google.com/document/d/1VukChbA8p9eOU_loe7y_RVCF
 - UC-D01 thiếu bước đã có trong API/SAD: tạo Product HIDDEN cùng công việc provision bền vững; xác nhận Inventory mới được áp dụng trạng thái yêu cầu nếu còn hợp lệ; timeout giữ HIDDEN/retry cùng productId.
 - Database §8.2B đã có invalid-after-capture: Order xác minh khi áp dụng Payment SUCCESS, không phải ban sau thanh toán tự hủy; lỗi phụ thuộc giữ retry, không coi là invalid.
 
-Phạm vi gồm tài liệu hiệu lực trong repository và các thẻ/tài sản liên quan trên Drive. Các bản nguồn lịch sử và mô tả implementation không được viết lại thành tính năng đã triển khai. Bằng chứng đối chiếu tài liệu không phải UAT/runtime pass. Nội dung bàn giao remote và bằng chứng giới hạn lưu tại [kế hoạch active](../plans/active/the-15-docs-remote-patches.md); chưa tuyên bố tài sản remote đã lưu.
+Phạm vi gồm tài liệu hiệu lực trong repository và các thẻ/tài sản liên quan trên Drive. Các bản nguồn lịch sử và mô tả implementation không được viết lại thành tính năng đã triển khai. Google Docs đã sửa/lưu trực tiếp 12 thẻ và export xác nhận 225 đoạn/ô mục tiêu; Figma/drawio chưa chỉnh sửa. Bằng chứng từng thẻ và bản vá thiết kế còn chờ lưu tại [kế hoạch active](../plans/active/the-15-docs-remote-patches.md); đối chiếu tài liệu không phải UAT/runtime pass.
 
 | Mục Thẻ 15 | Nguồn/section Drive | Nguồn hiệu lực repository | Ca đối chiếu | Trạng thái |
 |---|---|---|---|---|
-| 1 — vòng đời cấm/khôi phục | FRD UC-A03/E03/D05/G03; Database User/G-14/WD; API auth/ban/unban/§7; UI/Parameter/BRD và conflicts | [FRD](FRD.md), [Database](database.md), [API](api_specs.md), [Identity](identity.md#uc-e03), [Finance](finance.md#uc-d05), [SAD](software-architecture.md) | B1–B11 theo bảng AC Thẻ 15 trong FRD | Repository đã hiệu chỉnh và đối chiếu đặc tả; Drive/UI chưa có bằng chứng lưu |
-| 2 — Product HIDDEN/provision | FRD UC-D01; API Product; UI III.4a; Activity UC-D01 | [FRD](FRD.md), [Catalog](catalog.md#uc-d01), [API](api_specs.md), [SAD](software-architecture.md) | P1–P2; AC-CAT-002 | Repository đã đồng bộ thiếu sót FRD; artifact remote chưa áp dụng/xác minh hình |
-| 3 — trigger sau thu | Database §8.2B; API state table/event; FRD UC-B06/G02; Activity B06/G02; Simulated Gateway | [Database](database.md), [API](api_specs.md), [Order](checkout-orders.md#uc-b06), [Payment](payments.md#uc-g02), [SAD §5.1](software-architecture.md) | O1–O3; AC-ORD-003 | Repository đã chỉ rõ Order owner và tách ban sau thu; remote chưa có bằng chứng lưu |
+| 1 — vòng đời cấm/khôi phục | FRD UC-A03/E03/D05/G03; Database User/G-14/WD; API auth/ban/unban/§7; UI/Parameter/BRD và conflicts | [FRD](FRD.md), [Database](database.md), [API](api_specs.md), [Identity](identity.md#uc-e03), [Finance](finance.md#uc-d05), [SAD](software-architecture.md) | B1–B11 theo bảng AC Thẻ 15 trong FRD | Repository và text Google Docs đã sửa/đọc lại; frame Figma chưa sửa |
+| 2 — Product HIDDEN/provision | FRD UC-D01; API Product; UI III.4a; Activity UC-D01 | [FRD](FRD.md), [Catalog](catalog.md#uc-d01), [API](api_specs.md), [SAD](software-architecture.md) | P1–P2; AC-CAT-002 | Repository/FRD và UI Screens trên Drive đã đồng bộ; Activity/Figma chưa sửa |
+| 3 — trigger sau thu | Database §8.2B; API state table/event; FRD UC-B06/G02; Activity B06/G02; Simulated Gateway | [Database](database.md), [API](api_specs.md), [Order](checkout-orders.md#uc-b06), [Payment](payments.md#uc-g02), [SAD §5.1](software-architecture.md) | O1–O3; AC-ORD-003 | Repository và text Google Docs đã chỉ rõ Order owner/tách ban sau thu, đọc lại sau lưu; Activity chưa sửa |
 
 Mapping bổ sung: Identity AC-IDN-010/011 bao phủ deadline/J7/lỗi nguồn; Finance AC-FIN-004 bao phủ rút toàn bộ dưới ngưỡng; Notification AC-NOT-003 bao phủ user.enabled BANNED không đồng nghĩa unban. Đây là AC để triển khai, không kết quả test ứng dụng.
 
-Kiểm chứng ngày 18/11/2026: 561 explicit ID duy nhất, giữ đủ 37 UC/17 G/11 WD/26 AT; manifest 5 nguồn hiện hành khớp SHA-256. Kiểm tra gốc vẫn FAIL tại đường dẫn lịch sử `business/UET FRD v5.4 - dong bo API DB.md` không tồn tại. Scan link tách 656 dẫn `business/` cũ, còn một link hiện trạng Catalog tới `ProductTestController.java` không tồn tại; không coi toàn bộ link repository đã pass. Không chạy runtime/UAT. Remote chưa thay đổi do browser timeout và giới hạn chỉnh sửa thiết kế; [bản vá/chi tiết kiểm chứng](../plans/active/the-15-docs-remote-patches.md) giữ trạng thái Blocked, không chuyển completed.
+Kiểm chứng ngày 18/11/2026: 561 explicit ID duy nhất, giữ đủ 37 UC/17 G/11 WD/26 AT; manifest 5 nguồn hiện hành khớp SHA-256. Kiểm tra gốc vẫn FAIL tại đường dẫn lịch sử `business/UET FRD v5.4 - dong bo API DB.md` không tồn tại. Scan link tách 656 dẫn `business/` cũ, còn một link hiện trạng Catalog tới `ProductTestController.java` không tồn tại; không coi toàn bộ link repository đã pass. Không chạy runtime/UAT. Google Docs đã lưu và export xác nhận 12 thẻ; [chi tiết/bản vá thiết kế](../plans/active/the-15-docs-remote-patches.md) còn active vì Figma/drawio chưa sửa, không phải vì text Drive còn bị chặn.
 
 <a id="the-16"></a>
-## Tham số Thẻ 16 — 18/11/2026
+## Tham số Thẻ 16 — 18–19/11/2026
 
 Nguồn: [Thẻ 16 trên Google Docs](https://docs.google.com/document/d/1VukChbA8p9eOU_loe7y_RVCFvdkzIeMDQCWBoUn2nRI/edit?tab=t.m7xl31skw7qz) và yêu cầu áp dụng các quyết định này vào repository. [Bảng tham số](parameters.md) ghi các giá trị sử dụng và ngoại lệ. Khi một đoạn cũ cùng chủ đề còn để ngỏ hoặc khác giá trị, dùng quyết định Thẻ 16; không dùng ghi chú dev hoặc ví dụ để thay quyết định.
 
@@ -35,13 +35,15 @@ Nguồn: [Thẻ 16 trên Google Docs](https://docs.google.com/document/d/1VukChb
 - Giỏ tối đa 50 dòng, mỗi dòng tối đa 99 đơn vị; giới hạn media, mô tả, hiển thị và cảnh báo dùng các con số đã chốt trong bảng tham số.
 - Mỗi chu kỳ hoàn tiền có lần đầu và tối đa 3 lần thử lại sau 1, 5 và 15 phút từ lỗi trước. Hết lượt thì khách đã thanh toán mở chu kỳ mới trên cùng khoản hoàn, không chuyển Admin. Kết quả chưa rõ chỉ được tra cứu, không coi timeout là thất bại.
 - Email lỗi tạm thời cũng được gửi lại tối đa 3 lần sau lần đầu, chờ 1, 5 và 15 phút. Thông báo trong ứng dụng giữ 30 ngày và hiển thị tối đa 50 bản gần nhất; không xóa email hoặc khóa chống trùng.
+- P-37 chốt bổ sung ngày 19/11/2026: tìm theo tên sản phẩm và tên cửa hàng không phân biệt dấu tiếng Việt, không phân biệt hoa thường. Chuẩn hóa cả từ khóa và tên khi so khớp, giữ nguyên tên lưu/hiển thị.
 
-P-01 vẫn dùng tạm 15 phút, chưa chốt. N-09, N-11 và P-37 giữ nguyên; các phần Should/Could và phân tích đã hoãn không tự trở thành Must. Đây là thay đổi yêu cầu tài liệu, không xác nhận code, migration hoặc test ứng dụng đã đáp ứng.
+P-01 vẫn dùng tạm 15 phút, chưa chốt. N-09 và N-11 giữ nguyên; các phần Should/Could và phân tích đã hoãn không tự trở thành Must. Đây là thay đổi yêu cầu tài liệu, không xác nhận code, migration hoặc test ứng dụng đã đáp ứng.
 
 | Phần team dev cần kiểm tra | Hồ sơ đọc trước | Kết quả cần kiểm chứng |
 |---|---|---|
 | Tài khoản và địa chỉ | [Identity](identity.md) | Liên kết reset hết hạn sau 30 phút; thêm địa chỉ thứ tư bị từ chối kể cả khi gửi đồng thời; mã địa giới được kiểm tra bằng dữ liệu trong DB; đăng nhập sai không gây khóa tạm. |
 | Sản phẩm, media và hiển thị | [Catalog](catalog.md#ac-cat-005), [ngưỡng bán chạy](catalog.md#ac-cat-006) | Kiểm tra biên số tệp/video, độ dài nội dung, 20 bản ghi/trang và điểm 1 chữ số thập phân; 500 lượt chưa bán chạy, 501 lượt đạt; tồn khả dụng ≤5 có cảnh báo. |
+| Tìm sản phẩm và cửa hàng (P-37) | [Catalog](catalog.md#ac-cat-001), [Identity](identity.md#ac-idn-006) | `dien thoai`, `Điện Thoại`, `ĐIỆN THOẠI` cho cùng kết quả trên tên sản phẩm và tên cửa hàng; giữ nguyên tên hiển thị và điều kiện G-06. |
 | Giỏ và đơn | [Order](checkout-orders.md#ac-ord-008) | Dòng giỏ không vượt 99, giỏ không vượt 50 dòng, Mua ngay không chạm giỏ; giữ enum lý do và ghi chú tối đa 500 ký tự; cảnh báo khi còn không quá 24 giờ. |
 | Tiền và hoàn tiền | [Finance](finance.md), [Payment](payments.md) | Mọi ngành hàng dùng 5%; đơn cũ giữ tỷ lệ đã lưu. Lệnh hoàn không phát lại khi chưa rõ kết quả; hết lượt chỉ đúng khách chủ Payment mở chu kỳ mới trên cùng khoản hoàn. |
 | Email và thông báo | [Notification](notifications.md) | Lỗi tạm thời gửi lại 1/5/15 phút, dừng đúng điều kiện; giới hạn 50 bản/30 ngày không làm mất email, lịch sử hoặc khóa chống trùng. |
@@ -63,23 +65,23 @@ Mọi kết luận code/test là khảo sát tĩnh ngày 11/11/2026, không kế
 
 ## Manifest nguồn
 
-Hash là SHA-256 toàn bộ bytes, chỉ phát hiện đổi nguồn. Ba hàng `business/...` là manifest lịch sử baseline 11/11/2026, không đổi đường dẫn/hash quá khứ thành giả định file hiện có. Ngày 16/11 hai nguồn kiến trúc chuyển vào `docs/requirements/`; ngày 18/11 nguồn hiện hành được hiệu chỉnh theo Thẻ 15 và các tham số Thẻ 16. Nguồn lịch sử `docs/api.md`, `docs/database.md`, FRD v5.4 không bị sửa bởi công việc này.
+Hash là SHA-256 toàn bộ bytes, chỉ phát hiện đổi nguồn. Ba hàng `business/...` là manifest lịch sử baseline 11/11/2026, không đổi đường dẫn/hash quá khứ thành giả định file hiện có. Ngày 16/11 hai nguồn kiến trúc chuyển vào `docs/requirements/`; ngày 18/11 nguồn hiện hành được hiệu chỉnh theo Thẻ 15 và các tham số Thẻ 16, bổ sung P-37 ngày 19/11/2026. Nguồn lịch sử `docs/api.md`, `docs/database.md`, FRD v5.4 không bị sửa bởi công việc này.
 
 | Đường dẫn | Phiên bản / phạm vi | Dòng | SHA-256 |
 |---|---|---:|---|
 | `business/UET FRD v5.4 - dong bo API DB.md` | FRD v5.4, 06/11/2026; 37 UC (2 loại bỏ), nghiệp vụ/ngoại lệ | 1539 | `e4fbc0e7b16583e90da42e0ca0fb139f54b63682be9a5c8ca3a91ca283b07de9` |
 | `business/database.md` | Database RBAC v5.0, 25/10/2026; data dictionary/G/WD/state | 1055 | `033b8c01e69a8e6c9f783c51b29933ae8afe240e5f85e37423c60c4923e65ab1` |
 | `business/api.md` | API v1.0, 25/10/2026, có cập nhật sau metadata; contract để review | 2979 | `6cf4d3144537fcabf1e4aafd3f1e3886200166e6ad3cbe696dbd5463d12b4046` |
-| `docs/requirements/software-architecture.md` | SAD-ECOM-01 v1.1 + Thẻ 15/Thẻ 16, 18/11/2026 | 1149 | `a6db580dc6aeaaea5aefed324d2ebec7e345f47ab4cc12dddce12e6dc5d40d9f` |
-| `docs/requirements/system-architecture.md` | Kiến trúc hệ thống + Thẻ 15/Thẻ 16, 18/11/2026 | 1154 | `f617e87f465fde125b9464d900b4c5b3f041d17fb08c36969b282fe36d294320` |
+| `docs/requirements/software-architecture.md` | SAD-ECOM-01 v1.1 + Thẻ 15/Thẻ 16/P-37, 19/11/2026 | 1151 | `a06d0a362be04c18a3d2898dc512dac7d4a69dda106c59206ecdbedc4a139de6` |
+| `docs/requirements/system-architecture.md` | Kiến trúc hệ thống + Thẻ 15/Thẻ 16/P-37, 19/11/2026 | 1156 | `70278350a7d325b9f4371406d36e44ae9d234d809a5350a56552ec6e5ef0d5a3` |
 
 ### Nguồn mới được thêm vào harness ngày 16/11/2026
 
 | Tài liệu | Phiên bản | Dòng | SHA-256 |
 |---|---|---:|---|
-| [docs/requirements/FRD.md](FRD.md) | FRD v5.5 + Thẻ 15/Thẻ 16, 18/11/2026 | 1554 | `1e9bca1fdd3241c0847eb96e2c65d6d0d865b03a664aa4776cb5d85586047608` |
-| [docs/requirements/api_specs.md](api_specs.md) | API v1.1 + Thẻ 15/Thẻ 16, 18/11/2026 | 3067 | `58c0576bd46401838a012104ead47db647e5cdde2711d783a7fec296ff918819` |
-| [docs/requirements/database.md](database.md) | Database v5.1 + Thẻ 15/Thẻ 16, 18/11/2026 | 1120 | `4861f3ea2f9f5c978544309fd1d37d503ae8cd32c59f16106025d58e764d593b` |
+| [docs/requirements/FRD.md](FRD.md) | FRD v5.5 + Thẻ 15/Thẻ 16/P-37, 19/11/2026 | 1554 | `57299e5ad3e0f646d38ba06d2bc5b618699a099e1cc59856c709f0744e8191ff` |
+| [docs/requirements/api_specs.md](api_specs.md) | API v1.1 + Thẻ 15/Thẻ 16/P-37, 19/11/2026 | 3067 | `cfedd5f8f726f844c3ec74dda994b6a277ddae5325c818d05cc3486a3cbddb4f` |
+| [docs/requirements/database.md](database.md) | Database v5.1 + Thẻ 15/Thẻ 16/P-37, 19/11/2026 | 1120 | `169b1da5bce8f7bb68f59a5b4d9a85e2ffe9d69c6163b97143e6ab4f9fc93414` |
 
 Các phần thuộc Thẻ 15 và các tham số Thẻ 16 được hiệu chỉnh theo nguồn quyết định tương ứng; không xác nhận đã rà lại toàn bộ 377 clause/implementation theo nguồn mới. Các dẫn `Lx–y` chưa sửa bên dưới vẫn là snapshot cũ, không chuyển nguyên số dòng sang bản mới. Khi chạm phần ngoài phạm vi, đối chiếu authority trước triển khai, không suy diễn từ hash/ngày sửa. Các inventory nguồn cũ giữ tên/section cũ như provenance, không phải đề nghị dùng lại scope/đa vai trò/snapshot đã bị thay.
 
@@ -263,7 +265,7 @@ Các nội dung sau **đề xuất/cần review trước code**, không tự t�
 | OQ-003 | SAD §3.1/6.7/A.6.2; P-26 | Địa giới dùng dữ liệu tĩnh trong DB Identity. Còn cần chọn bộ dữ liệu, ghi nguồn, phiên bản/ngày dữ liệu và cách cập nhật; không mở lại lựa chọn API bên ngoài. |
 | OQ-004 | SAD §6.3–6.4; DELTA-07 | Thuộc tính cookie/profile local, Origin/CORS/CSRF/key rotation và service credential cụ thể. JWT service trong A.3 vẫn đề xuất. |
 | OQ-005 | SAD §7.2; DELTA-01…06 | Review và đồng bộ quote/pay/internal charge/cart snapshot, worker, close-expired, event/inbox; không tự gán endpoint hoặc table mới. |
-| OQ-006 | SAD §6.7 thay API C-08/Database §5.2; A.6.1 | Baseline đã quy định unaccent/lowercase. Cần đồng bộ contract, quy tắc normalize/index và test; không hỏi lại có tìm không dấu, không tự coi đã có implementation hoặc đổi thành full-text. |
+| OQ-006 | P-37 ngày 19/11/2026; SAD §6.7/A.6.1; API C-08; Database §5.2 | Đã chốt hành vi cho tên sản phẩm và tên cửa hàng: không phân biệt dấu tiếng Việt, không phân biệt hoa thường. FRD/API/Database và hồ sơ đã dùng cùng quy tắc. Còn review phương án index chi tiết và kiểm chứng implementation/test; không coi đặc tả là tính năng đã chạy hoặc đổi thành full-text. |
 | OQ-007 | P-19/P-22, N-06; SAD §7.3/A.6.4 | Email đã chốt 3 lần gửi lại sau lần đầu, chờ 1/5/15 phút; in-app tối đa 50 bản gần nhất, giữ 30 ngày. Quyền xem và thời gian giữ bí mật của email demo, lịch job và cách vận hành còn cần quyết định riêng; không hứa exactly-once gửi email thật. |
 | OQ-008 | SAD §7.3, C.5; DELTA-09 | Cloud topology/DB role/Kafka/backup, retention, tải/p95/RPO/RTO; không kết luận SLO từ thiết kế. |
 | OQ-009 | identity-service/should.md A8; API enum vs DB §6 | Tên AuditAction khác nhau giữa source API và DB chưa được baseline hiệu chỉnh cụ thể; giữ mở, không tự rename enum/CHECK. |

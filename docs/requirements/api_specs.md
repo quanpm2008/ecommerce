@@ -270,7 +270,7 @@ Mọi response JSON dùng một trong hai dạng sau. FE chỉ cần một hàm 
 | page | int ≥ 1 | 1 | Trang bắt đầu từ 1\. |
 | size | int 1–100 | 20 | P-11 chốt mặc định 20 sản phẩm/trang. |
 | sort | string | tùy endpoint | Dạng field,asc\|desc, ví dụ priceVnd,asc. Chỉ nhận field được liệt kê trong từng endpoint. |
-| q | string ≤ 100 ký tự | — | Từ khóa tìm kiếm. Không phân biệt hoa thường; tìm không dấu chưa chốt (C-08). |
+| q | string ≤ 100 ký tự | — | Từ khóa tìm kiếm; trường được tìm theo từng endpoint. P-37 chỉ áp dụng cho tìm kiếm công khai theo tên sản phẩm hoặc tên cửa hàng: không phân biệt dấu tiếng Việt và hoa thường (chốt 19/11/2026; C-08 đóng trong đặc tả). Với hai trường hợp này, chuẩn hóa cả q và tên để so khớp: bỏ dấu tiếng Việt, đổi đ/Đ thành d, chuyển về chữ thường; giữ nguyên tên lưu và hiển thị. Ví dụ “dien thoai”, “Điện Thoại” và “ĐIỆN THOẠI” cho cùng kết quả. Các endpoint tìm email, số điện thoại hoặc mã đơn giữ quy tắc riêng, không áp dụng P-37. |
 | from, to | date (YYYY-MM-DD) | — | GMT+7 (P-14); tuần bắt đầu thứ Hai, quý theo lịch; to bao gồm cả ngày đó. |
 
 ### 3.6 Quy ước dữ liệu
@@ -987,13 +987,13 @@ POST /api/v1/identity/auth/register
 
 **Quyền: PUBLIC    UC: B02**
 
-* Chỉ trả Seller thỏa G-06 về User ACTIVE, hồ sơ APPROVED/ACTIVE và role SELLER hiện hành. Tìm theo tên cửa hàng (users.full\_name), không phân biệt hoa thường; tìm không dấu còn mở tại C-08.
+* Chỉ trả Seller thỏa G-06 về User ACTIVE, hồ sơ APPROVED/ACTIVE và role SELLER hiện hành. Tìm theo tên cửa hàng (users.full\_name), không phân biệt dấu tiếng Việt và hoa thường; chuẩn hóa cả q và tên theo §3.5 (P-37).
 
 **Tham số (path / query)**
 
 | Tên | Vị trí | Kiểu | Bắt buộc | Mô tả / ràng buộc |
 | :---- | :---- | :---- | :---- | :---- |
-| q | query | string |  | Từ khóa |
+| q | query | string |  | Tìm theo tên cửa hàng, không phân biệt dấu tiếng Việt và hoa thường; áp dụng chuẩn hóa tại §3.5 |
 | page, size | query | int |  | Mặc định 1, 20 |
 
 **Response thành công**
@@ -1236,7 +1236,7 @@ Danh mục nền phải seed đúng 10 ngành hàng/tên/ví dụ tại [paramet
 
 | Tên | Vị trí | Kiểu | Bắt buộc | Mô tả / ràng buộc |
 | :---- | :---- | :---- | :---- | :---- |
-| q | query | string |  | Tìm theo tên sản phẩm, không phân biệt hoa thường; tìm không dấu chưa chốt |
+| q | query | string |  | Tìm theo tên sản phẩm, không phân biệt dấu tiếng Việt và hoa thường; áp dụng chuẩn hóa tại §3.5 (P-37) |
 | categoryId | query | uuid |  |  |
 | sellerId | query | uuid |  | Lọc sản phẩm của một người bán (trang người bán) |
 | minPriceVnd, maxPriceVnd | query | int |  | Khoảng giá |
@@ -2957,7 +2957,7 @@ Các quyết định tiền/tồn còn hiệu lực từ bản trước. Bản v
 | C-05 | Trạng thái CheckoutSession: FRD có 5 giá trị; DB có AWAITING\_PAYMENT / PAID / CLOSED \+ close\_reason. Payment: FRD có partially\_refunded / refunded; DB chỉ PENDING / SUCCESS / FAILED. | API trả 5 trạng thái FRD (map từ CLOSED \+ close\_reason). Payment giữ 3 trạng thái DB, thêm field tính toán refundState. | Thống nhất mapping khi code; không cần đổi DB nếu chấp nhận cách tính. |
 | C-06 | **Đã chốt (06/11/2026).** Không có mã hiển thị đơn / mã thanh toán và không có mã vận đơn (chưa có đơn vị vận chuyển). | Bỏ orderCode, checkoutCode, trackingNumber; FE dùng orderId / checkoutSessionId (UUID). withdrawalCode giữ nguyên (withdrawal\_code). | Không còn việc cần làm. |
 | C-07 | **Đã xử lý.** UI Screens và Figma còn mô hình cũ (đơn chung, Hủy phần hàng, Báo cáo, Payout). | API theo FRD v5.3. | Đã cập nhật UI Screens v2.0 và các nhãn/ghi chú trên Figma (mã thanh toán \+ mã đơn theo cửa hàng, ví và rút tiền, không báo cáo vi phạm). |
-| C-08 | Tìm không dấu chưa được cam kết với LIKE cơ bản trong Database. | MVP cam kết không phân biệt hoa thường; tìm không dấu là mở rộng cần chốt. Không coi mô tả v0.3 là tính năng đã có. | BE chọn chuẩn hóa/unaccent nếu nhóm giữ yêu cầu FRD; cập nhật OpenAPI và test khi chốt. |
+| C-08 | **Đã chốt trong đặc tả ngày 19/11/2026 theo P-37.** Tìm tên sản phẩm và tên cửa hàng không phân biệt dấu tiếng Việt và hoa thường. | Chuẩn hóa cả q và tên để so khớp: bỏ dấu tiếng Việt, đổi đ/Đ thành d, chuyển về chữ thường; giữ nguyên tên lưu và hiển thị. | C-08 đóng trong đặc tả; đây là yêu cầu triển khai, không phải xác nhận code đã hỗ trợ. |
 | C-09 | UC-A05 bước 2 nói "báo lỗi nếu email không tồn tại", nhưng luồng ngoại lệ của chính UC-A05 và G-05 yêu cầu luôn trả cùng một thông báo. | Theo G-05: luôn 202 cùng nội dung. | BA sửa bước 2 của UC-A05 (FRD v5.3 chưa sửa vì chưa có quyết định). |
 | C-10 | **Đã chốt — theo Database.** Số dư chờ chỉ bị trừ khi hoàn tiền thành công. | Đơn hủy → Settlement PENDING\_REFUND, chưa ghi bút toán; Refund SUCCESS → REFUND\_DEBIT (Seller pending −S, nền tảng pending −C) \+ Settlement REFUNDED. | Đã cập nhật FRD v5.3 (bỏ hủy\_chờ ở B06, B08, D02, E03, G02, G03; phần Giải nghĩa công thức) và Database RBAC v5.0 mục 8.3. Không còn việc cần làm. |
 | C-11 | Reporting thứ 8 vẫn tạm hoãn trong Database v5.0. | API triển khai 7 service; tra cứu vận hành tại service sở hữu. Các stats/dashboard trong bản trước để tùy chọn sau MVP. | Không bắt buộc các endpoint phân tích như /orders/\*/stats, /orders/seller/dashboard, /payments/admin/summary và /finance/admin/summary/reconciliation cho RBAC MVP; nếu triển khai vẫn kiểm tra permission. |
@@ -2966,7 +2966,7 @@ Các quyết định tiền/tồn còn hiệu lực từ bản trước. Bản v
 
 ### 9.1 Tham số ảnh hưởng tới API
 
-[parameters.md](parameters.md) là nguồn giá trị đã chốt Thẻ 16/xác nhận 18/11/2026, thay giá trị cũ cùng chủ đề. Các tham số khác còn mở giữ riêng; N-09/N-11/P-37 và C-08 không đổi.
+[parameters.md](parameters.md) là nguồn giá trị đã chốt Thẻ 16/xác nhận 18/11/2026, bổ sung quyết định P-37 ngày 19/11/2026, thay giá trị cũ cùng chủ đề. Các tham số khác còn mở giữ riêng; N-09/N-11 không đổi. P-37 chốt tìm tên sản phẩm và tên cửa hàng không phân biệt dấu tiếng Việt và hoa thường; C-08 đóng trong đặc tả.
 
 | Tham số | Quy tắc / trạng thái |
 | :---- | :---- |
