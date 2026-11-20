@@ -3,6 +3,7 @@ package com.example.order_service.web;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.MediaType;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.ServletRequestBindingException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -23,7 +24,8 @@ public class OrderApiExceptionHandler {
 		this.json = json;
 	}
 
-	@ExceptionHandler({ServletRequestBindingException.class, MethodArgumentTypeMismatchException.class})
+	@ExceptionHandler({ServletRequestBindingException.class, MethodArgumentTypeMismatchException.class,
+			HttpMessageNotReadableException.class})
 	void invalidArgument(HttpServletRequest request, HttpServletResponse response) throws IOException {
 		write(request, response, 400, "VALIDATION_ERROR", "Tham số yêu cầu không hợp lệ");
 	}

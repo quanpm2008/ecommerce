@@ -115,8 +115,8 @@ class OrderServiceApplicationTests extends OrderPostgresTestSupport {
 
 	private UUID addStock(int onHand, int reserved) {
 		UUID id = UUID.randomUUID();
-		jdbc.update("insert into orders.inventory (product_id, on_hand_quantity, reserved_quantity) values (?, ?, ?)",
-				id, onHand, reserved);
+		jdbc.update("insert into orders.inventory (product_id, seller_id, on_hand_quantity, reserved_quantity) values (?, ?, ?, ?)",
+				id, UUID.randomUUID(), onHand, reserved);
 		return id;
 	}
 
