@@ -1,6 +1,9 @@
 package com.example.order_service;
 
 import com.example.order_service.security.OrderAuthorization.CurrentUser;
+import com.example.order_service.security.OrderAuthorization;
+import com.example.order_service.security.OrderSecurityConfig;
+import com.example.order_service.web.OrderApiExceptionHandler;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.crypto.RSASSASigner;
@@ -15,10 +18,12 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestComponent;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -46,12 +51,17 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
+@SpringBootTest(classes = OrderAuthorizationHttpTests.SecurityFixture.class,
+		webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
 		"eureka.client.enabled=false", "logging.level.root=WARN",
 		"order.internal.tokens.product=inventory-fixture-token", "order.identity.service-token=order-outbound-fixture"
 })
-@Import(OrderAuthorizationHttpTests.OrderRouteFixture.class)
 class OrderAuthorizationHttpTests extends OrderPostgresTestSupport {
+	@Configuration(proxyBeanMethods = false)
+	@EnableAutoConfiguration
+	@Import({OrderSecurityConfig.class, OrderAuthorization.class, OrderApiExceptionHandler.class, OrderRouteFixture.class})
+	static class SecurityFixture {
+	}
 	private static final String PREVIEW = "/api/v1/orders/checkout/preview";
 	private static final String INVENTORY = "/api/v1/orders/seller/inventory";
 	private static final UUID USER = UUID.randomUUID();

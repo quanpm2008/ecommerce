@@ -41,6 +41,11 @@ public class OrderApiExceptionHandler {
 
 	public void write(HttpServletRequest request, HttpServletResponse response, int status, String code,
 			String message) throws IOException {
+		write(request, response, status, code, message, List.of());
+	}
+
+	public void write(HttpServletRequest request, HttpServletResponse response, int status, String code,
+			String message, List<?> details) throws IOException {
 		String requestId = request.getHeader("X-Request-Id");
 		if (requestId == null || requestId.isBlank()) {
 			requestId = UUID.randomUUID().toString();
@@ -49,7 +54,7 @@ public class OrderApiExceptionHandler {
 		response.setHeader("X-Request-Id", requestId);
 		response.setContentType(MediaType.APPLICATION_JSON_VALUE);
 		json.writeValue(response.getOutputStream(),
-				new ErrorEnvelope(new ErrorBody(code, message, List.of(), requestId)));
+				new ErrorEnvelope(new ErrorBody(code, message, details, requestId)));
 	}
 
 	private record ErrorEnvelope(ErrorBody error) {
