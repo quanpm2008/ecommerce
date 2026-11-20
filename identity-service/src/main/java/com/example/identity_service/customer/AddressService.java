@@ -9,13 +9,15 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Clock;
 import java.util.List;
 import java.util.UUID;
 
 /**
  * The caller's address book (UC-A06, DB §3.1.4). Every lookup is scoped to {@code customerId = sub}, so another
- * customer's address is simply not found (404). Reading needs a Customer profile; changing it needs an ACTIVE one.
+ * customer's address is simply not found (404). It needs an ACTIVE Customer profile: a banned customer keeps only its
+ * obligations and gets 403 {@code ACCOUNT_BANNED}, reading included (API §3.2). At most
+ * {@code identity.address.max-per-customer} addresses (3, P-09), also under concurrent requests (the customer row is
+ * locked); a deleted address is removed and frees its place.
  */
 @Service
 @RequiredArgsConstructor
@@ -29,11 +31,10 @@ public class AddressService {
 
 	private final AddressProperties properties;
 
-	private final Clock clock;
 
 	@Transactional(readOnly = true)
 	public List<Address> list(Caller caller) {
-		requireCustomer(caller);
+		requireActive(customers.findById(caller.userId()).orElseThrow(AddressService::noCustomer));
 		List<CustomerAddress> book = addresses.findBook(caller.userId());
 		UUID defaultId = book.isEmpty() ? null : book.getFirst().getAddressId();
 		return book.stream().map(address -> view(address, defaultId)).toList();
@@ -47,7 +48,7 @@ public class AddressService {
 	public Address create(Caller caller, AddressRequest request) {
 		Customer customer = customers.findLockedById(caller.userId()).orElseThrow(AddressService::noCustomer);
 		requireActive(customer);
-		if (addresses.countByCustomerIdAndDeletedAtIsNull(customer.getCustomerId()) >= properties.maxPerCustomer()) {
+		if (addresses.countByCustomerId(customer.getCustomerId()) >= properties.maxPerCustomer()) {
 			throw new ApiException(ErrorCode.ADDRESS_LIMIT_EXCEEDED);
 		}
 		String phone = recipientPhone(request);
@@ -71,22 +72,16 @@ public class AddressService {
 		return view(address, defaultIdOf(customer.getCustomerId()));
 	}
 
-	/** Deleting the last address is allowed. An address already used by a checkout is only hidden (G-13). */
+	/** Removes the address, the last one included; orders keep their own snapshot (P-09, G-13). */
 	@Transactional
 	public void delete(Caller caller, UUID addressId) {
 		Customer customer = customers.findLockedById(caller.userId()).orElseThrow(AddressService::noCustomer);
 		requireActive(customer);
-		CustomerAddress address = owned(caller, addressId);
-		if (address.mustBeKept()) {
-			address.markDeleted(clock.instant());
-		}
-		else {
-			addresses.delete(address);
-		}
+		addresses.delete(owned(caller, addressId));
 	}
 
 	private CustomerAddress owned(Caller caller, UUID addressId) {
-		return addresses.findByAddressIdAndCustomerIdAndDeletedAtIsNull(addressId, caller.userId())
+		return addresses.findByAddressIdAndCustomerId(addressId, caller.userId())
 				.orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
 	}
 
@@ -104,15 +99,9 @@ public class AddressService {
 				address.getCreatedAt());
 	}
 
-	private void requireCustomer(Caller caller) {
-		if (!customers.existsById(caller.userId())) {
-			throw noCustomer();
-		}
-	}
-
 	private static void requireActive(Customer customer) {
 		if (customer.getStatus() != CustomerStatus.ACTIVE) {
-			throw new ApiException(ErrorCode.FORBIDDEN, "A banned customer cannot change the address book");
+			throw new ApiException(ErrorCode.ACCOUNT_BANNED);
 		}
 	}
 

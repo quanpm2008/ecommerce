@@ -17,9 +17,7 @@ final class UniqueConflicts {
 
 	private static final Map<String, Conflict> BY_CONSTRAINT = Map.of(
 			"uq_users_email", new Conflict(ErrorCode.EMAIL_ALREADY_USED, "email"),
-			"uq_users_phone_number", new Conflict(ErrorCode.PHONE_ALREADY_USED, "phoneNumber"),
-			"uq_sellers_seller_name_active", new Conflict(ErrorCode.SELLER_NAME_ALREADY_USED, "sellerName"),
-			"uq_sellers_contact_phone_active", new Conflict(ErrorCode.PHONE_ALREADY_USED, "contactPhone"));
+			"uq_users_phone_number", new Conflict(ErrorCode.PHONE_ALREADY_USED, "phoneNumber"));
 
 	private UniqueConflicts() {
 	}

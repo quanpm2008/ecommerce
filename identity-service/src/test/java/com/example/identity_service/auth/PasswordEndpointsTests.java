@@ -68,7 +68,7 @@ class PasswordEndpointsTests extends EndpointTestSupport {
 		forgot(email);
 
 		String resetUrl = resetUrlOf(userId);
-		assertThat(resetUrl).startsWith("http://localhost:3000/reset-password?token=");
+		assertThat(resetUrl).startsWith("http://localhost:5173/reset-password?token=");
 		String token = tokenIn(resetUrl);
 		assertThat(jdbc.queryForObject("select token_hash from password_reset_tokens where user_id = ?", String.class,
 				userId)).isEqualTo(OpaqueTokens.hash(token)).isNotEqualTo(token);
@@ -101,7 +101,7 @@ class PasswordEndpointsTests extends EndpointTestSupport {
 
 		login(email, PASSWORD).andExpect(status().isUnauthorized());
 		login(email, NEW_PASSWORD).andExpect(status().isOk());
-		refresh(read(session, "$.data.refreshToken")).andExpect(status().isUnauthorized());
+		refresh(read(session, "$.refreshToken")).andExpect(status().isUnauthorized());
 		reset(token, "Another789", "Another789").andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.error.code").value("RESET_TOKEN_INVALID"));
 	}
@@ -147,7 +147,7 @@ class PasswordEndpointsTests extends EndpointTestSupport {
 		changePassword(current, PASSWORD, NEW_PASSWORD, NEW_PASSWORD).andExpect(status().isNoContent());
 
 		changePassword(current, NEW_PASSWORD, "Third7890", "Third7890").andExpect(status().isUnauthorized());
-		refresh(read(other, "$.data.refreshToken")).andExpect(status().isUnauthorized());
+		refresh(read(other, "$.refreshToken")).andExpect(status().isUnauthorized());
 		login(email, NEW_PASSWORD).andExpect(status().isOk());
 	}
 

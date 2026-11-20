@@ -91,7 +91,6 @@ Set these in your shell (or a `.env` file next to `compose.yaml`) before `docker
 | `IDENTITY_BOOTSTRAP_ADMIN_EMAIL` / `IDENTITY_BOOTSTRAP_ADMIN_PASSWORD` | not set | creates an admin at startup if no user has that email (there is no public way to create admins) |
 | `IDENTITY_TOKEN_SIGNING_KEY` | not set | RSA private key (PKCS#8 PEM) for signing tokens. Without it a temporary key is generated, so **every restart signs everyone out** |
 | `IDENTITY_PASSWORD_RESET_LINK_BASE` | `http://localhost:3000/reset-password` | front-end page that reset emails link to |
-| `GEO_API_BASE_URL` | `https://provinces.open-api.vn/api/v2` | region source; empty turns regions off (address writes then return 503) |
 | `IDENTITY_ORDER_BASE_URL` | `http://order-service:8085` | order-service, asked when banning a customer; without it such bans return 503 |
 | `IDENTITY_INTERNAL_TOKEN_<SERVICE>` (`GATEWAY`, `CART`, `ORDER`, `PAYMENT`, `FINANCE`, `NOTIFICATION`, `PRODUCT`) | not set | `X-Service-Token` each service uses for `/internal/v1/identity` (at least 32 characters); none set = every internal call is refused |
 

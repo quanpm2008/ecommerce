@@ -30,4 +30,5 @@ decision into `docs/decisions/`; keep task-local choices in the plan.
 
 ## Active Plans
 
+- [Đồng bộ identity-service theo đặc tả v1.1 và hoàn thiện Gateway trên WebFlux](active/identity-gateway-alignment.md): bước 0 xong; tiếp theo G1 chuyển Gateway sang WebFlux.
 - [Đồng bộ Thẻ 15 — tiến độ và bản vá remote](active/the-15-docs-remote-patches.md): repository và 12 thẻ Google Docs đã sửa/đối chiếu sau lưu; chỉ Figma/drawio còn Blocked. Bằng chứng từng thẻ và bản vá thiết kế nằm trong cùng file.

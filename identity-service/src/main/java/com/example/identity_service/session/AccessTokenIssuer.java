@@ -1,5 +1,6 @@
 package com.example.identity_service.session;
 
+import com.example.identity_service.rbac.PermissionResolver;
 import com.example.identity_service.user.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
@@ -15,8 +16,10 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Signs access tokens with only the identifiers services need; no email, phone, roles or permissions. Services ask
- * Identity for the current permissions using {@code sub}, {@code sessionId} and {@code authzVersion}.
+ * Signs access tokens with the identifiers services need (API §3.2): {@code sub}, {@code sessionId},
+ * {@code authzVersion}, plus the account type and a snapshot of its one role for the UI. No email, phone or
+ * permissions. Services never trust the snapshot: they ask Identity for the current permissions using {@code sub},
+ * {@code sessionId} and {@code authzVersion}.
  */
 @Component
 @RequiredArgsConstructor
@@ -28,9 +31,11 @@ class AccessTokenIssuer {
 
 	private final Clock clock;
 
+	private final PermissionResolver permissions;
+
 	String issue(User user, UUID sessionId) {
 		Instant now = clock.instant();
-		JwtClaimsSet claims = JwtClaimsSet.builder()
+		JwtClaimsSet.Builder claims = JwtClaimsSet.builder()
 				.issuer(properties.issuer())
 				.audience(List.of(properties.audience()))
 				.subject(user.getUserId().toString())
@@ -39,9 +44,11 @@ class AccessTokenIssuer {
 				.id(UUID.randomUUID().toString())
 				.claim(TokenClaims.SESSION_ID, sessionId.toString())
 				.claim(TokenClaims.AUTHZ_VERSION, user.getAuthzVersion())
-				.build();
+				.claim(TokenClaims.ACCOUNT_TYPE, user.getAccountType().name());
+		permissions.activeRolesOf(user).stream().findFirst()
+				.ifPresent(role -> claims.claim(TokenClaims.ROLE, role.name()));
 		JwsHeader header = JwsHeader.with(SignatureAlgorithm.RS256).build();
-		return encoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
+		return encoder.encode(JwtEncoderParameters.from(header, claims.build())).getTokenValue();
 	}
 
 }

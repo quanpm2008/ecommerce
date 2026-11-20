@@ -24,7 +24,8 @@ public class SecurityConfig {
 
 	private static final String[] PUBLIC_POSTS = { AuthController.PATH + "/register",
 			AuthController.PATH + "/register-seller", AuthController.PATH + "/login", AuthController.PATH + "/refresh",
-			AuthController.PATH + "/password/forgot", AuthController.PATH + "/password/reset" };
+			AuthController.PATH + "/password/forgot", AuthController.PATH + "/password/reset",
+			AuthController.PATH + "/seller-reapplication/challenge", AuthController.PATH + "/seller-reapplication" };
 
 	@Bean
 	SecurityFilterChain apiSecurity(HttpSecurity http, SecurityErrorHandler errors,

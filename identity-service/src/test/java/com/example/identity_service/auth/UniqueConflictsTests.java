@@ -15,9 +15,7 @@ class UniqueConflictsTests {
 
 	@ParameterizedTest
 	@CsvSource({ "uq_users_email, EMAIL_ALREADY_USED, email",
-			"uq_users_phone_number, PHONE_ALREADY_USED, phoneNumber",
-			"uq_sellers_seller_name_active, SELLER_NAME_ALREADY_USED, sellerName",
-			"uq_sellers_contact_phone_active, PHONE_ALREADY_USED, contactPhone" })
+			"uq_users_phone_number, PHONE_ALREADY_USED, phoneNumber" })
 	void raceOnAUniqueIndexBecomesTheMatchingConflict(String constraint, ErrorCode code, String field) {
 		RuntimeException translated = UniqueConflicts.translate(violation(constraint));
 

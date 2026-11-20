@@ -6,7 +6,12 @@ import com.example.identity_service.customer.CustomerRepository;
 import com.example.identity_service.media.MediaStorage;
 import com.example.identity_service.rbac.PermissionResolver;
 import com.example.identity_service.seller.Seller;
+import com.example.identity_service.seller.SellerApplication;
+import com.example.identity_service.seller.SellerApplicationRepository;
 import com.example.identity_service.seller.SellerRepository;
+import com.example.identity_service.customer.CustomerStatus;
+import com.example.identity_service.seller.SellerStatus;
+import com.example.identity_service.user.AccountStatus;
 import com.example.identity_service.user.User;
 import com.example.identity_service.user.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +35,8 @@ public class SelfProfileAssembler {
 
 	private final SellerRepository sellers;
 
+	private final SellerApplicationRepository applications;
+
 	private final PermissionResolver permissions;
 
 	private final MediaStorage media;
@@ -39,23 +46,32 @@ public class SelfProfileAssembler {
 		User user = users.findById(userId).orElseThrow();
 		CustomerProfile customer = customers.findById(userId).map(this::customer).orElse(null);
 		SellerSelfProfile seller = sellers.findById(userId).map(this::seller).orElse(null);
-		return new UserSelfProfile(user.getUserId(), user.getEmail(), user.getAuthMethod(), user.getFullName(),
-				user.getPhoneNumber(), user.getStatus(),
-				permissions.activeRolesOf(user).stream().map(Enum::name).sorted().toList(),
-				permissions.permissionsOf(user).stream().toList(), user.getAuthzVersion(), customer, seller,
-				user.getCreatedAt());
+		boolean profileBanned = customer != null && customer.status() == CustomerStatus.BANNED
+				|| seller != null && seller.status() == SellerStatus.BANNED;
+		return new UserSelfProfile(user.getUserId(), user.getAccountType(), user.getEmail(), user.getAuthMethod(),
+				user.getFullName(), user.getPhoneNumber(), user.getAvatarObjectKey(), avatarUrl(user),
+				AccountStatus.of(user, profileBanned), user.getStatus(), user.getBannedAt(), user.getDisabledAt(),
+				user.getRestoreUntil(), permissions.activeRolesOf(user).stream().map(Enum::name).sorted().toList(),
+				permissions.permissionsOf(user).stream().toList(), user.getAuthzVersion(), user.getAccessMode(),
+				customer, seller, user.getCreatedAt());
 	}
 
 
 	/** {@code profileComplete} = the user has a phone number and at least one address. */
 	public CustomerProfile customer(Customer customer) {
 		return CustomerProfile.of(customer, customer.getUser().getPhoneNumber() != null
-				&& addresses.countByCustomerIdAndDeletedAtIsNull(customer.getCustomerId()) > 0);
+				&& addresses.countByCustomerId(customer.getCustomerId()) > 0);
 	}
 
 	public SellerSelfProfile seller(Seller seller) {
-		return SellerSelfProfile.of(seller,
-				seller.getLogoObjectKey() == null ? null : media.readUrl(seller.getLogoObjectKey()));
+		return SellerSelfProfile.of(seller, avatarUrl(seller.getUser()),
+				applications.findFirstBySellerIdOrderBySubmissionNoDesc(seller.getSellerId())
+						.map(SellerApplication::getApplicationId).orElse(null));
+	}
+
+	/** A time-limited read URL of the account's avatar (for a seller, the shop logo), or null. */
+	public String avatarUrl(User user) {
+		return user.getAvatarObjectKey() == null ? null : media.readUrl(user.getAvatarObjectKey());
 	}
 
 }

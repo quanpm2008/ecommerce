@@ -8,17 +8,18 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * API {@code SellerSelfProfile}: the owner's view, including review and ban reasons. {@code logoUrl} is a
- * time-limited read URL, never the object key.
+ * API {@code SellerSelfProfile}: the owner's view, including review and ban reasons. The shop name and phone are the
+ * account's {@code fullName} / {@code phoneNumber}; {@code logoUrl} and {@code avatarUrl} are the same time-limited
+ * read URL of the account's avatar, never the object key.
  */
-public record SellerSelfProfile(UUID sellerId, String sellerName, String description, String logoUrl,
-		String contactPhone, SellerApprovalStatus approvalStatus, SellerStatus status, String rejectionReason,
-		String banReason, Instant registeredAt, Instant reviewedAt) {
+public record SellerSelfProfile(UUID sellerId, String description, String logoUrl, String avatarUrl,
+		SellerApprovalStatus approvalStatus, SellerStatus status, String rejectionReason, String banReason,
+		Instant registeredAt, Instant reviewedAt, UUID latestApplicationId) {
 
-	static SellerSelfProfile of(Seller seller, String logoUrl) {
-		return new SellerSelfProfile(seller.getSellerId(), seller.getSellerName(), seller.getDescription(), logoUrl,
-				seller.getContactPhone(), seller.getApprovalStatus(), seller.getStatus(), seller.getRejectionReason(),
-				seller.getBanReason(), seller.getRegisteredAt(), seller.getReviewedAt());
+	static SellerSelfProfile of(Seller seller, String avatarUrl, UUID latestApplicationId) {
+		return new SellerSelfProfile(seller.getSellerId(), seller.getDescription(), avatarUrl, avatarUrl,
+				seller.getApprovalStatus(), seller.getStatus(), seller.getRejectionReason(), seller.getBanReason(),
+				seller.getRegisteredAt(), seller.getReviewedAt(), latestApplicationId);
 	}
 
 }

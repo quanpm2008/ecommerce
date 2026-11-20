@@ -95,8 +95,8 @@ public class InternalController {
 	}
 
 	@Operation(summary = "Mark an address used by a checkout", description = "Call after the checkout commits. Once "
-			+ "per `checkoutSessionId`: retries return `applied: false` and change nothing.")
-	@ErrorCodes(NOT_FOUND)
+			+ "per `checkoutSessionId`: retries return `applied: false` and change nothing. An address the customer "
+			+ "has deleted meanwhile (or not theirs) is skipped the same way, without an error (API §7.1).")
 	@PostMapping("/customers/{customerId}/addresses/{addressId}/touch")
 	@PreAuthorize("hasAuthority('service:order-service')")
 	ApiResponse<InternalQueries.AddressTouch> touch(@PathVariable UUID customerId, @PathVariable UUID addressId,

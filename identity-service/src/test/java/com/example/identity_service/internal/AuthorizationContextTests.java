@@ -32,7 +32,9 @@ class AuthorizationContextTests extends EndpointTestSupport {
 				.andExpect(jsonPath("$.data.roles", contains("CUSTOMER")))
 				.andExpect(jsonPath("$.data.permissions", hasItem("cart:manage:own")))
 				.andExpect(jsonPath("$.data.customerProfile.status").value("ACTIVE"))
-				.andExpect(jsonPath("$.data.customerProfile.accessMode").value("FULL"))
+				.andExpect(jsonPath("$.data.accessMode").value("FULL"))
+				.andExpect(jsonPath("$.data.accountStatus").value("ACTIVE"))
+				.andExpect(jsonPath("$.data.accountType").value("CUSTOMER"))
 				.andExpect(jsonPath("$.data.sellerProfile").isEmpty());
 	}
 
@@ -46,9 +48,9 @@ class AuthorizationContextTests extends EndpointTestSupport {
 
 	@Test
 	void staleExpiredAndInvalidTokensAre401WithTheRightCode() throws Exception {
-		Session seller = pendingSeller();
-		tx.executeWithoutResult(status -> roleAssignments.grant(users.findById(seller.userId()).orElseThrow(),
-				RoleCode.CUSTOMER, null));
+		Session seller = approvedSeller();
+		tx.executeWithoutResult(status -> roleAssignments.revoke(users.findById(seller.userId()).orElseThrow(),
+				RoleCode.SELLER, null));
 		context(seller.accessToken()).andExpect(status().isUnauthorized())
 				.andExpect(jsonPath("$.error.code").value("TOKEN_STALE"));
 
@@ -68,7 +70,7 @@ class AuthorizationContextTests extends EndpointTestSupport {
 		Session customer = customer();
 		String body = loginBody(customer.email());
 		String accessToken = read(body, "$.data.accessToken");
-		postJson("/logout", json("refreshToken", read(body, "$.data.refreshToken")), accessToken)
+		logout(read(body, "$.refreshToken"), accessToken)
 				.andExpect(status().isNoContent());
 
 		context(accessToken).andExpect(status().isOk())
@@ -78,16 +80,25 @@ class AuthorizationContextTests extends EndpointTestSupport {
 	}
 
 	@Test
-	void bannedCustomerIsReportedWithTheG14Mode() throws Exception {
+	void aBannedCustomerIsReportedWithItsAccessModeAndAllowlist() throws Exception {
+		Session admin = admin();
 		Session customer = customer();
-		jdbc.update("""
-				update customers set status = 'BANNED', ban_reason = 'Chargebacks', ban_mode = 'PAYMENT_ONLY',
-				has_paid_order_before_ban = true where customer_id = ?""", customer.userId());
+		obligations.openOrders(customer.userId());
+		call(org.springframework.http.HttpMethod.POST, "/admin/ban/" + customer.userId(),
+				json("reason", "Gian lận/lừa đảo"), admin.accessToken()).andExpect(status().isOk());
+		String token = read(loginBody(customer.email()), "$.data.accessToken");
 
-		context(customer.accessToken()).andExpect(status().isOk())
+		context(token).andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.accountType").value("CUSTOMER"))
+				.andExpect(jsonPath("$.data.accountStatus").value("BANNED"))
+				.andExpect(jsonPath("$.data.accessMode").value("OPEN_ORDERS_ONLY"))
+				.andExpect(jsonPath("$.data.bannedAt").isNotEmpty())
+				.andExpect(jsonPath("$.data.restoreUntil").isEmpty())
 				.andExpect(jsonPath("$.data.customerProfile.status").value("BANNED"))
-				.andExpect(jsonPath("$.data.customerProfile.accessMode").value("PAYMENT_BLOCKED"))
-				.andExpect(jsonPath("$.data.customerProfile.paymentBlocked").value(true));
+				.andExpect(jsonPath("$.data.customerProfile.paymentBlocked").value(true))
+				.andExpect(jsonPath("$.data.permissions", org.hamcrest.Matchers.hasItem("order:cancel:own")))
+				.andExpect(jsonPath("$.data.permissions",
+						org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("checkout:create:own"))));
 	}
 
 	private ResultActions context(String accessToken) throws Exception {

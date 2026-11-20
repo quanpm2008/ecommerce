@@ -1,7 +1,9 @@
 package com.example.identity_service.auth;
 
+import com.example.identity_service.user.AccountType;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -17,16 +19,22 @@ public final class AuthRequests {
 			@NotBlank String phoneNumber, @NotBlank String password, @NotBlank String confirmPassword) {
 	}
 
+	/** {@code fullName} is the shop name and {@code phoneNumber} its contact phone (DB §3.1.3). */
 	public record RegisterSeller(@NotBlank @Email @Size(max = 254) String email,
-			@NotBlank @Size(max = 160) String sellerName, @NotBlank @Size(max = 150) String fullName,
-			@NotBlank String contactPhone, @NotBlank String password, @NotBlank String confirmPassword) {
+			@NotBlank @Size(max = 150) String fullName, @NotBlank String phoneNumber, @NotBlank String password,
+			@NotBlank String confirmPassword) {
 	}
 
-	public record Login(@NotBlank String email, @NotBlank String password) {
+	public record SellerReapplicationChallenge(@NotBlank String email) {
 	}
 
-	/** Body of refresh and logout. */
-	public record RefreshToken(@NotBlank String refreshToken) {
+	/** A new application after REJECTED, proven by the emailed token (API §6.1 #31). */
+	public record SellerReapplication(@NotBlank String verificationToken, @NotBlank @Size(max = 150) String fullName,
+			@NotBlank String phoneNumber, @Size(max = 2000) String description) {
+	}
+
+	/** {@code accountType} is the web app's channel: an account of another type gets the generic 401. */
+	public record Login(@NotBlank String email, @NotBlank String password, @NotNull AccountType accountType) {
 	}
 
 	public record ForgotPassword(@NotBlank String email) {

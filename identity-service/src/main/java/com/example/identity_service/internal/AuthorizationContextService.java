@@ -1,6 +1,5 @@
 package com.example.identity_service.internal;
 
-import com.example.identity_service.account.CustomerProfile;
 import com.example.identity_service.common.error.ApiException;
 import com.example.identity_service.common.error.ErrorCode;
 import com.example.identity_service.customer.CustomerRepository;
@@ -13,6 +12,9 @@ import com.example.identity_service.session.AccessTokenDecoderConfig;
 import com.example.identity_service.session.AuthSessionRepository;
 import com.example.identity_service.session.TokenClaims;
 import com.example.identity_service.session.TokenProperties;
+import com.example.identity_service.user.AccessMode;
+import com.example.identity_service.user.AccountStatus;
+import com.example.identity_service.user.AccountType;
 import com.example.identity_service.user.User;
 import com.example.identity_service.user.UserRepository;
 import com.example.identity_service.user.UserStatus;
@@ -27,6 +29,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -82,13 +85,16 @@ public class AuthorizationContextService {
 				.filter(session -> session.getUserId().equals(userId) && !session.isRevoked()).isPresent();
 		boolean usable = sessionActive && user.isActive();
 		CustomerAccess customer = customers.findById(userId)
-				.map(c -> new CustomerAccess(c.getStatus(), CustomerProfile.accessModeOf(c),
-						c.getStatus() == CustomerStatus.BANNED))
+				.map(c -> new CustomerAccess(c.getStatus(), c.getStatus() == CustomerStatus.BANNED))
 				.orElse(null);
 		SellerAccess seller = sellers.findById(userId)
 				.map(s -> new SellerAccess(s.getApprovalStatus(), s.getStatus(), s.canOperate()))
 				.orElse(null);
-		return new AuthorizationContext(userId, user.getStatus(), user.getAuthzVersion(),
+		boolean profileBanned = customer != null && customer.status() == CustomerStatus.BANNED
+				|| seller != null && seller.status() == SellerStatus.BANNED;
+		return new AuthorizationContext(userId, user.getAccountType(), AccountStatus.of(user, profileBanned),
+				user.getStatus(), user.getAccessMode(), user.getBannedAt(), user.getDisabledAt(), user.getRestoreUntil(),
+				user.getAuthzVersion(),
 				usable ? permissions.activeRolesOf(user).stream().map(Enum::name).sorted().toList() : List.of(),
 				usable ? List.copyOf(permissions.permissionsOf(user)) : List.of(), customer, seller, sessionActive);
 	}
@@ -120,16 +126,17 @@ public class AuthorizationContextService {
 	}
 
 	/**
-	 * {@code roles} and {@code permissions} are empty unless the session is active and the user ACTIVE. Profile
-	 * statuses are always reported; ownership checks stay with the calling service.
+	 * API §7.1 {@code authorization-context}. {@code roles} and {@code permissions} are empty unless the session is
+	 * active and the user ACTIVE; for a BANNED account they are already cut to its {@code accessMode}'s allowlist
+	 * (G-14). Profile statuses are always reported; ownership checks stay with the calling service.
 	 */
-	public record AuthorizationContext(UUID userId, UserStatus userStatus, long authzVersion, List<String> roles,
-			List<String> permissions, CustomerAccess customerProfile, SellerAccess sellerProfile,
-			boolean sessionActive) {
+	public record AuthorizationContext(UUID userId, AccountType accountType, AccountStatus accountStatus,
+			UserStatus userStatus, AccessMode accessMode, Instant bannedAt, Instant disabledAt, Instant restoreUntil,
+			long authzVersion, List<String> roles, List<String> permissions, CustomerAccess customerProfile,
+			SellerAccess sellerProfile, boolean sessionActive) {
 	}
 
-	public record CustomerAccess(CustomerStatus status, CustomerProfile.AccessMode accessMode,
-			boolean paymentBlocked) {
+	public record CustomerAccess(CustomerStatus status, boolean paymentBlocked) {
 	}
 
 	/** {@code canOperate}: APPROVED and ACTIVE; selling also needs the SELLER role, which is in {@code roles}. */

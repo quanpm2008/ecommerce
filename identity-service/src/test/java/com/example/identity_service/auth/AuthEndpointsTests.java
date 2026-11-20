@@ -3,6 +3,8 @@ package com.example.identity_service.auth;
 import com.example.identity_service.EndpointTestSupport;
 import com.example.identity_service.rbac.RoleCode;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.ParameterizedTest;
 
 import java.util.Map;
 import java.util.UUID;
@@ -14,7 +16,9 @@ import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.Matchers.not;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -40,7 +44,7 @@ class AuthEndpointsTests extends EndpointTestSupport {
 				.andExpect(jsonPath("$.data.roles", contains("CUSTOMER")))
 				.andExpect(jsonPath("$.data.permissions", hasItems("cart:manage:own", "account:read:own")))
 				.andExpect(jsonPath("$.data.customerProfile.status").value("ACTIVE"))
-				.andExpect(jsonPath("$.data.customerProfile.paymentBlocked").value(false))
+				.andExpect(jsonPath("$.data.customerProfile.accessMode").value("FULL"))
 				.andExpect(jsonPath("$.data.customerProfile.accessMode").value("FULL"))
 				.andExpect(jsonPath("$.data.customerProfile.profileComplete").value(false))
 				.andExpect(jsonPath("$.data.sellerProfile").isEmpty())
@@ -79,6 +83,20 @@ class AuthEndpointsTests extends EndpointTestSupport {
 	}
 
 	@Test
+	void loginIsRateLimitedPerClientIpButNeverLocksTheAccount() throws Exception {
+		String email = uniqueEmail();
+		registerCustomer(email);
+		for (int i = 1; i <= 30; i++) { // identity.rate-limit.login.limit in the tests
+			login(email, "Wrong-password-1").andExpect(status().isUnauthorized());
+		}
+
+		login(email, PASSWORD).andExpect(status().isTooManyRequests())
+				.andExpect(jsonPath("$.error.code").value("RATE_LIMITED"));
+		clientIp = randomIp();
+		login(email, PASSWORD).andExpect(status().isOk()); // P-18: no lockout after failures
+	}
+
+	@Test
 	void registrationIsRateLimitedPerClientIp() throws Exception {
 		String email = uniqueEmail();
 		register(email, uniquePhone(), PASSWORD).andExpect(status().isCreated());
@@ -95,25 +113,35 @@ class AuthEndpointsTests extends EndpointTestSupport {
 	// --- register-seller ---
 
 	@Test
-	void registerSellerCreatesAPendingSellerWithoutAnyRole() throws Exception {
+	void registerSellerCreatesASellerAccountWithAPendingApplicationAndNoRole() throws Exception {
 		String email = uniqueEmail();
-		String contactPhone = uniquePhone();
+		String phone = uniquePhone();
+		String shopName = "Shop " + UUID.randomUUID();
 
-		String body = registerSeller(email, "Shop " + UUID.randomUUID(), "+84" + contactPhone.substring(1))
+		String body = registerSeller(email, "  " + shopName + " ", "+84" + phone.substring(1))
 				.andExpect(status().isCreated())
-				.andExpect(jsonPath("$.data.roles", empty()))
-				.andExpect(jsonPath("$.data.permissions",
-						containsInAnyOrder("account:read:own", "account:update:own", "seller:application:own")))
-				.andExpect(jsonPath("$.data.phoneNumber").isEmpty())
-				.andExpect(jsonPath("$.data.customerProfile").isEmpty())
+				.andExpect(jsonPath("$.data.accountType").value("SELLER"))
 				.andExpect(jsonPath("$.data.sellerProfile.approvalStatus").value("PENDING"))
-				.andExpect(jsonPath("$.data.sellerProfile.status").value("ACTIVE"))
-				.andExpect(jsonPath("$.data.sellerProfile.contactPhone").value(contactPhone))
+				.andExpect(jsonPath("$.data.applicationId").isNotEmpty())
+				.andExpect(jsonPath("$.data.accessToken").doesNotExist())
 				.andReturn().getResponse().getContentAsString();
 
 		UUID userId = UUID.fromString(read(body, "$.data.userId"));
 		assertThat(read(body, "$.data.sellerProfile.sellerId")).isEqualTo(userId.toString());
+		assertThat(read(body, "$.data.sellerProfile.latestApplicationId"))
+				.isEqualTo(read(body, "$.data.applicationId"));
+		assertThat(jdbc.queryForMap("select account_type, full_name, phone_number from users where user_id = ?",
+				userId)).containsEntry("account_type", "SELLER").containsEntry("full_name", shopName)
+				.containsEntry("phone_number", phone);
+		assertThat(jdbc.queryForMap("""
+				select application_id::text as id, submission_no, status, snapshot_full_name, snapshot_phone
+				from seller_applications where seller_id = ?""", userId))
+				.containsEntry("id", read(body, "$.data.applicationId")).containsEntry("submission_no", 1)
+				.containsEntry("status", "PENDING").containsEntry("snapshot_full_name", shopName)
+				.containsEntry("snapshot_phone", phone);
 		assertThat(jdbc.queryForObject("select count(*) from user_roles where user_id = ?", Integer.class, userId))
+				.isZero();
+		assertThat(jdbc.queryForObject("select count(*) from customers where customer_id = ?", Integer.class, userId))
 				.isZero();
 		Map<String, Object> event = jdbc.queryForMap("""
 				select payload -> 'payload' ->> 'approvalStatus' as approval_status,
@@ -125,7 +153,7 @@ class AuthEndpointsTests extends EndpointTestSupport {
 	}
 
 	@Test
-	void registerSellerRejectsATakenShopNameOrContactPhone() throws Exception {
+	void registerSellerRejectsATakenShopNameOrPhone() throws Exception {
 		String name = "Shop Ao Xinh " + UUID.randomUUID();
 		String phone = uniquePhone();
 		registerSeller(uniqueEmail(), name, phone).andExpect(status().isCreated());
@@ -133,29 +161,96 @@ class AuthEndpointsTests extends EndpointTestSupport {
 		registerSeller(uniqueEmail(), "  " + name.toUpperCase().replace(" ", "   ") + " ", uniquePhone())
 				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.error.code").value("SELLER_NAME_ALREADY_USED"))
-				.andExpect(jsonPath("$.error.details[0].field").value("sellerName"));
+				.andExpect(jsonPath("$.error.details[0].field").value("fullName"));
 		registerSeller(uniqueEmail(), "Shop " + UUID.randomUUID(), phone).andExpect(status().isConflict())
 				.andExpect(jsonPath("$.error.code").value("PHONE_ALREADY_USED"))
-				.andExpect(jsonPath("$.error.details[0].field").value("contactPhone"));
+				.andExpect(jsonPath("$.error.details[0].field").value("phoneNumber"));
+	}
+
+	@Test
+	void aRejectedSellerFreesItsShopNameAndCustomersMayShareNames() throws Exception {
+		String name = "Shop Freed " + UUID.randomUUID();
+		UUID rejected = UUID.fromString(read(body(registerSeller(uniqueEmail(), name, uniquePhone())
+				.andExpect(status().isCreated())), "$.data.userId"));
+		rejectSeller(rejected);
+
+		registerSeller(uniqueEmail(), name, uniquePhone()).andExpect(status().isCreated());
+		register(uniqueEmail(), uniquePhone(), PASSWORD).andExpect(status().isCreated());
+		register(uniqueEmail(), uniquePhone(), PASSWORD).andExpect(status().isCreated());
+	}
+
+	@Test
+	void twoRegistrationsOfOneShopNameAtOnceLeaveOne() throws Exception {
+		String name = "Shop Race " + UUID.randomUUID();
+		var pool = java.util.concurrent.Executors.newFixedThreadPool(4);
+		try {
+			var results = new java.util.ArrayList<java.util.concurrent.Future<Integer>>();
+			for (int i = 0; i < 4; i++) {
+				results.add(pool.submit(() -> registerSeller(uniqueEmail(), name, uniquePhone()).andReturn()
+						.getResponse().getStatus()));
+			}
+			var statuses = new java.util.ArrayList<Integer>();
+			for (var result : results) {
+				statuses.add(result.get());
+			}
+			assertThat(statuses).containsOnly(201, 409).filteredOn(code -> code == 201).hasSize(1);
+		}
+		finally {
+			pool.shutdown();
+		}
 	}
 
 	// --- login ---
 
 	@Test
-	void oneLoginReturnsTokensAndEveryProfileTheUserHas() throws Exception {
+	void loginReturnsTokensForTheAccountOfItsChannel() throws Exception {
 		String email = uniqueEmail();
 		UUID userId = UUID.fromString(registerCustomer(email));
-		approveSellerProfile(userId);
 
-		login(email.toUpperCase(), PASSWORD).andExpect(status().isOk())
+		login(email.toUpperCase(), PASSWORD, "CUSTOMER").andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.tokenType").value("Bearer"))
 				.andExpect(jsonPath("$.data.accessTokenExpiresIn").value(900))
 				.andExpect(jsonPath("$.data.accessToken").isNotEmpty())
-				.andExpect(jsonPath("$.data.refreshToken").isNotEmpty())
-				.andExpect(jsonPath("$.data.profile.roles", contains("CUSTOMER", "SELLER")))
-				.andExpect(jsonPath("$.data.profile.permissions", hasItems("cart:manage:own", "product:manage:own")))
+				.andExpect(jsonPath("$.data.refreshToken").doesNotExist())
+				.andExpect(cookie().httpOnly("refresh_token", true))
+				.andExpect(cookie().secure("refresh_token", true))
+				.andExpect(cookie().path("refresh_token", "/api/v1/identity/auth"))
+				.andExpect(cookie().sameSite("refresh_token", "Strict"))
+				.andExpect(cookie().maxAge("refresh_token", 7 * 24 * 3600))
+				.andExpect(jsonPath("$.data.accountType").value("CUSTOMER"))
+				.andExpect(jsonPath("$.data.profile.accountType").value("CUSTOMER"))
+				.andExpect(jsonPath("$.data.profile.roles", contains("CUSTOMER")))
+				.andExpect(jsonPath("$.data.profile.permissions", hasItems("cart:manage:own", "refund:retry:own")))
 				.andExpect(jsonPath("$.data.profile.customerProfile.customerId").value(userId.toString()))
-				.andExpect(jsonPath("$.data.profile.sellerProfile.approvalStatus").value("APPROVED"));
+				.andExpect(jsonPath("$.data.profile.sellerProfile").isEmpty());
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = { "SELLER", "ADMIN" })
+	void theRightPasswordOnAnotherChannelIsTheSameAnswerAsAWrongOne(String channel) throws Exception {
+		String email = uniqueEmail();
+		registerCustomer(email);
+
+		String wrongChannel = body(login(email, PASSWORD, channel).andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.error.code").value("INVALID_CREDENTIALS")));
+		String wrongPassword = body(login(email, "Wrong1234", "CUSTOMER").andExpect(status().isUnauthorized()));
+
+		assertThat(wrongChannel).isEqualTo(wrongPassword);
+		assertThat(jdbc.queryForObject("""
+				select count(*) from auth_sessions s join users u using (user_id) where u.email = ?""", Integer.class,
+				email)).isZero();
+	}
+
+	@Test
+	void loginNeedsAKnownAccountType() throws Exception {
+		String email = uniqueEmail();
+		registerCustomer(email);
+
+		postJson("/login", json("email", email, "password", PASSWORD)).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"))
+				.andExpect(jsonPath("$.error.details[0].field").value("accountType"));
+		login(email, PASSWORD, "STAFF").andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
 	}
 
 	@Test
@@ -195,22 +290,55 @@ class AuthEndpointsTests extends EndpointTestSupport {
 	}
 
 	@Test
-	void restrictedProfilesStillLogIn() throws Exception {
-		String sellerEmail = uniqueEmail();
-		registerSeller(sellerEmail, "Shop " + UUID.randomUUID(), uniquePhone()).andExpect(status().isCreated());
+	void aSellerSignsInOnlyOnceApproved() throws Exception {
+		String pending = uniqueEmail();
+		registerSeller(pending, "Shop " + UUID.randomUUID(), uniquePhone()).andExpect(status().isCreated());
+		Session rejected = pendingSeller();
+		UUID reviewer = admin().userId();
+		jdbc.update("""
+				update sellers set approval_status = 'REJECTED', rejection_reason = 'Blurry', reviewed_at = now(),
+				reviewed_by_user_id = ? where seller_id = ?""", reviewer, rejected.userId());
+		Session approved = approvedSeller();
+
+		login(pending, "Wrong1234", "SELLER").andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.error.code").value("INVALID_CREDENTIALS"));
+		login(pending, PASSWORD, "SELLER").andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.error.code").value("SELLER_PENDING_APPROVAL"));
+		login(rejected.email(), PASSWORD, "SELLER").andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.error.code").value("SELLER_REJECTED"));
+		login(approved.email(), PASSWORD, "SELLER").andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.accountType").value("SELLER"))
+				.andExpect(jsonPath("$.data.profile.roles", contains("SELLER")))
+				.andExpect(jsonPath("$.data.profile.customerProfile").isEmpty());
+		assertThat(jdbc.queryForObject("select count(*) from auth_sessions where user_id in (?, ?)", Integer.class,
+				rejected.userId(), users.findByEmail(pending).orElseThrow().getUserId())).isZero();
+	}
+
+	@Test
+	void refreshChecksTheSellerApprovalAgain() throws Exception {
+		Session seller = approvedSeller();
+		String refreshToken = read(loginBody(seller.email()), "$.refreshToken");
+		jdbc.update("""
+				update sellers set approval_status = 'PENDING', reviewed_at = null, reviewed_by_user_id = null
+				where seller_id = ?""", seller.userId());
+
+		refresh(refreshToken).andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.error.code").value("SELLER_PENDING_APPROVAL"));
+	}
+
+	@Test
+	void aBannedCustomerWithOpenOrdersStillSignsIn() throws Exception {
 		String customerEmail = uniqueEmail();
 		UUID customerId = UUID.fromString(registerCustomer(customerEmail));
 		jdbc.update("""
-				update customers set status = 'BANNED', ban_reason = 'Fraud', ban_mode = 'CUSTOMER_SCOPE',
-				has_paid_order_before_ban = false where customer_id = ?""", customerId);
+				update customers set status = 'BANNED', ban_reason = 'Fraud' where customer_id = ?""", customerId);
 
-		login(sellerEmail, PASSWORD).andExpect(status().isOk())
-				.andExpect(jsonPath("$.data.profile.roles", empty()))
-				.andExpect(jsonPath("$.data.profile.sellerProfile.approvalStatus").value("PENDING"));
+		obligations.openOrders(customerId);
 		login(customerEmail, PASSWORD).andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.accessMode").value("OPEN_ORDERS_ONLY"))
+				.andExpect(jsonPath("$.data.profile.accountStatus").value("BANNED"))
 				.andExpect(jsonPath("$.data.profile.customerProfile.status").value("BANNED"))
-				.andExpect(jsonPath("$.data.profile.customerProfile.paymentBlocked").value(true))
-				.andExpect(jsonPath("$.data.profile.customerProfile.accessMode").value("BLOCKED"));
+				.andExpect(jsonPath("$.data.profile.customerProfile.accessMode").value("OPEN_ORDERS_ONLY"));
 	}
 
 	// --- refresh ---
@@ -219,15 +347,15 @@ class AuthEndpointsTests extends EndpointTestSupport {
 	void refreshReturnsNewTokensWithTheCurrentRoles() throws Exception {
 		String email = uniqueEmail();
 		UUID userId = UUID.fromString(registerCustomer(email));
-		String first = read(loginBody(email), "$.data.refreshToken");
+		String first = read(loginBody(email), "$.refreshToken");
 		tx.executeWithoutResult(status -> roleAssignments.revoke(users.findById(userId).orElseThrow(), RoleCode.CUSTOMER));
 
-		String body = refresh(first).andExpect(status().isOk())
+		String body = withRefreshToken(refresh(first).andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.profile.roles", empty()))
 				.andExpect(jsonPath("$.data.profile.permissions", not(hasItem("cart:manage:own"))))
-				.andReturn().getResponse().getContentAsString();
+				.andExpect(jsonPath("$.data.refreshToken").doesNotExist()));
 
-		assertThat(read(body, "$.data.refreshToken")).isNotEqualTo(first);
+		assertThat(read(body, "$.refreshToken")).isNotEqualTo(first);
 		refresh(first).andExpect(status().isUnauthorized())
 				.andExpect(jsonPath("$.error.code").value("INVALID_REFRESH_TOKEN"));
 	}
@@ -241,13 +369,13 @@ class AuthEndpointsTests extends EndpointTestSupport {
 		String phone = loginBody(email);
 		String laptop = loginBody(email);
 
-		postJson("/logout", json("refreshToken", read(phone, "$.data.refreshToken")), read(phone, "$.data.accessToken"))
+		logout(read(phone, "$.refreshToken"), read(phone, "$.data.accessToken"))
 				.andExpect(status().isNoContent());
 
-		refresh(read(phone, "$.data.refreshToken")).andExpect(status().isUnauthorized());
-		postJson("/logout", json("refreshToken", read(phone, "$.data.refreshToken")), read(phone, "$.data.accessToken"))
+		refresh(read(phone, "$.refreshToken")).andExpect(status().isUnauthorized());
+		logout(read(phone, "$.refreshToken"), read(phone, "$.data.accessToken"))
 				.andExpect(status().isUnauthorized());
-		refresh(read(laptop, "$.data.refreshToken")).andExpect(status().isOk());
+		refresh(read(laptop, "$.refreshToken")).andExpect(status().isOk());
 	}
 
 	@Test
@@ -255,39 +383,68 @@ class AuthEndpointsTests extends EndpointTestSupport {
 		String mine = loginBody(withCustomer(uniqueEmail()));
 		String theirs = loginBody(withCustomer(uniqueEmail()));
 
-		postJson("/logout", json("refreshToken", read(theirs, "$.data.refreshToken")), read(mine, "$.data.accessToken"))
+		logout(read(theirs, "$.refreshToken"), read(mine, "$.data.accessToken"))
 				.andExpect(status().isNoContent());
 
-		refresh(read(theirs, "$.data.refreshToken")).andExpect(status().isOk());
+		refresh(read(theirs, "$.refreshToken")).andExpect(status().isOk());
 	}
 
 	@Test
 	void logoutWithAnUnknownRefreshTokenStillSucceedsAndChangesNothing() throws Exception {
 		String session = loginBody(withCustomer(uniqueEmail()));
 
-		postJson("/logout", json("refreshToken", "not-a-real-token"), read(session, "$.data.accessToken"))
+		logout("not-a-real-token", read(session, "$.data.accessToken"))
 				.andExpect(status().isNoContent())
 				.andExpect(content().string(""));
 
-		refresh(read(session, "$.data.refreshToken")).andExpect(status().isOk());
+		refresh(read(session, "$.refreshToken")).andExpect(status().isOk());
+	}
+
+	@Test
+	void logoutClearsTheCookie() throws Exception {
+		String session = loginBody(withCustomer(uniqueEmail()));
+
+		logout(read(session, "$.refreshToken"), read(session, "$.data.accessToken")).andExpect(status().isNoContent())
+				.andExpect(cookie().maxAge("refresh_token", 0))
+				.andExpect(cookie().path("refresh_token", "/api/v1/identity/auth"))
+				.andExpect(cookie().httpOnly("refresh_token", true));
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = { "http://evil.example", "" })
+	void refreshAndLogoutNeedATrustedOrigin(String origin) throws Exception {
+		String session = loginBody(withCustomer(uniqueEmail()));
+		String refreshToken = read(session, "$.refreshToken");
+
+		var refresh = post(AuthController.PATH + "/refresh").cookie(new jakarta.servlet.http.Cookie("refresh_token",
+				refreshToken));
+		var logout = post(AuthController.PATH + "/logout").cookie(new jakarta.servlet.http.Cookie("refresh_token",
+				refreshToken)).header("Authorization", "Bearer " + read(session, "$.data.accessToken"));
+		if (!origin.isEmpty()) {
+			refresh.header("Origin", origin);
+			logout.header("Origin", origin);
+		}
+		mvc.perform(refresh).andExpect(status().isForbidden());
+		mvc.perform(logout).andExpect(status().isForbidden());
+		refresh(refreshToken).andExpect(status().isOk());
+	}
+
+	@Test
+	void refreshWithoutTheCookieIsAnInvalidRefreshToken() throws Exception {
+		mvc.perform(post(AuthController.PATH + "/refresh").header("Origin", SPA_ORIGIN))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.error.code").value("INVALID_REFRESH_TOKEN"));
 	}
 
 	@Test
 	void logoutNeedsAnAccessToken() throws Exception {
-		postJson("/logout", json("refreshToken", "anything")).andExpect(status().isUnauthorized())
+		logout("anything", null).andExpect(status().isUnauthorized())
 				.andExpect(jsonPath("$.error.code").value("UNAUTHENTICATED"));
 	}
 
 	private String withCustomer(String email) throws Exception {
 		registerCustomer(email);
 		return email;
-	}
-
-	/** Gives a customer an extra APPROVED Seller profile and the SELLER role. */
-	private void approveSellerProfile(UUID userId) {
-		jdbc.update("insert into sellers (seller_id, seller_name, contact_phone) values (?, ?, ?)", userId,
-				"Shop " + userId, uniquePhone());
-		approveSeller(userId);
 	}
 
 }
