@@ -40,6 +40,8 @@ public class OrderSecurityConfig {
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers(HttpMethod.GET, "/internal/v1/inventory/availability")
 						.hasAnyAuthority("service:product-service", "service:cart-service")
+						.requestMatchers(HttpMethod.GET, "/internal/v1/inventory/details")
+						.hasAuthority("service:product-service")
 						.requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
 						.anyRequest().denyAll())
 				.exceptionHandling(ex -> ex

@@ -22,10 +22,20 @@ public class InventoryReadController {
 
 	@GetMapping("/availability")
 	Data<List<InventoryStockRepository.Availability>> availability(@RequestParam List<UUID> productIds) {
+		validateIds(productIds);
+		return new Data<>(inventory.availability(productIds));
+	}
+
+	@GetMapping("/details")
+	Data<List<InventoryStockRepository.Details>> details(@RequestParam List<UUID> productIds) {
+		validateIds(productIds);
+		return new Data<>(inventory.details(productIds));
+	}
+
+	private static void validateIds(List<UUID> productIds) {
 		if (productIds.isEmpty() || productIds.contains(null)) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
 		}
-		return new Data<>(inventory.availability(productIds));
 	}
 
 	public record Data<T>(T data) {

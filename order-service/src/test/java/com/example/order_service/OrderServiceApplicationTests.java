@@ -12,6 +12,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -24,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 })
 class OrderServiceApplicationTests extends OrderPostgresTestSupport {
 	private static final String AVAILABILITY = "/internal/v1/inventory/availability";
+	private static final String DETAILS = "/internal/v1/inventory/details";
 	private static final String PRODUCT = "product-inventory-test";
 	private static final String CART = "cart-inventory-test";
 
@@ -57,9 +60,9 @@ class OrderServiceApplicationTests extends OrderPostgresTestSupport {
 		UUID unrequested = addStock(20, 1);
 		String csv = AVAILABILITY + "?productIds=" + first + "," + second;
 		String repeated = AVAILABILITY + "?productIds=" + first + "&productIds=" + second;
-		for (var response : new HttpResponse[]{get(csv, PRODUCT), get(repeated, CART)}) {
+		for (var response : List.of(get(csv, PRODUCT), get(repeated, CART))) {
 			assertThat(response.statusCode()).isEqualTo(200);
-			var data = json.readTree(response.body().toString()).path("data");
+			var data = json.readTree(response.body()).path("data");
 			assertThat(data.size()).isEqualTo(2);
 			for (var entry : data) {
 				String id = entry.path("productId").asString();
@@ -80,6 +83,34 @@ class OrderServiceApplicationTests extends OrderPostgresTestSupport {
 	void availabilityValidatesProductIds() throws Exception {
 		assertError(get(AVAILABILITY, PRODUCT), 400, "VALIDATION_ERROR");
 		assertError(get(AVAILABILITY + "?productIds=garbage", PRODUCT), 400, "VALIDATION_ERROR");
+	}
+
+	@Test
+	void detailsReturnsOnlyRequestedStockToProduct() throws Exception {
+		UUID requested = addStock(10, 4);
+		addStock(8, 1);
+		var updatedAt = OffsetDateTime.parse("2026-11-21T00:00:00Z");
+		jdbc.update("update orders.inventory set row_version = ?, updated_at = ? where product_id = ?",
+				8L, updatedAt, requested);
+		var response = get(DETAILS + "?productIds=" + requested + "," + UUID.randomUUID(), PRODUCT);
+		assertThat(response.statusCode()).isEqualTo(200);
+		var data = json.readTree(response.body()).path("data");
+		assertThat(data.size()).isEqualTo(1);
+		var row = data.get(0);
+		assertThat(row.path("productId").asString()).isEqualTo(requested.toString());
+		assertThat(row.path("onHandQuantity").asInt()).isEqualTo(10);
+		assertThat(row.path("reservedQuantity").asInt()).isEqualTo(4);
+		assertThat(row.path("availableQuantity").asInt()).isEqualTo(6);
+		assertThat(row.path("version").asLong()).isEqualTo(8L);
+		assertThat(OffsetDateTime.parse(row.path("updatedAt").asString()).toInstant()).isEqualTo(updatedAt.toInstant());
+	}
+
+	@Test
+	void detailsDoesNotDiscloseInventoryToCartOrUnknownCallers() throws Exception {
+		String uri = DETAILS + "?productIds=" + addStock(10, 4);
+		assertError(get(uri, CART), 403, "FORBIDDEN");
+		assertError(get(uri, "unrecognized-service"), 401, "UNAUTHENTICATED");
+		assertError(get(uri, null), 401, "UNAUTHENTICATED");
 	}
 
 	private UUID addStock(int onHand, int reserved) {
