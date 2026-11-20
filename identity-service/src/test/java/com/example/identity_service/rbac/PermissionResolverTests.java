@@ -1,9 +1,12 @@
 package com.example.identity_service.rbac;
 
 import com.example.identity_service.TestcontainersConfiguration;
+import com.example.identity_service.user.AccountType;
 import com.example.identity_service.user.User;
 import com.example.identity_service.user.UserRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
@@ -28,27 +31,27 @@ class PermissionResolverTests {
 	RoleAssignments roleAssignments;
 
 	@Test
-	void activeUserWithoutRolesGetsOnlyTheBaselinePolicy() {
-		User user = newUser();
+	void activeUserWithoutARoleGetsOnlyTheBaselinePolicy() {
+		User user = newUser(AccountType.SELLER);
 
 		assertThat(resolver.activeRolesOf(user)).isEmpty();
 		assertThat(resolver.permissionsOf(user)).containsExactlyInAnyOrderElementsOf(RbacMatrix.BASELINE);
 	}
 
-	@Test
-	void permissionsAreTheUnionOfAllActiveRoles() {
-		User user = newUser();
-		grant(user, RoleCode.CUSTOMER);
-		grant(user, RoleCode.SELLER);
+	@ParameterizedTest
+	@EnumSource(AccountType.class)
+	void permissionsAreTheBaselinePlusTheAccountsOneRole(AccountType type) {
+		User user = newUser(type);
+		grant(user, type.role());
 
-		assertThat(resolver.activeRolesOf(user)).containsExactlyInAnyOrder(RoleCode.CUSTOMER, RoleCode.SELLER);
+		assertThat(resolver.activeRolesOf(user)).containsExactly(type.role());
 		assertThat(resolver.permissionsOf(user)).containsExactlyInAnyOrderElementsOf(
-				RbacMatrix.union(RbacMatrix.BASELINE, RbacMatrix.CUSTOMER, RbacMatrix.SELLER));
+				RbacMatrix.union(RbacMatrix.BASELINE, RbacMatrix.of(type.role())));
 	}
 
 	@Test
 	void revokedRoleGrantsNothing() {
-		User user = newUser();
+		User user = newUser(AccountType.CUSTOMER);
 		grant(user, RoleCode.CUSTOMER);
 		roleAssignments.revoke(user, RoleCode.CUSTOMER);
 
@@ -58,17 +61,17 @@ class PermissionResolverTests {
 
 	@Test
 	void adminDoesNotGetBuyerOrSellerPermissions() {
-		User user = newUser();
+		User user = newUser(AccountType.ADMIN);
 		grant(user, RoleCode.ADMIN);
 
 		assertThat(resolver.permissionsOf(user))
 				.containsExactlyInAnyOrderElementsOf(RbacMatrix.union(RbacMatrix.BASELINE, RbacMatrix.ADMIN))
-				.doesNotContain("cart:manage:own", "product:manage:own");
+				.doesNotContain("cart:manage:own", "product:manage:own", "refund:retry:own");
 	}
 
 	@Test
 	void disabledUserHasNoPermissions() {
-		User user = newUser();
+		User user = newUser(AccountType.CUSTOMER);
 		grant(user, RoleCode.CUSTOMER);
 		user.disable("Fraud");
 
@@ -76,8 +79,8 @@ class PermissionResolverTests {
 		assertThat(resolver.permissionsOf(user)).isEmpty();
 	}
 
-	private User newUser() {
-		return users.save(User.local(UUID.randomUUID() + "@example.test", "{noop}x", "Test User", null));
+	private User newUser(AccountType type) {
+		return users.save(User.local(type, UUID.randomUUID() + "@example.test", "{noop}x", "Test User", null));
 	}
 
 	private void grant(User user, RoleCode code) {

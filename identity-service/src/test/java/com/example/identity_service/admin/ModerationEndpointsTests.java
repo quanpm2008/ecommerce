@@ -182,10 +182,11 @@ class ModerationEndpointsTests extends EndpointTestSupport {
 
 		unban(seller.userId(), json("scope", "SELLER")).andExpect(status().isOk());
 
-		String fresh = read(loginBody(seller.email()), "$.data.accessToken");
-		call(HttpMethod.GET, "/users/me", null, fresh)
-				.andExpect(jsonPath("$.data.roles", org.hamcrest.Matchers.empty()))
-				.andExpect(jsonPath("$.data.sellerProfile.approvalStatus").value("PENDING"));
+		// A PENDING seller cannot sign in, so check the stored state.
+		assertThat(jdbc.queryForObject("select count(*) from user_roles where user_id = ? and revoked_at is null",
+				Integer.class, seller.userId())).isZero();
+		assertThat(jdbc.queryForObject("select approval_status from sellers where seller_id = ?", String.class,
+				seller.userId())).isEqualTo("PENDING");
 	}
 
 	@Test

@@ -108,7 +108,7 @@ class AdminReadEndpointsTests extends EndpointTestSupport {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.user.email").value(seller.email()))
 				.andExpect(content().string(not(containsString("passwordHash"))));
-		call(HttpMethod.GET, "/admin/sellers/" + seller.userId(), null, seller.accessToken())
+		call(HttpMethod.GET, "/admin/sellers/" + seller.userId(), null, approvedSeller().accessToken())
 				.andExpect(status().isForbidden());
 		call(HttpMethod.GET, "/admin/customers", null, customer().accessToken()).andExpect(status().isForbidden());
 		call(HttpMethod.GET, "/admin/customers", null, null).andExpect(status().isUnauthorized());

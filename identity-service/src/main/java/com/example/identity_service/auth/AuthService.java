@@ -17,6 +17,7 @@ import com.example.identity_service.seller.SellerApprovalStatus;
 import com.example.identity_service.seller.SellerRepository;
 import com.example.identity_service.session.IssuedTokens;
 import com.example.identity_service.session.SessionService;
+import com.example.identity_service.user.AccountType;
 import com.example.identity_service.user.AuthMethod;
 import com.example.identity_service.user.PhoneNumbers;
 import com.example.identity_service.user.User;
@@ -33,8 +34,8 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Registration, login, refresh and logout (API §6.1, UC-A01–A03, A07). One login for every role: the request never
- * names a role, and the profile shows whatever the user currently has.
+ * Registration, login, refresh and logout (API §6.1, UC-A01–A03, A07). Every role is its own account: login names the
+ * account type of the web app, and a correct password for an account of another type is the same 401 as a wrong one.
  */
 @Service
 @RequiredArgsConstructor
@@ -56,6 +57,8 @@ public class AuthService {
 
 	private final PasswordEncoder passwordEncoder;
 
+	private final SignInPolicy signIn;
+
 	/** Compared against when the email is unknown, so a miss costs as much time as a wrong password. */
 	private final String unknownUserHash = "{bcrypt}" + new BCryptPasswordEncoder().encode(OpaqueTokens.generate());
 
@@ -72,7 +75,7 @@ public class AuthService {
 		if (users.existsByPhoneNumber(phone)) {
 			throw ApiException.forField(ErrorCode.PHONE_ALREADY_USED, "phoneNumber", "DUPLICATE");
 		}
-		User user = saveNewUser(User.local(email, passwordEncoder.encode(request.password()),
+		User user = saveNewUser(User.local(AccountType.CUSTOMER, email, passwordEncoder.encode(request.password()),
 				request.fullName().strip(), phone));
 		customers.save(new Customer(user));
 		roleAssignments.grant(user, RoleCode.CUSTOMER, null);
@@ -99,7 +102,7 @@ public class AuthService {
 		if (sellers.existsActiveContactPhone(contactPhone)) {
 			throw ApiException.forField(ErrorCode.PHONE_ALREADY_USED, "contactPhone", "DUPLICATE");
 		}
-		User user = saveNewUser(User.local(email, passwordEncoder.encode(request.password()),
+		User user = saveNewUser(User.local(AccountType.SELLER, email, passwordEncoder.encode(request.password()),
 				request.fullName().strip(), null));
 		try {
 			sellers.saveAndFlush(new Seller(user, sellerName, contactPhone, null));
@@ -114,11 +117,13 @@ public class AuthService {
 	}
 
 	/**
-	 * Unknown email and wrong password give the same {@code INVALID_CREDENTIALS}. A disabled user is only told so
-	 * after the password matched. Restricted profiles (PENDING, REJECTED, BANNED) still log in.
+	 * Unknown email, an account of another type and a wrong password all give the same {@code INVALID_CREDENTIALS}
+	 * (and cost the same time). A seller not yet approved, or a disabled account, is only told so after the password
+	 * matched ({@link SignInPolicy}).
 	 */
 	public AuthTokens login(AuthRequests.Login request) {
-		Optional<User> found = users.findByEmail(User.normalizeEmail(request.email()));
+		Optional<User> found = users.findByEmail(User.normalizeEmail(request.email()))
+				.filter(user -> user.getAccountType() == request.accountType());
 		if (found.isEmpty()) {
 			passwordEncoder.matches(request.password(), unknownUserHash);
 			throw new ApiException(ErrorCode.INVALID_CREDENTIALS);
@@ -131,15 +136,19 @@ public class AuthService {
 		if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
 			throw new ApiException(ErrorCode.INVALID_CREDENTIALS);
 		}
+		signIn.check(user);
 		if (!user.isActive()) {
 			throw new ApiException(ErrorCode.ACCOUNT_DISABLED);
 		}
 		return withProfile(sessions.start(user));
 	}
 
-	/** Roles and permissions in the response are read again, never copied from the old token. */
+	/**
+	 * Roles and permissions in the response are read again, never copied from the old token; the sign-in rules are
+	 * checked again before the token rotates.
+	 */
 	public AuthTokens refresh(String refreshToken) {
-		return withProfile(sessions.refresh(refreshToken));
+		return withProfile(sessions.refresh(refreshToken, signIn::check));
 	}
 
 	public void logout(Caller caller, String refreshToken) {

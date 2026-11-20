@@ -32,6 +32,8 @@ import static com.example.identity_service.common.error.ErrorCode.PHONE_ALREADY_
 import static com.example.identity_service.common.error.ErrorCode.RATE_LIMITED;
 import static com.example.identity_service.common.error.ErrorCode.RESET_TOKEN_INVALID;
 import static com.example.identity_service.common.error.ErrorCode.SELLER_NAME_ALREADY_USED;
+import static com.example.identity_service.common.error.ErrorCode.SELLER_PENDING_APPROVAL;
+import static com.example.identity_service.common.error.ErrorCode.SELLER_REJECTED;
 import static com.example.identity_service.common.error.ErrorCode.WRONG_AUTH_METHOD;
 
 /**
@@ -78,9 +80,11 @@ public class AuthController {
 		return ApiResponse.of(auth.registerSeller(body));
 	}
 
-	@Operation(summary = "Sign in", description = "One sign-in for every role. Returns an access token (15 min), a "
-			+ "refresh token and the current profile. Unknown email and wrong password give the same error.")
-	@ErrorCodes({ INVALID_CREDENTIALS, WRONG_AUTH_METHOD, ACCOUNT_DISABLED })
+	@Operation(summary = "Sign in", description = "Signs in to one account: `accountType` is the web app's channel "
+			+ "(CUSTOMER, SELLER or ADMIN). Returns an access token (15 min), a refresh token and the current profile. "
+			+ "Unknown email, wrong password and an account of another type all give the same error. A seller signs in "
+			+ "only once approved.")
+	@ErrorCodes({ INVALID_CREDENTIALS, WRONG_AUTH_METHOD, SELLER_PENDING_APPROVAL, SELLER_REJECTED, ACCOUNT_DISABLED })
 	@PostMapping("/login")
 	ApiResponse<AuthTokens> login(@Valid @RequestBody AuthRequests.Login body) {
 		return ApiResponse.of(auth.login(body));
@@ -88,7 +92,7 @@ public class AuthController {
 
 	@Operation(summary = "Refresh tokens", description = "Rotates the refresh token: use the new one next time. "
 			+ "Reusing an old refresh token revokes the whole session.")
-	@ErrorCodes(INVALID_REFRESH_TOKEN)
+	@ErrorCodes({ INVALID_REFRESH_TOKEN, SELLER_PENDING_APPROVAL, SELLER_REJECTED })
 	@PostMapping("/refresh")
 	ApiResponse<AuthTokens> refresh(@Valid @RequestBody AuthRequests.RefreshToken body) {
 		return ApiResponse.of(auth.refresh(body.refreshToken()));

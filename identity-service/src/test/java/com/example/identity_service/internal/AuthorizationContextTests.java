@@ -46,9 +46,9 @@ class AuthorizationContextTests extends EndpointTestSupport {
 
 	@Test
 	void staleExpiredAndInvalidTokensAre401WithTheRightCode() throws Exception {
-		Session seller = pendingSeller();
-		tx.executeWithoutResult(status -> roleAssignments.grant(users.findById(seller.userId()).orElseThrow(),
-				RoleCode.CUSTOMER, null));
+		Session seller = approvedSeller();
+		tx.executeWithoutResult(status -> roleAssignments.revoke(users.findById(seller.userId()).orElseThrow(),
+				RoleCode.SELLER, null));
 		context(seller.accessToken()).andExpect(status().isUnauthorized())
 				.andExpect(jsonPath("$.error.code").value("TOKEN_STALE"));
 

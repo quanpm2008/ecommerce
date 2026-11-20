@@ -86,9 +86,9 @@ Endpoint paths are shown as the public path after `/api/v1` (e.g. `/identity/aut
 
 - [x] `GET /identity/users/me` returns `UserSelfProfile` with roles, permissions, `authzVersion` and both optional profiles
 - [x] `PATCH /identity/users/me` accepts only `fullName`, `phoneNumber`; any other field → 400 `VALIDATION_ERROR`; duplicate phone → 409
-- [x] `POST /identity/users/me/customer-profile`: 201 creates Customer + CUSTOMER and bumps `authzVersion`; 200 if it already exists; BANNED Customer is returned unchanged; CUSTOMER revoked by an admin → 403
-- [x] `POST /identity/users/me/seller-application`: 201 first time, 200 on resubmission after REJECTED, same `seller_id`; PENDING/APPROVED → 409 `INVALID_STATE_TRANSITION`; body never accepts userId/email/password/role/status
-- [x] `GET /identity/users/me/seller-application` returns own `SellerSelfProfile` or null without needing SELLER
+- [x] ~~`POST /identity/users/me/customer-profile`~~ removed 2026-11-20 (API v1.1 §3.2.1: one account per role) — 404, `accountsCannotAddProfilesToThemselves`
+- [x] ~~`POST /identity/users/me/seller-application`~~ removed 2026-11-20; sellers register publicly, REJECTED sellers reapply through `/auth/seller-reapplication` (step I2) — 404
+- [x] ~~`GET /identity/users/me/seller-application`~~ removed 2026-11-20 — 404
 - [x] `PATCH /identity/sellers/me` updates description, `logoObjectKey`, `contactPhone`; cannot change email or seller name
 - [x] `POST /identity/media/upload-urls` only purpose `SELLER_LOGO`, only for APPROVED/ACTIVE seller; 422 `MEDIA_INVALID`
 
@@ -151,7 +151,7 @@ Endpoint paths are shown as the public path after `/api/v1` (e.g. `/identity/aut
 - [ ] Endpoints check specific permissions, never just a role string
 - [ ] Owner IDs always come from `sub`, never from the body, query or headers
 - [ ] Role without profile → rejected; profile with a revoked role → rejected
-- [ ] User with CUSTOMER + SELLER logs in once and can use both sets of APIs
+- [x] ~~User with CUSTOMER + SELLER logs in once and can use both sets of APIs~~ replaced by API v1.1: each role is its own account; login names the `accountType`, another type → `INVALID_CREDENTIALS` (`theRightPasswordOnAnotherChannelIsTheSameAnswerAsAWrongOne`); a seller signs in only once APPROVED (`aSellerSignsInOnlyOnceApproved`)
 - [ ] User with only ADMIN or only SELLER cannot use customer APIs
 - [ ] ADMIN does not automatically have customer or seller permissions
 - [ ] A client cannot grant itself ADMIN, change its own status, or approve its own shop

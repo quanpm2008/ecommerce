@@ -6,6 +6,7 @@ import com.example.identity_service.audit.AuditTargetType;
 import com.example.identity_service.audit.AuditTrail;
 import com.example.identity_service.outbox.EventActor;
 import com.example.identity_service.outbox.OutboxWriter;
+import com.example.identity_service.user.AccountType;
 import com.example.identity_service.user.User;
 import com.example.identity_service.user.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -20,12 +21,14 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * The only way to change a user's roles. Every effective change, in the same transaction:
+ * The only way to change a user's role. An account holds at most one active role, the one of its type
+ * ({@link AccountType#role()}): anything else is a programming error, and the database refuses it too (V6). Every
+ * effective change, in the same transaction:
  * <ul>
  * <li>bumps {@code authzVersion} (API §3.2.1), so tokens issued before it become stale;</li>
  * <li>writes {@code user.roles_changed} with the current role codes (API §7.2);</li>
  * <li>writes a {@code GRANT_ROLE} / {@code REVOKE_ROLE} audit row when an admin made the change (DB §6). Changes the
- * user makes for themselves (registration, adding a Customer profile) are not admin actions.</li>
+ * user makes for themselves (registration) are not admin actions.</li>
  * </ul>
  * Repeating a grant or revoke changes nothing and writes nothing.
  */
@@ -49,12 +52,19 @@ public class RoleAssignments {
 	 */
 	@Transactional
 	public boolean grant(User user, RoleCode code, UUID grantedBy) {
+		if (user.getAccountType().role() != code) {
+			throw new IllegalArgumentException(
+					"A " + user.getAccountType() + " account cannot hold the " + code + " role");
+		}
 		Role role = roles.findByCode(code).orElseThrow();
 		Optional<UserRole> existing = userRoles.findById(new UserRoleId(user.getUserId(), role.getRoleId()));
 		if (existing.isPresent() && existing.get().isActive()) {
 			return false;
 		}
 		Set<RoleCode> before = activeRoles(user);
+		if (!before.isEmpty()) {
+			throw new IllegalStateException("User " + user.getUserId() + " already holds " + before);
+		}
 		existing.ifPresentOrElse(userRole -> userRole.regrant(grantedBy),
 				() -> userRoles.save(new UserRole(user.getUserId(), role, grantedBy)));
 		Set<RoleCode> after = withRole(before, code);

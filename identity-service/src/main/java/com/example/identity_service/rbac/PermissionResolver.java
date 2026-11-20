@@ -10,9 +10,9 @@ import java.util.SortedSet;
 import java.util.TreeSet;
 
 /**
- * Effective permissions: the baseline policy plus the union of the user's unrevoked roles, read from the database
- * every time. A DISABLED user has none. Profile status (BANNED, PENDING, ...) and ownership are checked separately
- * by each endpoint.
+ * Effective permissions: the baseline policy plus the permissions of the account's one active role, read from the
+ * database every time. A DISABLED user has none. Profile status (BANNED, PENDING, ...) and ownership are checked
+ * separately by each endpoint.
  */
 @Service
 @RequiredArgsConstructor

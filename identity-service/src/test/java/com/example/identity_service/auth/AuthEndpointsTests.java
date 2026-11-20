@@ -3,6 +3,8 @@ package com.example.identity_service.auth;
 import com.example.identity_service.EndpointTestSupport;
 import com.example.identity_service.rbac.RoleCode;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.ParameterizedTest;
 
 import java.util.Map;
 import java.util.UUID;
@@ -101,9 +103,9 @@ class AuthEndpointsTests extends EndpointTestSupport {
 
 		String body = registerSeller(email, "Shop " + UUID.randomUUID(), "+84" + contactPhone.substring(1))
 				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.data.accountType").value("SELLER"))
 				.andExpect(jsonPath("$.data.roles", empty()))
-				.andExpect(jsonPath("$.data.permissions",
-						containsInAnyOrder("account:read:own", "account:update:own", "seller:application:own")))
+				.andExpect(jsonPath("$.data.permissions", containsInAnyOrder("account:read:own", "account:update:own")))
 				.andExpect(jsonPath("$.data.phoneNumber").isEmpty())
 				.andExpect(jsonPath("$.data.customerProfile").isEmpty())
 				.andExpect(jsonPath("$.data.sellerProfile.approvalStatus").value("PENDING"))
@@ -142,20 +144,49 @@ class AuthEndpointsTests extends EndpointTestSupport {
 	// --- login ---
 
 	@Test
-	void oneLoginReturnsTokensAndEveryProfileTheUserHas() throws Exception {
+	void loginReturnsTokensForTheAccountOfItsChannel() throws Exception {
 		String email = uniqueEmail();
 		UUID userId = UUID.fromString(registerCustomer(email));
-		approveSellerProfile(userId);
 
-		login(email.toUpperCase(), PASSWORD).andExpect(status().isOk())
+		login(email.toUpperCase(), PASSWORD, "CUSTOMER").andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.tokenType").value("Bearer"))
 				.andExpect(jsonPath("$.data.accessTokenExpiresIn").value(900))
 				.andExpect(jsonPath("$.data.accessToken").isNotEmpty())
 				.andExpect(jsonPath("$.data.refreshToken").isNotEmpty())
-				.andExpect(jsonPath("$.data.profile.roles", contains("CUSTOMER", "SELLER")))
-				.andExpect(jsonPath("$.data.profile.permissions", hasItems("cart:manage:own", "product:manage:own")))
+				.andExpect(jsonPath("$.data.accountType").value("CUSTOMER"))
+				.andExpect(jsonPath("$.data.profile.accountType").value("CUSTOMER"))
+				.andExpect(jsonPath("$.data.profile.roles", contains("CUSTOMER")))
+				.andExpect(jsonPath("$.data.profile.permissions", hasItems("cart:manage:own", "refund:retry:own")))
 				.andExpect(jsonPath("$.data.profile.customerProfile.customerId").value(userId.toString()))
-				.andExpect(jsonPath("$.data.profile.sellerProfile.approvalStatus").value("APPROVED"));
+				.andExpect(jsonPath("$.data.profile.sellerProfile").isEmpty());
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = { "SELLER", "ADMIN" })
+	void theRightPasswordOnAnotherChannelIsTheSameAnswerAsAWrongOne(String channel) throws Exception {
+		String email = uniqueEmail();
+		registerCustomer(email);
+
+		String wrongChannel = body(login(email, PASSWORD, channel).andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.error.code").value("INVALID_CREDENTIALS")));
+		String wrongPassword = body(login(email, "Wrong1234", "CUSTOMER").andExpect(status().isUnauthorized()));
+
+		assertThat(wrongChannel).isEqualTo(wrongPassword);
+		assertThat(jdbc.queryForObject("""
+				select count(*) from auth_sessions s join users u using (user_id) where u.email = ?""", Integer.class,
+				email)).isZero();
+	}
+
+	@Test
+	void loginNeedsAKnownAccountType() throws Exception {
+		String email = uniqueEmail();
+		registerCustomer(email);
+
+		postJson("/login", json("email", email, "password", PASSWORD)).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"))
+				.andExpect(jsonPath("$.error.details[0].field").value("accountType"));
+		login(email, PASSWORD, "STAFF").andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
 	}
 
 	@Test
@@ -195,18 +226,50 @@ class AuthEndpointsTests extends EndpointTestSupport {
 	}
 
 	@Test
-	void restrictedProfilesStillLogIn() throws Exception {
-		String sellerEmail = uniqueEmail();
-		registerSeller(sellerEmail, "Shop " + UUID.randomUUID(), uniquePhone()).andExpect(status().isCreated());
+	void aSellerSignsInOnlyOnceApproved() throws Exception {
+		String pending = uniqueEmail();
+		registerSeller(pending, "Shop " + UUID.randomUUID(), uniquePhone()).andExpect(status().isCreated());
+		Session rejected = pendingSeller();
+		UUID reviewer = admin().userId();
+		jdbc.update("""
+				update sellers set approval_status = 'REJECTED', rejection_reason = 'Blurry', reviewed_at = now(),
+				reviewed_by_user_id = ? where seller_id = ?""", reviewer, rejected.userId());
+		Session approved = approvedSeller();
+
+		login(pending, "Wrong1234", "SELLER").andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.error.code").value("INVALID_CREDENTIALS"));
+		login(pending, PASSWORD, "SELLER").andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.error.code").value("SELLER_PENDING_APPROVAL"));
+		login(rejected.email(), PASSWORD, "SELLER").andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.error.code").value("SELLER_REJECTED"));
+		login(approved.email(), PASSWORD, "SELLER").andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.accountType").value("SELLER"))
+				.andExpect(jsonPath("$.data.profile.roles", contains("SELLER")))
+				.andExpect(jsonPath("$.data.profile.customerProfile").isEmpty());
+		assertThat(jdbc.queryForObject("select count(*) from auth_sessions where user_id in (?, ?)", Integer.class,
+				rejected.userId(), users.findByEmail(pending).orElseThrow().getUserId())).isZero();
+	}
+
+	@Test
+	void refreshChecksTheSellerApprovalAgain() throws Exception {
+		Session seller = approvedSeller();
+		String refreshToken = read(loginBody(seller.email()), "$.data.refreshToken");
+		jdbc.update("""
+				update sellers set approval_status = 'PENDING', reviewed_at = null, reviewed_by_user_id = null
+				where seller_id = ?""", seller.userId());
+
+		refresh(refreshToken).andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.error.code").value("SELLER_PENDING_APPROVAL"));
+	}
+
+	@Test
+	void bannedCustomerStillLogsIn() throws Exception {
 		String customerEmail = uniqueEmail();
 		UUID customerId = UUID.fromString(registerCustomer(customerEmail));
 		jdbc.update("""
 				update customers set status = 'BANNED', ban_reason = 'Fraud', ban_mode = 'CUSTOMER_SCOPE',
 				has_paid_order_before_ban = false where customer_id = ?""", customerId);
 
-		login(sellerEmail, PASSWORD).andExpect(status().isOk())
-				.andExpect(jsonPath("$.data.profile.roles", empty()))
-				.andExpect(jsonPath("$.data.profile.sellerProfile.approvalStatus").value("PENDING"));
 		login(customerEmail, PASSWORD).andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.profile.customerProfile.status").value("BANNED"))
 				.andExpect(jsonPath("$.data.profile.customerProfile.paymentBlocked").value(true))
@@ -281,13 +344,6 @@ class AuthEndpointsTests extends EndpointTestSupport {
 	private String withCustomer(String email) throws Exception {
 		registerCustomer(email);
 		return email;
-	}
-
-	/** Gives a customer an extra APPROVED Seller profile and the SELLER role. */
-	private void approveSellerProfile(UUID userId) {
-		jdbc.update("insert into sellers (seller_id, seller_name, contact_phone) values (?, ?, ?)", userId,
-				"Shop " + userId, uniquePhone());
-		approveSeller(userId);
 	}
 
 }

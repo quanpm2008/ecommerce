@@ -39,7 +39,8 @@ public class SelfProfileAssembler {
 		User user = users.findById(userId).orElseThrow();
 		CustomerProfile customer = customers.findById(userId).map(this::customer).orElse(null);
 		SellerSelfProfile seller = sellers.findById(userId).map(this::seller).orElse(null);
-		return new UserSelfProfile(user.getUserId(), user.getEmail(), user.getAuthMethod(), user.getFullName(),
+		return new UserSelfProfile(user.getUserId(), user.getAccountType(), user.getEmail(), user.getAuthMethod(),
+				user.getFullName(),
 				user.getPhoneNumber(), user.getStatus(),
 				permissions.activeRolesOf(user).stream().map(Enum::name).sorted().toList(),
 				permissions.permissionsOf(user).stream().toList(), user.getAuthzVersion(), customer, seller,

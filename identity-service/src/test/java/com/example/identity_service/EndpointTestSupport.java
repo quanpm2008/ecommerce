@@ -3,6 +3,8 @@ package com.example.identity_service;
 import com.example.identity_service.auth.AuthController;
 import com.example.identity_service.rbac.RoleAssignments;
 import com.example.identity_service.rbac.RoleCode;
+import com.example.identity_service.user.AccountType;
+import com.example.identity_service.user.User;
 import com.example.identity_service.user.UserRepository;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,6 +16,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -78,6 +81,9 @@ public abstract class EndpointTestSupport {
 
 	@Autowired
 	protected TransactionTemplate tx;
+
+	@Autowired
+	protected PasswordEncoder passwordEncoder;
 
 	protected String clientIp;
 
@@ -177,8 +183,19 @@ public abstract class EndpointTestSupport {
 				"contactPhone", contactPhone, "password", PASSWORD, "confirmPassword", PASSWORD));
 	}
 
+	/** Logs in to the account's own channel (its account type, or CUSTOMER for an unknown email). */
 	protected ResultActions login(String email, String password) throws Exception {
-		return postJson("/login", json("email", email, "password", password));
+		return login(email, password, accountTypeOf(email));
+	}
+
+	protected ResultActions login(String email, String password, String accountType) throws Exception {
+		return postJson("/login", json("email", email, "password", password, "accountType", accountType));
+	}
+
+	/** The account type stored for {@code email}, or CUSTOMER when there is no such account. */
+	protected String accountTypeOf(String email) {
+		return jdbc.query("select account_type from users where email = lower(?)", rs -> rs.next() ? rs.getString(1)
+				: "CUSTOMER", email.strip());
 	}
 
 	/** Logs in and returns the response body. */
@@ -197,13 +214,15 @@ public abstract class EndpointTestSupport {
 		return new Session(userId, email, read(loginBody(email), "$.data.accessToken"));
 	}
 
-	/** Registers a seller (PENDING, no role), logs in and returns the session. */
+	/**
+	 * Registers a seller account (PENDING, no role). A pending seller cannot sign in (API §3.2), so the session has no
+	 * access token.
+	 */
 	protected Session pendingSeller() throws Exception {
 		String email = uniqueEmail();
 		String body = registerSeller(email, "Shop " + UUID.randomUUID(), uniquePhone()).andExpect(status().isCreated())
 				.andReturn().getResponse().getContentAsString();
-		return new Session(UUID.fromString(read(body, "$.data.userId")), email,
-				read(loginBody(email), "$.data.accessToken"));
+		return new Session(UUID.fromString(read(body, "$.data.userId")), email, null);
 	}
 
 	/** A seller approved as an admin would (APPROVED + SELLER role), logged in afterwards. */
@@ -214,14 +233,18 @@ public abstract class EndpointTestSupport {
 	}
 
 	/**
-	 * A registered user (who is also a customer) granted ADMIN, logged in afterwards. Admins are only made by the
-	 * bootstrap in production; this is the test shortcut.
+	 * An ADMIN account (own email, no Customer or Seller profile) with the ADMIN role, logged in. Admins are only made
+	 * by the bootstrap in production; this is the test shortcut.
 	 */
 	protected Session admin() throws Exception {
-		Session user = customer();
-		tx.executeWithoutResult(status -> roleAssignments.grant(users.findById(user.userId()).orElseThrow(),
-				RoleCode.ADMIN, null));
-		return new Session(user.userId(), user.email(), read(loginBody(user.email()), "$.data.accessToken"));
+		String email = uniqueEmail();
+		UUID adminId = tx.execute(status -> {
+			User admin = users.save(User.local(AccountType.ADMIN, email, passwordEncoder.encode(PASSWORD),
+					"Admin " + email.substring(5, 13), null));
+			roleAssignments.grant(admin, RoleCode.ADMIN, null);
+			return admin.getUserId();
+		});
+		return new Session(adminId, email, read(loginBody(email), "$.data.accessToken"));
 	}
 
 	/** Number of outbox rows of {@code eventType} for the aggregate. */
@@ -239,8 +262,8 @@ public abstract class EndpointTestSupport {
 	/** Marks the user's Seller profile APPROVED and grants SELLER, like an admin approval. */
 	protected void approveSeller(UUID sellerId) {
 		UUID reviewer = jdbc.queryForObject("""
-				insert into users (email, auth_method, password_hash, full_name) values (?, 'LOCAL', 'x', 'Reviewer')
-				returning user_id""", UUID.class, uniqueEmail());
+				insert into users (email, account_type, auth_method, password_hash, full_name)
+				values (?, 'ADMIN', 'LOCAL', 'x', 'Reviewer') returning user_id""", UUID.class, uniqueEmail());
 		jdbc.update("""
 				update sellers set approval_status = 'APPROVED', reviewed_at = now(), reviewed_by_user_id = ?
 				where seller_id = ?""", reviewer, sellerId);
@@ -250,8 +273,9 @@ public abstract class EndpointTestSupport {
 
 	protected UUID insertGoogleUser(String email) {
 		return jdbc.queryForObject("""
-				insert into users (email, auth_method, google_subject, full_name)
-				values (?, 'GOOGLE', ?, 'Google User') returning user_id""", UUID.class, email, UUID.randomUUID().toString());
+				insert into users (email, account_type, auth_method, google_subject, full_name)
+				values (?, 'CUSTOMER', 'GOOGLE', ?, 'Google User') returning user_id""", UUID.class, email,
+				UUID.randomUUID().toString());
 	}
 
 	protected void disableUser(String email) {

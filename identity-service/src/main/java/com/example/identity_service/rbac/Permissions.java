@@ -11,10 +11,11 @@ public final class Permissions {
 
 	public static final String ACCOUNT_UPDATE_OWN = "account:update:own";
 
-	public static final String SELLER_APPLICATION_OWN = "seller:application:own";
-
-	/** Granted to every ACTIVE user without any role (API §3.2.1). Creating an own Customer is also baseline. */
-	public static final Set<String> BASELINE = Set.of(ACCOUNT_READ_OWN, ACCOUNT_UPDATE_OWN, SELLER_APPLICATION_OWN);
+	/**
+	 * Granted to every ACTIVE account on top of its role (API §3.2.1): reading and updating the own account. Nothing
+	 * else: applying to sell goes through public registration, never through an existing account.
+	 */
+	public static final Set<String> BASELINE = Set.of(ACCOUNT_READ_OWN, ACCOUNT_UPDATE_OWN);
 
 	private Permissions() {
 	}

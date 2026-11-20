@@ -8,7 +8,6 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
-import static org.hamcrest.Matchers.empty;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -37,10 +36,9 @@ class SellerReviewEndpointsTests extends EndpointTestSupport {
 				select payload -> 'payload' ->> 'authzVersion' from outbox_events
 				where event_type = 'seller.approved' and aggregate_id = ?""", String.class, seller.userId()))
 				.isEqualTo(String.valueOf(authzVersion(seller.userId())));
-		call(HttpMethod.GET, "/users/me", null, seller.accessToken()).andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.error.code").value("TOKEN_STALE"));
-		String fresh = read(loginBody(seller.email()), "$.data.accessToken");
-		call(HttpMethod.GET, "/users/me", null, fresh).andExpect(jsonPath("$.data.roles", contains("SELLER")));
+		// Only now may the seller sign in, and the session has the SELLER role.
+		String token = read(loginBody(seller.email()), "$.data.accessToken");
+		call(HttpMethod.GET, "/users/me", null, token).andExpect(jsonPath("$.data.roles", contains("SELLER")));
 	}
 
 	@Test
@@ -57,20 +55,6 @@ class SellerReviewEndpointsTests extends EndpointTestSupport {
 				.andExpect(status().isConflict());
 		assertThat(audits("APPROVE", seller.userId())).isEqualTo(1);
 		assertThat(events("seller.approved", seller.userId())).isEqualTo(1);
-	}
-
-	@Test
-	void adminCannotReviewTheirOwnApplication() throws Exception {
-		Session admin = admin();
-		call(HttpMethod.POST, "/users/me/seller-application",
-				json("sellerName", "Admin Shop " + UUID.randomUUID(), "contactPhone", uniquePhone()),
-				admin.accessToken()).andExpect(status().isCreated());
-
-		call(HttpMethod.POST, approve(admin.userId()), null, admin.accessToken()).andExpect(status().isForbidden())
-				.andExpect(jsonPath("$.error.code").value("SELF_APPROVAL_FORBIDDEN"));
-		call(HttpMethod.POST, reject(admin.userId()), json("reason", "No"), admin.accessToken())
-				.andExpect(status().isForbidden())
-				.andExpect(jsonPath("$.error.code").value("SELF_APPROVAL_FORBIDDEN"));
 	}
 
 	@Test
@@ -92,8 +76,9 @@ class SellerReviewEndpointsTests extends EndpointTestSupport {
 		assertThat(authzVersion(sellerId)).isGreaterThan(before);
 		assertThat(audits("REJECT", sellerId)).isEqualTo(1);
 		assertThat(events("seller.rejected", sellerId)).isEqualTo(1);
-		call(HttpMethod.GET, "/users/me", null, read(loginBody(email), "$.data.accessToken"))
-				.andExpect(jsonPath("$.data.roles", empty()));
+		// A REJECTED seller cannot sign in, and the name and phone are free for a new registration.
+		login(email, PASSWORD).andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.error.code").value("SELLER_REJECTED"));
 		registerSeller(uniqueEmail(), name, phone).andExpect(status().isCreated());
 	}
 

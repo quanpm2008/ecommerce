@@ -25,6 +25,9 @@
     "description" : "Provinces and wards of Vietnam's two-level administrative map, from an external source cached for 24 h",
     "name" : "Regions"
   }, {
+    "description" : "The caller's own account (UC-A04, A06)",
+    "name" : "Account"
+  }, {
     "description" : "Public shop lookup (UC-B02): only sellers that may sell (G-06)",
     "name" : "Sellers"
   }, {
@@ -42,9 +45,6 @@
   }, {
     "description" : "Service-to-service API (API §7.1). Never routed by the gateway; each endpoint accepts only the services listed under Callers.",
     "name" : "Internal"
-  }, {
-    "description" : "The caller's own account, customer profile and seller application (UC-A01, A06)",
-    "name" : "Account"
   }, {
     "description" : "Presigned uploads for the shop logo",
     "name" : "Media"
@@ -775,7 +775,7 @@
     },
     "/api/v1/identity/auth/login" : {
       "post" : {
-        "description" : "One sign-in for every role. Returns an access token (15 min), a refresh token and the current profile. Unknown email and wrong password give the same error.",
+        "description" : "Signs in to one account: `accountType` is the web app's channel (CUSTOMER, SELLER or ADMIN). Returns an access token (15 min), a refresh token and the current profile. Unknown email, wrong password and an account of another type all give the same error. A seller signs in only once approved.",
         "operationId" : "login",
         "requestBody" : {
           "content" : {
@@ -826,7 +826,7 @@
                 }
               }
             },
-            "description" : "- `ACCOUNT_DISABLED`: This account is disabled"
+            "description" : "- `SELLER_PENDING_APPROVAL`: The seller application is waiting for approval\n- `SELLER_REJECTED`: The seller application was rejected; apply again with a new application\n- `ACCOUNT_DISABLED`: This account is disabled"
           },
           "409" : {
             "content" : {
@@ -1029,6 +1029,16 @@
               }
             },
             "description" : "- `INVALID_REFRESH_TOKEN`: Refresh token is invalid, expired or revoked"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description" : "- `SELLER_PENDING_APPROVAL`: The seller application is waiting for approval\n- `SELLER_REJECTED`: The seller application was rejected; apply again with a new application"
           }
         },
         "security" : [ ],
@@ -1924,59 +1934,6 @@
         "tags" : [ "Account" ]
       }
     },
-    "/api/v1/identity/users/me/customer-profile" : {
-      "post" : {
-        "description" : "201 when created (grants CUSTOMER, so refresh the token afterwards); 200 with the unchanged profile if it already exists. 403 if an admin revoked CUSTOMER.\n\n**Permission:** any signed-in user",
-        "operationId" : "createCustomerProfile",
-        "responses" : {
-          "200" : {
-            "content" : {
-              "*/*" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ApiResponseUserSelfProfile"
-                }
-              }
-            },
-            "description" : "Already existed"
-          },
-          "201" : {
-            "content" : {
-              "*/*" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ApiResponseUserSelfProfile"
-                }
-              }
-            },
-            "description" : "Created"
-          },
-          "401" : {
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description" : "- `UNAUTHENTICATED`: Not logged in or token is invalid\n- `TOKEN_EXPIRED`: Access token has expired\n- `TOKEN_STALE`: Access token permissions are out of date; refresh the token"
-          },
-          "403" : {
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description" : "- `FORBIDDEN`: You do not have permission to perform this action"
-          }
-        },
-        "security" : [ {
-          "bearerAuth" : [ ]
-        } ],
-        "summary" : "Add a customer profile to my account",
-        "tags" : [ "Account" ]
-      }
-    },
     "/api/v1/identity/users/me/password" : {
       "put" : {
         "description" : "Email accounts only. Signs out every session, including this one.\n\n**Permission:** `account:update:own`",
@@ -2030,130 +1987,6 @@
           "bearerAuth" : [ ]
         } ],
         "summary" : "Change my password",
-        "tags" : [ "Account" ]
-      }
-    },
-    "/api/v1/identity/users/me/seller-application" : {
-      "get" : {
-        "description" : "`data` is null when I never applied.\n\n**Permission:** `seller:application:own`",
-        "operationId" : "sellerApplication",
-        "responses" : {
-          "200" : {
-            "content" : {
-              "*/*" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ApiResponseSellerSelfProfile"
-                }
-              }
-            },
-            "description" : "OK"
-          },
-          "401" : {
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description" : "- `UNAUTHENTICATED`: Not logged in or token is invalid\n- `TOKEN_EXPIRED`: Access token has expired\n- `TOKEN_STALE`: Access token permissions are out of date; refresh the token"
-          },
-          "403" : {
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description" : "- `FORBIDDEN`: You do not have permission to perform this action"
-          }
-        },
-        "security" : [ {
-          "bearerAuth" : [ ]
-        } ],
-        "summary" : "My seller application",
-        "tags" : [ "Account" ]
-      },
-      "post" : {
-        "description" : "201 for a first application, 200 when resubmitting after REJECTED (same seller id). Stays PENDING with no SELLER role until an admin approves.\n\n**Permission:** `seller:application:own`",
-        "operationId" : "submitSellerApplication",
-        "requestBody" : {
-          "content" : {
-            "application/json" : {
-              "schema" : {
-                "$ref" : "#/components/schemas/SellerApplicationRequest"
-              }
-            }
-          },
-          "required" : true
-        },
-        "responses" : {
-          "200" : {
-            "content" : {
-              "*/*" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ApiResponseSellerSelfProfile"
-                }
-              }
-            },
-            "description" : "Resubmitted"
-          },
-          "201" : {
-            "content" : {
-              "*/*" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ApiResponseSellerSelfProfile"
-                }
-              }
-            },
-            "description" : "Submitted"
-          },
-          "400" : {
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description" : "- `VALIDATION_ERROR`: Invalid request data"
-          },
-          "401" : {
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description" : "- `UNAUTHENTICATED`: Not logged in or token is invalid\n- `TOKEN_EXPIRED`: Access token has expired\n- `TOKEN_STALE`: Access token permissions are out of date; refresh the token"
-          },
-          "403" : {
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description" : "- `FORBIDDEN`: You do not have permission to perform this action"
-          },
-          "409" : {
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description" : "- `INVALID_STATE_TRANSITION`: The current state does not allow this action\n- `SELLER_NAME_ALREADY_USED`: Seller name is already used\n- `PHONE_ALREADY_USED`: Phone number is already used"
-          }
-        },
-        "security" : [ {
-          "bearerAuth" : [ ]
-        } ],
-        "summary" : "Apply to sell",
         "tags" : [ "Account" ]
       }
     },
@@ -3014,6 +2847,10 @@
             "type" : "integer",
             "format" : "int64"
           },
+          "accountType" : {
+            "type" : "string",
+            "enum" : [ "CUSTOMER", "SELLER", "ADMIN" ]
+          },
           "profile" : {
             "$ref" : "#/components/schemas/UserSelfProfile"
           },
@@ -3313,6 +3150,10 @@
       "Login" : {
         "type" : "object",
         "properties" : {
+          "accountType" : {
+            "type" : "string",
+            "enum" : [ "CUSTOMER", "SELLER", "ADMIN" ]
+          },
           "email" : {
             "type" : "string",
             "minLength" : 1
@@ -3322,7 +3163,7 @@
             "minLength" : 1
           }
         },
-        "required" : [ "email", "password" ]
+        "required" : [ "accountType", "email", "password" ]
       },
       "PresignedUpload" : {
         "type" : "object",
@@ -3482,26 +3323,6 @@
             "$ref" : "#/components/schemas/UserSummary"
           }
         }
-      },
-      "SellerApplicationRequest" : {
-        "type" : "object",
-        "description" : "Exactly these fields; userId, email, role or status are rejected.",
-        "properties" : {
-          "contactPhone" : {
-            "type" : "string",
-            "example" : "0912345678"
-          },
-          "description" : {
-            "type" : "string",
-            "maxLength" : 2000
-          },
-          "sellerName" : {
-            "type" : "string",
-            "example" : "Cua Hang An",
-            "maxLength" : 160
-          }
-        },
-        "required" : [ "contactPhone", "sellerName" ]
       },
       "SellerPublic" : {
         "type" : "object",
@@ -3702,6 +3523,10 @@
       "UserSelfProfile" : {
         "type" : "object",
         "properties" : {
+          "accountType" : {
+            "type" : "string",
+            "enum" : [ "CUSTOMER", "SELLER", "ADMIN" ]
+          },
           "authMethod" : {
             "type" : "string",
             "enum" : [ "LOCAL", "GOOGLE" ]

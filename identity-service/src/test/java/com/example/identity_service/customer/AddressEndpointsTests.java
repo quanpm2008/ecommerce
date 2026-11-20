@@ -139,7 +139,7 @@ class AddressEndpointsTests extends EndpointTestSupport {
 
 	@Test
 	void addressBookNeedsACustomerProfile() throws Exception {
-		call(HttpMethod.GET, PATH, null, pendingSeller().accessToken()).andExpect(status().isForbidden());
+		call(HttpMethod.GET, PATH, null, approvedSeller().accessToken()).andExpect(status().isForbidden());
 	}
 
 	@Test

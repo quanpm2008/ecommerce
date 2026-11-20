@@ -14,6 +14,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 /**
  * Sessions and their tokens (API §3.2, DB §6). Refresh rotates the token; an already rotated token presented again
@@ -51,10 +52,12 @@ public class SessionService {
 
 	/**
 	 * Exchanges a refresh token for a new pair. Unknown, expired, revoked or reused tokens and disabled users all give
-	 * {@code INVALID_REFRESH_TOKEN}. {@code noRollbackFor} keeps the revocation of a reused token's session.
+	 * {@code INVALID_REFRESH_TOKEN}. {@code signIn} checks the account may still get a session (it throws an
+	 * {@code ApiException} otherwise) before the token rotates. {@code noRollbackFor} keeps the revocation of a reused
+	 * token's session.
 	 */
 	@Transactional(noRollbackFor = ApiException.class)
-	public IssuedTokens refresh(String refreshToken) {
+	public IssuedTokens refresh(String refreshToken, Consumer<User> signIn) {
 		Instant now = clock.instant();
 		String hash = OpaqueTokens.hash(refreshToken);
 		Optional<AuthSession> current = sessions.findByRefreshTokenHash(hash);
@@ -72,6 +75,7 @@ public class SessionService {
 		if (!user.isActive()) {
 			throw new ApiException(ErrorCode.INVALID_REFRESH_TOKEN);
 		}
+		signIn.accept(user);
 		rotatedTokens.save(new RotatedRefreshToken(hash, session.getSessionId(), now));
 		String next = OpaqueTokens.generate();
 		session.rotate(OpaqueTokens.hash(next), now.plus(properties.refreshTtl()));

@@ -32,92 +32,6 @@ class SellerAccountEndpointsTests extends EndpointTestSupport {
 	// --- seller application ---
 
 	@Test
-	void customerAppliesToSellWithoutGettingTheSellerRole() throws Exception {
-		Session customer = customer();
-		String phone = uniquePhone();
-
-		call(HttpMethod.GET, "/users/me/seller-application", null, customer.accessToken()).andExpect(status().isOk())
-				.andExpect(jsonPath("$.data").isEmpty());
-		call(HttpMethod.POST, "/users/me/seller-application", application("Shop " + UUID.randomUUID(), phone),
-				customer.accessToken())
-				.andExpect(status().isCreated())
-				.andExpect(jsonPath("$.data.sellerId").value(customer.userId().toString()))
-				.andExpect(jsonPath("$.data.approvalStatus").value("PENDING"))
-				.andExpect(jsonPath("$.data.contactPhone").value(phone));
-
-		call(HttpMethod.GET, "/users/me/seller-application", null, customer.accessToken()).andExpect(status().isOk())
-				.andExpect(jsonPath("$.data.approvalStatus").value("PENDING"));
-		call(HttpMethod.GET, "/users/me", null, customer.accessToken()).andExpect(jsonPath("$.data.roles", contains("CUSTOMER")));
-		assertThat(jdbc.queryForObject(
-				"select count(*) from outbox_events where event_type = 'seller.registered' and aggregate_id = ?",
-				Integer.class, customer.userId())).isEqualTo(1);
-	}
-
-	@Test
-	void pendingOrApprovedApplicationCannotBeSubmittedAgain() throws Exception {
-		Session pending = pendingSeller();
-		Session approved = approvedSeller();
-
-		call(HttpMethod.POST, "/users/me/seller-application", application("Shop " + UUID.randomUUID(), uniquePhone()),
-				pending.accessToken())
-				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.error.code").value("INVALID_STATE_TRANSITION"))
-				.andExpect(jsonPath("$.error.details[0].currentStatus").value("PENDING"));
-		call(HttpMethod.POST, "/users/me/seller-application", application("Shop " + UUID.randomUUID(), uniquePhone()),
-				approved.accessToken())
-				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.error.details[0].currentStatus").value("APPROVED"));
-	}
-
-	@Test
-	void rejectedApplicationIsResubmittedWithTheSameSellerId() throws Exception {
-		Session seller = pendingSeller();
-		UUID reviewer = jdbc.queryForObject("""
-				insert into users (email, auth_method, password_hash, full_name) values (?, 'LOCAL', 'x', 'Reviewer')
-				returning user_id""", UUID.class, uniqueEmail());
-		jdbc.update("""
-				update sellers set approval_status = 'REJECTED', rejection_reason = 'Blurry documents',
-				reviewed_at = now(), reviewed_by_user_id = ? where seller_id = ?""", reviewer, seller.userId());
-		String newName = "Shop " + UUID.randomUUID();
-
-		call(HttpMethod.POST, "/users/me/seller-application", application(newName, uniquePhone()), seller.accessToken())
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.data.sellerId").value(seller.userId().toString()))
-				.andExpect(jsonPath("$.data.sellerName").value(newName))
-				.andExpect(jsonPath("$.data.approvalStatus").value("PENDING"))
-				.andExpect(jsonPath("$.data.rejectionReason").isEmpty())
-				.andExpect(jsonPath("$.data.reviewedAt").isEmpty());
-	}
-
-	@Test
-	void applicationAcceptsOnlyItsOwnFields() throws Exception {
-		Session customer = customer();
-
-		call(HttpMethod.POST, "/users/me/seller-application",
-				"{\"sellerName\":\"Shop X\",\"contactPhone\":\"" + uniquePhone()
-						+ "\",\"userId\":\"" + UUID.randomUUID() + "\",\"status\":\"ACTIVE\",\"approvalStatus\":\"APPROVED\"}",
-				customer.accessToken())
-				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.error.details[*].field",
-						org.hamcrest.Matchers.containsInAnyOrder("userId", "status", "approvalStatus")));
-		call(HttpMethod.GET, "/users/me/seller-application", null, customer.accessToken())
-				.andExpect(jsonPath("$.data").isEmpty());
-	}
-
-	@Test
-	void applicationRejectsATakenShopName() throws Exception {
-		String name = "Shop " + UUID.randomUUID();
-		registerSeller(uniqueEmail(), name, uniquePhone()).andExpect(status().isCreated());
-
-		call(HttpMethod.POST, "/users/me/seller-application", application(name.toLowerCase(), uniquePhone()),
-				customer().accessToken())
-				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.error.code").value("SELLER_NAME_ALREADY_USED"));
-	}
-
-	// --- PATCH /sellers/me ---
-
-	@Test
 	void approvedSellerUpdatesDescriptionAndContactPhone() throws Exception {
 		Session seller = approvedSeller();
 		String phone = uniquePhone();
@@ -154,13 +68,11 @@ class SellerAccountEndpointsTests extends EndpointTestSupport {
 
 	@Test
 	void onlyAnApprovedActiveSellerMayEditTheShop() throws Exception {
-		Session pending = pendingSeller();
 		Session banned = approvedSeller();
 		jdbc.update("update sellers set status = 'BANNED', ban_reason = 'Fake goods' where seller_id = ?",
 				banned.userId());
 
-		call(HttpMethod.PATCH, "/sellers/me", json("description", "x"), pending.accessToken())
-				.andExpect(status().isForbidden());
+		// A PENDING seller cannot even sign in (AuthEndpointsTests), so only the banned one is left to check here.
 		call(HttpMethod.PATCH, "/sellers/me", json("description", "x"), banned.accessToken())
 				.andExpect(status().isForbidden());
 	}
@@ -221,8 +133,6 @@ class SellerAccountEndpointsTests extends EndpointTestSupport {
 
 	@Test
 	void uploadUrlsNeedAnOperatingSeller() throws Exception {
-		call(HttpMethod.POST, "/media/upload-urls", logoRequest("image/png", 100), pendingSeller().accessToken())
-				.andExpect(status().isForbidden());
 		call(HttpMethod.POST, "/media/upload-urls", logoRequest("image/png", 100), customer().accessToken())
 				.andExpect(status().isForbidden());
 	}
@@ -256,10 +166,6 @@ class SellerAccountEndpointsTests extends EndpointTestSupport {
 		return http.send(HttpRequest.newBuilder(URI.create(url)).header("Content-Type", contentType)
 				.PUT(HttpRequest.BodyPublishers.ofByteArray(content)).build(), HttpResponse.BodyHandlers.discarding())
 				.statusCode();
-	}
-
-	private static String application(String sellerName, String contactPhone) {
-		return json("sellerName", sellerName, "contactPhone", contactPhone, "description", "We sell things");
 	}
 
 	private static String logoRequest(String mimeType, long sizeBytes) {

@@ -1,7 +1,9 @@
 package com.example.identity_service.auth;
 
+import com.example.identity_service.user.AccountType;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -22,7 +24,8 @@ public final class AuthRequests {
 			@NotBlank String contactPhone, @NotBlank String password, @NotBlank String confirmPassword) {
 	}
 
-	public record Login(@NotBlank String email, @NotBlank String password) {
+	/** {@code accountType} is the web app's channel: an account of another type gets the generic 401. */
+	public record Login(@NotBlank String email, @NotBlank String password, @NotNull AccountType accountType) {
 	}
 
 	/** Body of refresh and logout. */

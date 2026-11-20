@@ -169,8 +169,10 @@ Quick check of the auth flow against identity-service directly (with the stack i
 ```bash
 B=http://localhost:8083/api/v1/identity/auth
 curl -s -H 'Content-Type: application/json' -d '{"email":"an@example.test","fullName":"An","phoneNumber":"0912345678","password":"Secret123","confirmPassword":"Secret123"}' $B/register
-curl -s -H 'Content-Type: application/json' -d '{"email":"an@example.test","password":"Secret123"}' $B/login
+curl -s -H 'Content-Type: application/json' -d '{"email":"an@example.test","password":"Secret123","accountType":"CUSTOMER"}' $B/login
 ```
+
+Every role is its own account (API v1.1 §3.2.1): login names the web app's `accountType` (`CUSTOMER`, `SELLER` or `ADMIN`), and the same email and password on another channel is refused like a wrong password. A seller signs in only after an admin approved the application.
 
 ## Running identity-service alone
 
@@ -214,3 +216,5 @@ Other services verify tokens with the public key from `http://localhost:8083/.we
 docker compose -p ecommerce down      # stop and remove containers, keep database data
 docker compose -p ecommerce down -v   # also delete the postgres-data volume
 ```
+
+identity-service's migration V6 (one account per role) stops with an error if the database still has users from the old model (one user with both a Customer and a Seller profile, an admin with a profile, several roles). Such dev data can't be converted automatically: wipe it with `docker compose -p ecommerce down -v` and start again. V6 also signs everyone out.

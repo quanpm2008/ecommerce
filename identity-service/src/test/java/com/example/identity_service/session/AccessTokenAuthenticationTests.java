@@ -6,6 +6,7 @@ import com.example.identity_service.TestcontainersConfiguration;
 import com.example.identity_service.common.web.ApiResponse;
 import com.example.identity_service.rbac.RoleAssignments;
 import com.example.identity_service.rbac.RoleCode;
+import com.example.identity_service.user.AccountType;
 import com.example.identity_service.user.User;
 import com.example.identity_service.user.UserRepository;
 import com.nimbusds.jose.crypto.RSASSAVerifier;
@@ -118,7 +119,8 @@ class AccessTokenAuthenticationTests {
 				RoleCode.CUSTOMER, null));
 
 		expectError(call(tokens.accessToken()), "TOKEN_STALE");
-		call(sessions.refresh(tokens.refreshToken()).accessToken()).andExpect(status().isOk());
+		call(sessions.refresh(tokens.refreshToken(), account -> {
+		}).accessToken()).andExpect(status().isOk());
 	}
 
 	@Test
@@ -220,7 +222,7 @@ class AccessTokenAuthenticationTests {
 	}
 
 	private User newUser() {
-		return users.save(User.local(UUID.randomUUID() + "@example.test", "{noop}x", "Test User", null));
+		return users.save(User.local(AccountType.CUSTOMER, UUID.randomUUID() + "@example.test", "{noop}x", "Test User", null));
 	}
 
 	@RestController

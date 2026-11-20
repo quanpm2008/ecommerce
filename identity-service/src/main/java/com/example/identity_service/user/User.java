@@ -19,8 +19,8 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * The single identity and credential record (DB §3.1.1). {@code userId} is the JWT {@code sub} and the PK shared by
- * {@code Customer} and {@code Seller}.
+ * One account and its credentials (DB §3.1.1). {@code userId} is the JWT {@code sub} and the PK of the account's
+ * {@code Customer} or {@code Seller} profile (never both). {@code accountType} never changes.
  */
 @Entity
 @Getter
@@ -33,6 +33,9 @@ public class User {
 	private UUID userId;
 
 	private String email;
+
+	@Enumerated(EnumType.STRING)
+	private AccountType accountType;
 
 	@Enumerated(EnumType.STRING)
 	private AuthMethod authMethod;
@@ -59,10 +62,12 @@ public class User {
 	private Instant updatedAt;
 
 	/**
-	 * A new ACTIVE user that logs in with email and password. {@code phoneNumber} must already be normalized.
+	 * A new ACTIVE account that logs in with email and password. {@code phoneNumber} must already be normalized.
 	 */
-	public static User local(String email, String passwordHash, String fullName, String phoneNumber) {
+	public static User local(AccountType accountType, String email, String passwordHash, String fullName,
+			String phoneNumber) {
 		User user = new User();
+		user.accountType = Objects.requireNonNull(accountType);
 		user.email = normalizeEmail(email);
 		user.authMethod = AuthMethod.LOCAL;
 		user.passwordHash = Objects.requireNonNull(passwordHash);
