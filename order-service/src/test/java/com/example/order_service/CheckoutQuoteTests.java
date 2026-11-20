@@ -5,6 +5,9 @@ import com.example.order_service.checkout.CheckoutQuote.Claims;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -48,16 +51,26 @@ class CheckoutQuoteTests {
 	}
 
 	@Test
-	void hashesBusinessContentAndAddressIndependentlyOfIssueTimes() {
+	void hashesBusinessContentAndAddressIndependentlyOfIssueTimes() throws Exception {
 		Claims claims = quotes.verify(quotes.issue(customer, product, seller, 2, 1500), customer);
 		UUID address = UUID.randomUUID();
 		Claims reissued = new Claims(claims.version(), claims.purpose(), customer, claims.checkoutIntentId(), claims.source(),
 				product, seller, 2, 1500, 3000, claims.issuedAt().plusSeconds(60), claims.expiresAt().plusSeconds(60));
 		Claims priceChanged = new Claims(claims.version(), claims.purpose(), customer, claims.checkoutIntentId(), claims.source(),
 				product, seller, 2, 1600, 3200, claims.issuedAt(), claims.expiresAt());
-		assertThat(quotes.requestHash(reissued, address)).isEqualTo(quotes.requestHash(claims, address));
-		assertThat(quotes.requestHash(priceChanged, address)).isNotEqualTo(quotes.requestHash(claims, address));
+		String reissuedToken = sign(json.writerWithDefaultPrettyPrinter().writeValueAsBytes(reissued));
+		String priceChangedToken = sign(json.writeValueAsBytes(priceChanged));
+		assertThat(quotes.requestHash(quotes.verify(reissuedToken, customer), address)).isEqualTo(quotes.requestHash(claims, address));
+		assertThat(quotes.requestHash(quotes.verify(priceChangedToken, customer), address)).isNotEqualTo(quotes.requestHash(claims, address));
 		assertThat(quotes.requestHash(claims, UUID.randomUUID())).isNotEqualTo(quotes.requestHash(claims, address));
+	}
+
+	private String sign(byte[] jsonBytes) throws Exception {
+		var encoder = Base64.getUrlEncoder().withoutPadding();
+		String body = encoder.encodeToString(jsonBytes);
+		Mac mac = Mac.getInstance("HmacSHA256");
+		mac.init(new SecretKeySpec(Base64.getDecoder().decode(QUOTE_KEY), "HmacSHA256"));
+		return body + '.' + encoder.encodeToString(mac.doFinal(body.getBytes(StandardCharsets.US_ASCII)));
 	}
 
 	private CheckoutQuote atOffset(long seconds) {
