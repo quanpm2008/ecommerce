@@ -33,7 +33,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Shared setup for endpoint tests: one Spring context (PostgreSQL, SeaweedFS, a fake region source, a movable
+ * Shared setup for endpoint tests: one Spring context (PostgreSQL with the seeded regions, SeaweedFS, a movable
  * clock), fresh emails and phone numbers per test, and a random client IP per test so per-IP rate limits never leak
  * between tests.
  */
@@ -44,7 +44,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 		"identity.internal.clients.payment-service=too-short" })
 @AutoConfigureMockMvc
 @Import({ TestcontainersConfiguration.class, TestClockConfiguration.class, SeaweedfsTestConfiguration.class,
-		FakeRegionProvider.Configuration.class, FakeOrderClient.Configuration.class })
+		FakeOrderClient.Configuration.class })
 public abstract class EndpointTestSupport {
 
 	protected static final String API = "/api/v1/identity";
@@ -68,9 +68,6 @@ public abstract class EndpointTestSupport {
 	protected MutableClock clock;
 
 	@Autowired
-	protected FakeRegionProvider regions;
-
-	@Autowired
 	protected FakeOrderClient orders;
 
 	@Autowired
@@ -90,7 +87,6 @@ public abstract class EndpointTestSupport {
 	@BeforeEach
 	void freshClientAndClock() {
 		clock.reset();
-		regions.setAvailable(true);
 		orders.reset();
 		clientIp = randomIp();
 	}
@@ -260,6 +256,20 @@ public abstract class EndpointTestSupport {
 		jdbc.update("""
 				update sellers set approval_status = 'REJECTED', rejection_reason = 'Khác: Blurry photos',
 				reviewed_at = now(), reviewed_by_user_id = ? where seller_id = ?""", reviewer, sellerId);
+	}
+
+	/**
+	 * Runs {@code action} while the region seed cannot be read (its dataset table renamed away), then puts it back.
+	 * Test classes run one at a time, so no other test sees it.
+	 */
+	protected void withoutRegionSeed(org.junit.jupiter.api.function.Executable action) throws Throwable {
+		jdbc.execute("alter table region_dataset rename to region_dataset_hidden");
+		try {
+			action.execute();
+		}
+		finally {
+			jdbc.execute("alter table region_dataset_hidden rename to region_dataset");
+		}
 	}
 
 	/** Number of outbox rows of {@code eventType} for the aggregate. */

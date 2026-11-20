@@ -1342,7 +1342,7 @@
     },
     "/api/v1/identity/customers/me/addresses" : {
       "get" : {
-        "description" : "Last used first, then never-used ones by creation; the first is the default. `meta.maxAddresses` is the limit. Region names are null while the region source is down. A BANNED customer can read but not change the book.\n\n**Permission:** `customer:profile:own`",
+        "description" : "Last used first, then never-used ones by creation; the first is the default. `meta.maxAddresses` is the limit (3). Region names are null if the region seed can't be read. A BANNED customer gets 403 ACCOUNT_BANNED.\n\n**Permission:** `customer:profile:own`",
         "operationId" : "list",
         "responses" : {
           "200" : {
@@ -1373,7 +1373,7 @@
                 }
               }
             },
-            "description" : "- `FORBIDDEN`: You do not have permission to perform this action"
+            "description" : "- `FORBIDDEN`: You do not have permission to perform this action\n- `ACCOUNT_BANNED`: This account is banned; only its open obligations are available"
           }
         },
         "security" : [ {
@@ -1434,7 +1434,7 @@
                 }
               }
             },
-            "description" : "- `FORBIDDEN`: You do not have permission to perform this action"
+            "description" : "- `FORBIDDEN`: You do not have permission to perform this action\n- `ACCOUNT_BANNED`: This account is banned; only its open obligations are available"
           },
           "422" : {
             "content" : {
@@ -1466,7 +1466,7 @@
     },
     "/api/v1/identity/customers/me/addresses/{addressId}" : {
       "delete" : {
-        "description" : "An address already used by a checkout is only hidden, so orders keep their reference. The last address may be deleted too.\n\n**Permission:** `customer:profile:own`",
+        "description" : "Removes it, the last one included, and frees its place in the 3-address limit; orders keep their own copy. Another customer's address is 404.\n\n**Permission:** `customer:profile:own`",
         "operationId" : "delete",
         "parameters" : [ {
           "in" : "path",
@@ -1509,7 +1509,7 @@
                 }
               }
             },
-            "description" : "- `FORBIDDEN`: You do not have permission to perform this action"
+            "description" : "- `FORBIDDEN`: You do not have permission to perform this action\n- `ACCOUNT_BANNED`: This account is banned; only its open obligations are available"
           },
           "404" : {
             "content" : {
@@ -1589,7 +1589,7 @@
                 }
               }
             },
-            "description" : "- `FORBIDDEN`: You do not have permission to perform this action"
+            "description" : "- `FORBIDDEN`: You do not have permission to perform this action\n- `ACCOUNT_BANNED`: This account is banned; only its open obligations are available"
           },
           "404" : {
             "content" : {
@@ -2298,7 +2298,7 @@
     },
     "/internal/v1/identity/customers/{customerId}/addresses/{addressId}/touch" : {
       "post" : {
-        "description" : "Call after the checkout commits. Once per `checkoutSessionId`: retries return `applied: false` and change nothing.\n\n**Callers:** `order-service`",
+        "description" : "Call after the checkout commits. Once per `checkoutSessionId`: retries return `applied: false` and change nothing. An address the customer has deleted meanwhile (or not theirs) is skipped the same way, without an error (API §7.1).\n\n**Callers:** `order-service`",
         "operationId" : "touch",
         "parameters" : [ {
           "in" : "path",
@@ -2367,16 +2367,6 @@
               }
             },
             "description" : "- `FORBIDDEN`: You do not have permission to perform this action"
-          },
-          "404" : {
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description" : "- `NOT_FOUND`: Resource not found"
           }
         },
         "security" : [ {

@@ -10,18 +10,18 @@ import java.util.UUID;
 
 public interface CustomerAddressRepository extends JpaRepository<CustomerAddress, UUID> {
 
-	long countByCustomerIdAndDeletedAtIsNull(UUID customerId);
+	long countByCustomerId(UUID customerId);
 
 	/**
 	 * The address book in display order (API §6.1, DB §3.1.4): latest {@code lastUsedAt} first, never-used addresses
 	 * after in creation order. The first entry is therefore the default address.
 	 */
 	@Query("""
-			select a from CustomerAddress a where a.customerId = :customerId and a.deletedAt is null
+			select a from CustomerAddress a where a.customerId = :customerId
 			order by a.lastUsedAt desc nulls last, a.createdAt asc, a.addressId asc""")
 	List<CustomerAddress> findBook(UUID customerId);
 
-	Optional<CustomerAddress> findByAddressIdAndCustomerIdAndDeletedAtIsNull(UUID addressId, UUID customerId);
+	Optional<CustomerAddress> findByAddressIdAndCustomerId(UUID addressId, UUID customerId);
 
 	/** Records a checkout's use of an address once; 0 means this checkout session already touched it. */
 	@Modifying

@@ -54,7 +54,7 @@ public class SelfProfileAssembler {
 	/** {@code profileComplete} = the user has a phone number and at least one address. */
 	public CustomerProfile customer(Customer customer) {
 		return CustomerProfile.of(customer, customer.getUser().getPhoneNumber() != null
-				&& addresses.countByCustomerIdAndDeletedAtIsNull(customer.getCustomerId()) > 0);
+				&& addresses.countByCustomerId(customer.getCustomerId()) > 0);
 	}
 
 	public SellerSelfProfile seller(Seller seller) {

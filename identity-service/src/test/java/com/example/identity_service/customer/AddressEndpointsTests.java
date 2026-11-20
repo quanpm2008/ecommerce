@@ -4,14 +4,13 @@ import com.example.identity_service.EndpointTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 
-import java.time.Duration;
 import java.util.UUID;
 
-import static com.example.identity_service.FakeRegionProvider.BA_DINH;
-import static com.example.identity_service.FakeRegionProvider.HANOI;
-import static com.example.identity_service.FakeRegionProvider.HCMC;
-import static com.example.identity_service.FakeRegionProvider.NGOC_HA;
-import static com.example.identity_service.FakeRegionProvider.SAI_GON;
+import static com.example.identity_service.TestRegions.BA_DINH;
+import static com.example.identity_service.TestRegions.HANOI;
+import static com.example.identity_service.TestRegions.HCMC;
+import static com.example.identity_service.TestRegions.NGOC_HA;
+import static com.example.identity_service.TestRegions.SAI_GON;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.hasSize;
@@ -53,19 +52,45 @@ class AddressEndpointsTests extends EndpointTestSupport {
 		call(HttpMethod.GET, PATH, null, customer.accessToken()).andExpect(status().isOk())
 				.andExpect(jsonPath("$.data[*].addressId", contains(second, first, third)))
 				.andExpect(jsonPath("$.data[*].isDefault", contains(true, false, false)))
-				.andExpect(jsonPath("$.meta.maxAddresses").value(5));
+				.andExpect(jsonPath("$.meta.maxAddresses").value(3));
 	}
 
 	@Test
-	void theAddressBookHoldsAtMostFiveAddresses() throws Exception {
+	void theAddressBookHoldsAtMostThreeAddressesAndADeleteFreesAPlace() throws Exception {
 		Session customer = customer();
-		for (int i = 1; i <= 5; i++) {
-			create(customer, "Recipient " + i, HANOI, BA_DINH);
-		}
+		String first = create(customer, "Recipient 1", HANOI, BA_DINH);
+		create(customer, "Recipient 2", HANOI, NGOC_HA);
+		create(customer, "Recipient 3", HCMC, SAI_GON);
 
-		call(HttpMethod.POST, PATH, address("Sixth", uniquePhone(), HANOI, BA_DINH), customer.accessToken())
+		call(HttpMethod.GET, PATH, null, customer.accessToken()).andExpect(jsonPath("$.meta.maxAddresses").value(3));
+		call(HttpMethod.POST, PATH, address("Fourth", uniquePhone(), HANOI, BA_DINH), customer.accessToken())
 				.andExpect(status().isUnprocessableContent())
 				.andExpect(jsonPath("$.error.code").value("ADDRESS_LIMIT_EXCEEDED"));
+		call(HttpMethod.DELETE, PATH + "/" + first, null, customer.accessToken()).andExpect(status().isNoContent());
+		call(HttpMethod.POST, PATH, address("Fourth", uniquePhone(), HANOI, BA_DINH), customer.accessToken())
+				.andExpect(status().isCreated());
+	}
+
+	@Test
+	void concurrentAddsNeverPassTheLimit() throws Exception {
+		Session customer = customer();
+		var pool = java.util.concurrent.Executors.newFixedThreadPool(6);
+		try {
+			var results = new java.util.ArrayList<java.util.concurrent.Future<Integer>>();
+			for (int i = 0; i < 6; i++) {
+				int n = i;
+				results.add(pool.submit(() -> call(HttpMethod.POST, PATH, address("Race " + n, uniquePhone(), HANOI,
+						BA_DINH), customer.accessToken()).andReturn().getResponse().getStatus()));
+			}
+			for (var result : results) {
+				result.get();
+			}
+		}
+		finally {
+			pool.shutdown();
+		}
+		assertThat(jdbc.queryForObject("select count(*) from customer_addresses where customer_id = ?",
+				Integer.class, customer.userId())).isEqualTo(3);
 	}
 
 	@Test
@@ -81,19 +106,18 @@ class AddressEndpointsTests extends EndpointTestSupport {
 	}
 
 	@Test
-	void unavailableRegionSourceIsAServiceErrorNotAnInvalidAddress() throws Exception {
+	void unavailableRegionSeedIsAServiceErrorNotAnInvalidAddress() throws Throwable {
 		Session customer = customer();
 		String existing = create(customer, "Before outage", HANOI, BA_DINH);
-		clock.advance(Duration.ofHours(25)); // past the 24 h cache, so nothing valid is left to answer from
-		String token = read(loginBody(customer.email()), "$.data.accessToken");
-		regions.setAvailable(false);
 
-		call(HttpMethod.POST, PATH, address("Le Van D", uniquePhone(), HANOI, BA_DINH), token)
-				.andExpect(status().isServiceUnavailable())
-				.andExpect(jsonPath("$.error.code").value("REGION_SOURCE_UNAVAILABLE"));
-		call(HttpMethod.GET, PATH, null, token).andExpect(status().isOk())
-				.andExpect(jsonPath("$.data[0].addressId").value(existing))
-				.andExpect(jsonPath("$.data[0].provinceName").isEmpty());
+		withoutRegionSeed(() -> {
+			call(HttpMethod.POST, PATH, address("Le Van D", uniquePhone(), HANOI, BA_DINH), customer.accessToken())
+					.andExpect(status().isServiceUnavailable())
+					.andExpect(jsonPath("$.error.code").value("REGION_SOURCE_UNAVAILABLE"));
+			call(HttpMethod.GET, PATH, null, customer.accessToken()).andExpect(status().isOk())
+					.andExpect(jsonPath("$.data[0].addressId").value(existing))
+					.andExpect(jsonPath("$.data[0].provinceName").isEmpty());
+		});
 	}
 
 	@Test
@@ -120,7 +144,7 @@ class AddressEndpointsTests extends EndpointTestSupport {
 	}
 
 	@Test
-	void unusedAddressIsDeletedAndAUsedOneIsOnlyHidden() throws Exception {
+	void deletingRemovesTheAddressEvenOneAnOrderUsed() throws Exception {
 		Session customer = customer();
 		String unused = create(customer, "Unused", HANOI, BA_DINH);
 		String used = create(customer, "Used", HANOI, NGOC_HA);
@@ -129,10 +153,8 @@ class AddressEndpointsTests extends EndpointTestSupport {
 		call(HttpMethod.DELETE, PATH + "/" + unused, null, customer.accessToken()).andExpect(status().isNoContent());
 		call(HttpMethod.DELETE, PATH + "/" + used, null, customer.accessToken()).andExpect(status().isNoContent());
 
-		assertThat(jdbc.queryForObject("select count(*) from customer_addresses where address_id = ?", Integer.class,
-				UUID.fromString(unused))).isZero();
-		assertThat(jdbc.queryForObject("select deleted_at is not null from customer_addresses where address_id = ?",
-				Boolean.class, UUID.fromString(used))).isTrue();
+		assertThat(jdbc.queryForObject("select count(*) from customer_addresses where customer_id = ?", Integer.class,
+				customer.userId())).isZero();
 		call(HttpMethod.GET, PATH, null, customer.accessToken()).andExpect(jsonPath("$.data", hasSize(0)));
 		call(HttpMethod.DELETE, PATH + "/" + used, null, customer.accessToken()).andExpect(status().isNotFound());
 	}
@@ -143,16 +165,18 @@ class AddressEndpointsTests extends EndpointTestSupport {
 	}
 
 	@Test
-	void bannedCustomerCanReadButNotChangeTheAddressBook() throws Exception {
+	void aBannedCustomerHasNoAddressBook() throws Exception {
 		Session customer = customer();
-		create(customer, "Before ban", HANOI, BA_DINH);
+		String id = create(customer, "Before ban", HANOI, BA_DINH);
 		jdbc.update("""
-				update customers set status = 'BANNED', ban_reason = 'Fraud', ban_mode = 'CUSTOMER_SCOPE',
+				update customers set status = 'BANNED', ban_reason = 'Khác: Fraud', ban_mode = 'CUSTOMER_SCOPE',
 				has_paid_order_before_ban = false where customer_id = ?""", customer.userId());
 
-		call(HttpMethod.GET, PATH, null, customer.accessToken()).andExpect(status().isOk());
+		call(HttpMethod.GET, PATH, null, customer.accessToken()).andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.error.code").value("ACCOUNT_BANNED"));
 		call(HttpMethod.POST, PATH, address("After ban", uniquePhone(), HANOI, BA_DINH), customer.accessToken())
-				.andExpect(status().isForbidden());
+				.andExpect(status().isForbidden()).andExpect(jsonPath("$.error.code").value("ACCOUNT_BANNED"));
+		call(HttpMethod.DELETE, PATH + "/" + id, null, customer.accessToken()).andExpect(status().isForbidden());
 	}
 
 	@Test

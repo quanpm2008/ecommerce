@@ -3,60 +3,64 @@ package com.example.identity_service.region;
 import com.example.identity_service.common.error.ApiException;
 import com.example.identity_service.common.error.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataAccessException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Supplier;
 
 /**
- * Cached region lookups on top of {@link RegionProvider}, for the region endpoints and the address book. A result is
- * kept for {@code identity.region.cache-ttl} (24 h proposed) and only used while it is still valid: once it expires
- * and the source does not answer, the lookup is 503, never stale or static data.
+ * The administrative regions seeded in Identity's database (P-26, API §6.1 "Nguồn dữ liệu địa giới", migration V8):
+ * provinces and the wards of a province, from one dataset version. The region endpoints, the address book and order
+ * snapshots all read it; nothing calls an external source.
+ * <ul>
+ * <li>Seed missing or unreadable → 503 {@code REGION_SOURCE_UNAVAILABLE}, never a guess that a code is wrong.</li>
+ * <li>422 {@code INVALID_REGION} only when the seed is there and confirms the code or relation is wrong.</li>
+ * </ul>
+ * {@code fetchedAt} in the meta is when this read happened; {@code sourceVersion} is the seed's version.
  */
 @Component
 @RequiredArgsConstructor
 public class RegionCatalog {
 
-	private static final String PROVINCES = "provinces";
-
-	private final RegionProvider provider;
-
-	private final RegionProperties properties;
+	private final JdbcTemplate jdbc;
 
 	private final Clock clock;
 
-	private final Map<String, Snapshot<?>> cache = new ConcurrentHashMap<>();
-
 	public Snapshot<List<Province>> provinces() {
-		return cached(PROVINCES, provider::provinces);
+		String version = version();
+		List<Province> provinces = read(() -> jdbc.query(
+				"select province_code, name from region_provinces order by province_code",
+				(rs, row) -> new Province(rs.getString(1), rs.getString(2))));
+		if (provinces.isEmpty()) {
+			throw unavailable();
+		}
+		return new Snapshot<>(provinces, version, clock.instant());
 	}
 
-	/** Wards of a province; a code missing from the source's province list is {@code INVALID_REGION}. */
+	/** Wards of a province; a province the seed does not know is {@code INVALID_REGION}. */
 	public Snapshot<List<Ward>> wards(String provinceCode) {
-		boolean known = provinces().items().stream().anyMatch(p -> p.code().equals(provinceCode));
+		String version = version();
+		boolean known = read(() -> jdbc.queryForObject(
+				"select exists (select 1 from region_provinces where province_code = ?)", Boolean.class, provinceCode));
 		if (!known) {
 			throw ApiException.forField(ErrorCode.INVALID_REGION, "provinceCode", "UNKNOWN_PROVINCE");
 		}
-		return cached("wards:" + provinceCode, () -> provider.wards(provinceCode));
+		List<Ward> wards = read(() -> jdbc.query(
+				"select ward_code, name, province_code from region_wards where province_code = ? order by name",
+				(rs, row) -> new Ward(rs.getString(1), rs.getString(2), rs.getString(3)), provinceCode));
+		return new Snapshot<>(wards, version, clock.instant());
 	}
 
-	/**
-	 * Passes only if the source confirms the ward belongs to the province. A source that cannot answer gives 503,
-	 * never a guess that the code is wrong.
-	 */
+	/** Passes only if the seed confirms the ward belongs to the province. */
 	public void requireWardInProvince(String provinceCode, String wardCode) {
-		boolean found = wards(provinceCode).items().stream().anyMatch(ward -> ward.code().equals(wardCode));
-		if (!found) {
-			throw ApiException.forField(ErrorCode.INVALID_REGION, "wardCode", "NOT_IN_PROVINCE");
-		}
+		requireNames(provinceCode, wardCode);
 	}
 
-	/** Display names, or empty when the source is unavailable: listing addresses must not fail because of it. */
+	/** Display names, or empty when the seed cannot be read: listing addresses must not fail because of it. */
 	public Optional<Names> names(String provinceCode, String wardCode) {
 		try {
 			return Optional.of(lookUpNames(provinceCode, wardCode));
@@ -67,36 +71,51 @@ public class RegionCatalog {
 	}
 
 	/**
-	 * Both names for an address snapshot that must be complete (an order keeps them): 503 if the source cannot
-	 * answer, 422 {@code INVALID_REGION} if it no longer knows the province or ward.
+	 * Both names for an address that must be complete (an order keeps them): 503 if the seed cannot be read, 422
+	 * {@code INVALID_REGION} if the province is unknown or the ward is not in it.
 	 */
 	public Names requireNames(String provinceCode, String wardCode) {
 		Names names = lookUpNames(provinceCode, wardCode);
-		if (names.provinceName() == null || names.wardName() == null) {
+		if (names.provinceName() == null) {
+			throw ApiException.forField(ErrorCode.INVALID_REGION, "provinceCode", "UNKNOWN_PROVINCE");
+		}
+		if (names.wardName() == null) {
 			throw ApiException.forField(ErrorCode.INVALID_REGION, "wardCode", "NOT_IN_PROVINCE");
 		}
 		return names;
 	}
 
 	private Names lookUpNames(String provinceCode, String wardCode) {
-		String province = provinces().items().stream().filter(p -> p.code().equals(provinceCode))
-				.map(Province::name).findFirst().orElse(null);
-		String ward = province == null ? null : wards(provinceCode).items().stream()
-				.filter(w -> w.code().equals(wardCode)).map(Ward::name).findFirst().orElse(null);
+		version();
+		String province = read(() -> jdbc.query("select name from region_provinces where province_code = ?",
+				rs -> rs.next() ? rs.getString(1) : null, provinceCode));
+		String ward = province == null ? null : read(() -> jdbc.query(
+				"select name from region_wards where ward_code = ? and province_code = ?",
+				rs -> rs.next() ? rs.getString(1) : null, wardCode, provinceCode));
 		return new Names(province, ward);
 	}
 
-	@SuppressWarnings("unchecked")
-	private <T> Snapshot<T> cached(String key, Supplier<T> fetch) {
-		Instant now = clock.instant();
-		Snapshot<T> hit = (Snapshot<T>) cache.get(key);
-		// A fetch time in the future (clock stepped back) is not trusted either.
-		if (hit != null && !now.isBefore(hit.fetchedAt()) && now.isBefore(hit.fetchedAt().plus(properties.cacheTtl()))) {
-			return hit;
+	/** The loaded dataset's version; no dataset → 503. */
+	private String version() {
+		String version = read(() -> jdbc.query("select version from region_dataset order by loaded_at desc limit 1",
+				rs -> rs.next() ? rs.getString(1) : null));
+		if (version == null) {
+			throw unavailable();
 		}
-		Snapshot<T> fresh = new Snapshot<>(fetch.get(), properties.datasetVersion(), now);
-		cache.put(key, fresh);
-		return fresh;
+		return version;
+	}
+
+	private static <T> T read(java.util.function.Supplier<T> query) {
+		try {
+			return query.get();
+		}
+		catch (DataAccessException ex) {
+			throw unavailable();
+		}
+	}
+
+	private static ApiException unavailable() {
+		return new ApiException(ErrorCode.REGION_SOURCE_UNAVAILABLE);
 	}
 
 	public record Snapshot<T>(T items, String sourceVersion, Instant fetchedAt) {

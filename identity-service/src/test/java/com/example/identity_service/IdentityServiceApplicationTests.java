@@ -26,7 +26,7 @@ class IdentityServiceApplicationTests {
 		List<String> versions = jdbcTemplate.queryForList("""
 				select version from identity.flyway_schema_history
 				where success and version is not null order by installed_rank""", String.class);
-		assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7");
+		assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9");
 	}
 
 	@Test
@@ -37,7 +37,8 @@ class IdentityServiceApplicationTests {
 		assertThat(tables).containsExactlyInAnyOrder("flyway_schema_history", "users", "customers", "sellers",
 				"customer_addresses", "roles", "permissions", "user_roles", "role_permissions", "auth_sessions",
 				"rotated_refresh_tokens", "password_reset_tokens", "admin_audit_log", "outbox_events",
-				"address_touches", "seller_applications", "seller_reapplication_tokens");
+				"address_touches", "seller_applications", "seller_reapplication_tokens", "region_dataset", "region_provinces",
+				"region_wards");
 	}
 
 }

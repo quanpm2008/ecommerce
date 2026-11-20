@@ -65,7 +65,7 @@ cũ được sửa theo đặc tả mới, không xóa để cho qua.
 - [x] G7 Log/Docker — `5405244`; smoke test Docker 24/24 + TOKEN_STALE + identity dừng → 503
 - [x] I1 accountType/RBAC — `469c19a`
 - [x] I2 Seller trên User + SellerApplication — `6844666`
-- [ ] I3 Địa chỉ + địa giới tĩnh
+- [x] I3 Địa chỉ + địa giới tĩnh
 - [ ] I4 Vòng đời cấm/J7
 - [ ] I5 Refresh cookie
 - [ ] I6 Tìm kiếm P-37 + rate limit

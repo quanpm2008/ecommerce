@@ -123,7 +123,7 @@ Browsers upload straight to presigned URLs, so they must reach the storage at th
 
 ## Regions
 
-The address book and `GET /api/v1/identity/regions/**` use an external source of provinces and wards, by default `https://provinces.open-api.vn/api/v2`, so identity-service needs outbound internet access (also inside Docker). Results are cached for 24 hours. Set `GEO_API_BASE_URL` to use another server, or to an empty value to turn regions off; then those endpoints and address writes return 503 `REGION_SOURCE_UNAVAILABLE`. `GEO_API_TIMEOUT` (default `PT3S`) and `GEO_API_DATASET_VERSION` (the label returned as `meta.sourceVersion`) are optional.
+The address book and `GET /api/v1/identity/regions/**` read the provinces and wards seeded in identity's own database by migration V8 (provinces.open-api.vn v2, fetched 2026-11-20: 34 provinces, 3,321 wards); nothing external is called. Customers keep at most 3 addresses, and deleting one removes it.
 
 ```bash
 curl -s http://localhost:8083/api/v1/identity/regions/provinces

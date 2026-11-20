@@ -9,8 +9,8 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static com.example.identity_service.FakeRegionProvider.BA_DINH;
-import static com.example.identity_service.FakeRegionProvider.HANOI;
+import static com.example.identity_service.TestRegions.BA_DINH;
+import static com.example.identity_service.TestRegions.HANOI;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsString;
@@ -82,7 +82,7 @@ class InternalQueriesTests extends EndpointTestSupport {
 	}
 
 	@Test
-	void addressSnapshotIsScopedToTheCustomerAndComplete() throws Exception {
+	void addressSnapshotIsScopedToTheCustomerAndComplete() throws Throwable {
 		Session customer = customer();
 		String addressId = createAddress(customer);
 
@@ -95,11 +95,9 @@ class InternalQueriesTests extends EndpointTestSupport {
 		internal(HttpMethod.GET, "/customers/" + customer().userId() + "/addresses/" + addressId, null, ORDER_TOKEN,
 				null).andExpect(status().isNotFound());
 
-		clock.advance(Duration.ofHours(25));
-		regions.setAvailable(false);
-		internal(HttpMethod.GET, "/customers/" + customer.userId() + "/addresses/" + addressId, null, ORDER_TOKEN,
-				null).andExpect(status().isServiceUnavailable())
-				.andExpect(jsonPath("$.error.code").value("REGION_SOURCE_UNAVAILABLE"));
+		withoutRegionSeed(() -> internal(HttpMethod.GET, "/customers/" + customer.userId() + "/addresses/" + addressId,
+				null, ORDER_TOKEN, null).andExpect(status().isServiceUnavailable())
+				.andExpect(jsonPath("$.error.code").value("REGION_SOURCE_UNAVAILABLE")));
 	}
 
 	@Test
@@ -119,13 +117,15 @@ class InternalQueriesTests extends EndpointTestSupport {
 				.andExpect(jsonPath("$.data.applied").value(true))
 				.andExpect(jsonPath("$.data.lastUsedAt").value(not(first)));
 
-		// A used address is only hidden on delete (G-13).
+		// Deleted after the checkout: the touch is skipped without an error (API §7.1); the order has its snapshot.
 		call(HttpMethod.DELETE, "/customers/me/addresses/" + addressId, null, customer.accessToken())
 				.andExpect(status().isNoContent());
-		assertThat(jdbc.queryForObject("select deleted_at is not null from customer_addresses where address_id = ?",
-				Boolean.class, UUID.fromString(addressId))).isTrue();
 		internal(HttpMethod.POST, touch, json("checkoutSessionId", "cs-3"), ORDER_TOKEN, null)
-				.andExpect(status().isNotFound());
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.applied").value(false))
+				.andExpect(jsonPath("$.data.lastUsedAt").isEmpty());
+		assertThat(jdbc.queryForObject("select count(*) from customer_addresses where address_id = ?", Integer.class,
+				UUID.fromString(addressId))).isZero();
 	}
 
 	@Test
@@ -135,8 +135,12 @@ class InternalQueriesTests extends EndpointTestSupport {
 
 		internal(HttpMethod.POST, "/customers/" + customer.userId() + "/addresses/" + addressId + "/touch",
 				json("checkoutSessionId", " "), ORDER_TOKEN, null).andExpect(status().isBadRequest());
+		// Another customer's address: nothing happens to it.
 		internal(HttpMethod.POST, "/customers/" + customer().userId() + "/addresses/" + addressId + "/touch",
-				json("checkoutSessionId", "cs-1"), ORDER_TOKEN, null).andExpect(status().isNotFound());
+				json("checkoutSessionId", "cs-1"), ORDER_TOKEN, null).andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.applied").value(false));
+		assertThat(jdbc.queryForObject("select last_used_at from customer_addresses where address_id = ?",
+				java.sql.Timestamp.class, UUID.fromString(addressId))).isNull();
 	}
 
 	@Test

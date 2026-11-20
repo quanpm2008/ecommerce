@@ -27,6 +27,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -86,7 +87,7 @@ public class InternalQueries {
 		boolean customerRole = permissions.activeRolesOf(user).contains(RoleCode.CUSTOMER);
 		boolean paymentBlocked = customer.getStatus() == CustomerStatus.BANNED;
 		boolean hasPhone = user.getPhoneNumber() != null;
-		long addressCount = addresses.countByCustomerIdAndDeletedAtIsNull(customerId);
+		long addressCount = addresses.countByCustomerId(customerId);
 		boolean canCheckout = user.isActive() && customerRole && !paymentBlocked && hasPhone && addressCount > 0;
 		return new CheckoutEligibility(user.getUserId(), user.getStatus(), customer.getStatus(), paymentBlocked,
 				hasPhone, addressCount, canCheckout, user.getAuthzVersion());
@@ -102,10 +103,17 @@ public class InternalQueries {
 				names.wardName(), address.getAddressDetail());
 	}
 
-	/** After a checkout commits: {@code lastUsedAt} = now, once per checkout session; retries change nothing. */
+	/**
+	 * After a checkout commits: {@code lastUsedAt} = now, once per checkout session; retries change nothing. An address
+	 * the customer has deleted meanwhile is skipped without an error (API §7.1): the order keeps its own snapshot.
+	 */
 	@Transactional
 	public AddressTouch touch(UUID customerId, UUID addressId, String checkoutSessionId) {
-		CustomerAddress address = ownedAddress(customerId, addressId);
+		Optional<CustomerAddress> found = addresses.findByAddressIdAndCustomerId(addressId, customerId);
+		if (found.isEmpty()) {
+			return new AddressTouch(addressId, null, false);
+		}
+		CustomerAddress address = found.get();
 		boolean first = addresses.recordTouch(addressId, checkoutSessionId) == 1;
 		if (first) {
 			address.markUsed(clock.instant());
@@ -120,7 +128,7 @@ public class InternalQueries {
 	}
 
 	private CustomerAddress ownedAddress(UUID customerId, UUID addressId) {
-		return addresses.findByAddressIdAndCustomerIdAndDeletedAtIsNull(addressId, customerId)
+		return addresses.findByAddressIdAndCustomerId(addressId, customerId)
 				.orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Address not found"));
 	}
 
