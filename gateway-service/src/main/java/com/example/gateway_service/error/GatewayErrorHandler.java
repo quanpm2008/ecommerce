@@ -2,6 +2,8 @@ package com.example.gateway_service.error;
 
 import java.net.ConnectException;
 
+import com.example.gateway_service.web.RequestIds;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.webflux.error.ErrorWebExceptionHandler;
@@ -48,8 +50,10 @@ class GatewayErrorHandler implements ErrorWebExceptionHandler {
 			return Mono.error(failure);
 		}
 		ServerHttpRequest request = exchange.getRequest();
+		// Error handlers run outside the request's Reactor context, so the request id is put in the MDC by hand.
 		if (isUnavailable(failure)) {
-			log.warn("{} {}: downstream unavailable ({})", request.getMethod(), request.getPath(), failure.toString());
+			RequestIds.withMdc(exchange, () -> log.warn("{} {}: downstream unavailable ({})", request.getMethod(),
+					request.getPath(), failure.toString()));
 			return errors.write(exchange, ErrorCode.SERVICE_UNAVAILABLE);
 		}
 		if (failure instanceof ResponseStatusException withStatus && withStatus.getStatusCode().value() < 500) {
@@ -58,7 +62,8 @@ class GatewayErrorHandler implements ErrorWebExceptionHandler {
 			String message = code.status().value() == status ? code.defaultMessage() : reasonPhrase(status);
 			return errors.write(exchange, status, code, message);
 		}
-		log.error("{} {}: request failed", request.getMethod(), request.getPath(), failure);
+		RequestIds.withMdc(exchange, () -> log.error("{} {}: request failed", request.getMethod(), request.getPath(),
+				failure));
 		return errors.write(exchange, ErrorCode.INTERNAL_ERROR);
 	}
 

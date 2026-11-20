@@ -39,7 +39,7 @@ public class ErrorWriter {
 		response.setStatusCode(HttpStatusCode.valueOf(status));
 		response.getHeaders().setContentType(MediaType.APPLICATION_JSON);
 		byte[] body = json.writeValueAsBytes(
-				ErrorResponse.of(code, message, RequestIds.current(exchange.getRequest())));
+				ErrorResponse.of(code, message, RequestIds.current(exchange)));
 		return response.writeWith(Mono.fromSupplier(() -> response.bufferFactory().wrap(body)));
 	}
 

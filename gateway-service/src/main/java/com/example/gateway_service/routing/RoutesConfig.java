@@ -17,13 +17,11 @@ import org.springframework.context.annotation.Configuration;
  * Downstream responses, error bodies included, are returned as they are; only failures to get a response become gateway
  * errors ({@code error.GatewayErrorHandler}).
  * <p>
- * A client-sent {@code X-Service-Token} (the credential services use on {@code /internal}) is removed, so the gateway can
- * never carry one; services never accept it on public paths anyway.
+ * Which request headers a service gets (no client identity headers, no {@code X-Service-Token}, the gateway's own
+ * {@code X-Forwarded-*}) is {@link ProxiedRequestHeaders}, applied to every route.
  */
 @Configuration
 class RoutesConfig {
-
-	static final String SERVICE_TOKEN = "X-Service-Token";
 
 	@Bean
 	RouteLocator serviceRoutes(RouteLocatorBuilder builder) {
@@ -32,7 +30,6 @@ class RoutesConfig {
 			routes.route(service.serviceId(), route -> route
 					.path(service.paths().toArray(String[]::new))
 					.filters(filters -> {
-						filters.removeRequestHeader(SERVICE_TOKEN);
 						if (service.stripsBasePath()) {
 							// "/api/v1" is two segments; the query string and its encoding are kept as sent.
 							filters.stripPrefix(BASE_PATH_SEGMENTS);

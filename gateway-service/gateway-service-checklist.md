@@ -70,18 +70,18 @@ Tokens are issued by identity-service: RS256, `iss` `ecommerce-identity`, `aud` 
 
 ## 4. Headers (API §2.3, §3.10)
 
-- [ ] `X-User-Id`, `X-Actor-Id`, `X-Actor-Type`, `X-Permissions` sent by the client are removed before forwarding. Checked with mixed case and with the header repeated, on public and protected routes
-- [ ] The gateway does not add its own identity headers either; services take `sub` from the verified JWT
-- [ ] Forwarded unchanged: `Authorization`, `Content-Type`, `Idempotency-Key`, `Accept-Language`, `If-Match` / version headers if used (API §3.8)
-- [ ] `X-Forwarded-For` / `X-Forwarded-Proto` / `X-Forwarded-Host` are set by the gateway. A client-supplied `X-Forwarded-For` is not trusted as-is, so identity's per-IP limits (register, forgot-password) see the real client IP and cannot be dodged by faking the header
-- [ ] Hop-by-hop headers (`Connection`, `Transfer-Encoding`, ...) are handled correctly; `Host` is right for the downstream
+- [x] `X-User-Id`, `X-Actor-Id`, `X-Actor-Type`, `X-Permissions` sent by the client are removed before forwarding. Checked with mixed case and with the header repeated, on public and protected routes — `routing.ProxiedRequestHeaders` (every route), `HeadersTests`
+- [x] The gateway does not add its own identity headers either; services take `sub` from the verified JWT — the Bearer token is forwarded as sent
+- [x] Forwarded unchanged: `Authorization`, `Content-Type`, `Idempotency-Key`, `Accept-Language`, `If-Match` / version headers if used (API §3.8) — also `Cookie` (identity's refresh cookie)
+- [x] `X-Forwarded-For` / `X-Forwarded-Proto` / `X-Forwarded-Host` are set by the gateway. A client-supplied `X-Forwarded-For` is not trusted as-is, so identity's per-IP limits (register, forgot-password) see the real client IP and cannot be dodged by faking the header — the gateway is the edge: client `Forwarded` / `X-Forwarded-*` are dropped and `X-Forwarded-For` is exactly the connection's address (plus `-Proto`, `-Host`, `-Port`); the gateway's own appending filters are off. *Identity's view is checked end to end in §10.*
+- [x] Hop-by-hop headers (`Connection`, `Transfer-Encoding`, ...) are handled correctly; `Host` is right for the downstream — the gateway's `RemoveHopByHopHeadersFilter` (tested with `Proxy-Authorization`, `Keep-Alive`); `Host` is the instance's
 
 **`X-Request-Id`**
-- [ ] Missing → the gateway generates one (e.g. UUID) and forwards it
-- [ ] Sent by the client in a safe format → kept. Unsafe (does not match `[A-Za-z0-9._-]{1,128}`, the pattern identity-service accepts) → replaced with a generated one
-- [ ] Returned in the response header for every request, including gateway errors, 404s and 429s
-- [ ] In every gateway log line for the request (MDC), and equal to `error.requestId` in gateway errors
-- [ ] Downstream services receive it and echo the same value (checked against identity-service)
+- [x] Missing → the gateway generates one (e.g. UUID) and forwards it — `web.RequestIdFilter`, first filter of all
+- [x] Sent by the client in a safe format → kept. Unsafe (does not match `[A-Za-z0-9._-]{1,128}`, the pattern identity-service accepts) → replaced with a generated one — also when sent twice; the service gets exactly one
+- [x] Returned in the response header for every request, including gateway errors, 404s and 429s — set at commit, so it also replaces a service's own echo (404, 401, 400, blocked `/internal`, 503 tested; 429 comes with §7)
+- [x] In every gateway log line for the request (MDC), and equal to `error.requestId` in gateway errors — Reactor context + `spring.reactor.context-propagation=auto` (MDC key `requestId`, as identity's; `logging.pattern.level` prints it); also on Spring's own lines (`logLinesForTheRequestCarryItsId`)
+- [ ] Downstream services receive it and echo the same value (checked against identity-service) — *received: tested with stubs; identity's echo is checked end to end in §10*
 
 ## 5. Error envelope (API §3.3, §3.4, §4.1)
 
