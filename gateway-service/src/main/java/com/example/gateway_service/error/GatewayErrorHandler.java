@@ -50,6 +50,11 @@ class GatewayErrorHandler implements ErrorWebExceptionHandler {
 			return Mono.error(failure);
 		}
 		ServerHttpRequest request = exchange.getRequest();
+		GatewayRejection rejection = rejection(failure);
+		if (rejection != null) {
+			int status = rejection.getStatusCode().value();
+			return errors.write(exchange, status, ErrorCode.forStatus(status), rejection.getReason());
+		}
 		// Error handlers run outside the request's Reactor context, so the request id is put in the MDC by hand.
 		if (isUnavailable(failure)) {
 			RequestIds.withMdc(exchange, () -> log.warn("{} {}: downstream unavailable ({})", request.getMethod(),
@@ -65,6 +70,16 @@ class GatewayErrorHandler implements ErrorWebExceptionHandler {
 		RequestIds.withMdc(exchange, () -> log.error("{} {}: request failed", request.getMethod(), request.getPath(),
 				failure));
 		return errors.write(exchange, ErrorCode.INTERNAL_ERROR);
+	}
+
+	/** A rejection by the gateway itself, possibly wrapped by the proxy that was streaming the request body. */
+	private static GatewayRejection rejection(Throwable failure) {
+		for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+			if (cause instanceof GatewayRejection rejection) {
+				return rejection;
+			}
+		}
+		return null;
 	}
 
 	private static boolean isUnavailable(Throwable failure) {

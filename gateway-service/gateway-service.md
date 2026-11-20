@@ -37,10 +37,15 @@ API Gateway for the platform: routing, JWT verification, stripping client-suppli
 - **Request headers** (checklist §4, `routing.ProxiedRequestHeaders`, the last request-header filter on every route): client-sent `X-User-Id`, `X-Actor-Id`, `X-Actor-Type`, `X-Permissions` and `X-Service-Token` are removed; `Forwarded` / `X-Forwarded-*` from the client are dropped and `X-Forwarded-For` is exactly the connection's address (plus `-Proto`, `-Host`, `-Port`), so per-IP limits downstream see the real client. The gateway's own forwarded-header filters are off.
 - **Request id** (`web.RequestIdFilter`, before every other filter): a single safe `X-Request-Id` from the client is kept, anything else is replaced by a UUID; it is forwarded, set on every response at commit (errors too), equals `error.requestId` (`ErrorWriter` reads it from the exchange) and is in the MDC (`requestId`, printed by `logging.pattern.level`) through Reactor context propagation (`io.micrometer:context-propagation`, `spring.reactor.context-propagation=auto`); error handlers outside the request context use `RequestIds.withMdc`. Tests: `HeadersTests`.
 
+- **Edge filters** (`web` package, all before security, right after the request id; values in `EdgeProperties`, decisions 0001/0002):
+  - `CorsFilter`: the SPA's exact origins (`GATEWAY_CORS_ALLOWED_ORIGINS`, dev `http://localhost:5173`) with credentials; preflights answered here, other origins refused with 403 `FORBIDDEN`; headers set before any error is written. `routing.ProxiedResponseHeaders` drops services' own `Access-Control-*` and merges `Vary`.
+  - `RateLimitFilter`: in-memory token buckets per client IP and instance; sensitive auth endpoints 10/min, everything else 300/min (health and preflights not counted); 429 `RATE_LIMITED` with `Retry-After`.
+  - `BodySizeFilter`: bodies over 1 MB → 413 `VALIDATION_ERROR` (declared length refused before reading, chunked bodies counted while streaming; `error.GatewayRejection`).
+  - Tests: `EdgeTests`, `RateLimitTests`.
+
 ## Not implemented yet
 
-- [ ] CORS for the 3 web apps; rate limiting
-- [ ] Standard error envelope (`{ "error": { code, message, details, requestId } }`) for gateway-level failures
+- [ ] Per-user (`sub`) rate limit (optional)
 
 ## Notes / open issues
 
@@ -66,3 +71,4 @@ API Gateway for the platform: routing, JWT verification, stripping client-suppli
 | 2026-11-20 | Moved to the reactive stack (SAD ADR-02 / REQ-ENG-002): `spring-cloud-starter-gateway-server-webflux` on Netty, `SecurityWebFilterChain`, `NimbusReactiveJwtDecoder`, `WebFilter` for `/internal/**`, one `ErrorWebExceptionHandler` + `ErrorWriter` for every gateway error (replacing `GatewayErrorController`, `DownstreamErrors` and the Tomcat valve), firewall rejections as a 400 envelope. Every existing black-box test passes unchanged (only the timeout property name moved); `GatewayServiceApplicationTests` uses real HTTP instead of MockMvc and checks no servlet stack is present; 174 tests |
 | 2026-11-20 | API v1.1 routing: `CATALOG` → `PRODUCT`, Product's route drops `/api/v1` (product-service serves paths without it), seller-reapplication challenge/submit added to `PublicEndpoints` (18), internal-path tests use the v1.1 prefixes (`/internal/v1/products/**`, `/inventory/**`, obligations); checklist references moved to `docs/requirements/` and outdated items (three web apps, Bearer-only, UID 10001) rewritten; 181 tests |
 | 2026-11-20 | Checklist step 4 (headers, request id): identity headers and `X-Service-Token` removed, `X-Forwarded-*` rebuilt from the connection, request id kept/generated, forwarded, on every response and error body, in the MDC across Reactor threads; 201 tests |
+| 2026-11-20 | Checklist steps 5–7: every gateway error in the envelope (also 403 CORS, 413, 429), 1 MB body limit (413 `VALIDATION_ERROR`), CORS for the SPA with credentials (preflight at the gateway, other origins 403, headers on errors, services' CORS headers dropped), per-IP rate limits (sensitive 10/min, general 300/min, `Retry-After`); 231 tests |

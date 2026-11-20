@@ -6,7 +6,10 @@ import java.net.http.HttpResponse;
 
 import javax.sql.DataSource;
 
+import java.time.Duration;
+
 import com.example.gateway_service.support.GatewayClient;
+import com.example.gateway_service.web.EdgeProperties;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.ApplicationContext;
+import org.springframework.util.unit.DataSize;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -46,6 +50,16 @@ class GatewayServiceApplicationTests {
 	@Test
 	void startsWithoutADatabase() {
 		assertThat(context.getBeanNamesForType(DataSource.class)).isEmpty();
+	}
+
+	@Test
+	void edgeDefaultsAreTheDecidedOnes() {
+		EdgeProperties edge = context.getBean(EdgeProperties.class);
+
+		assertThat(edge.cors().allowedOrigins()).containsExactly("http://localhost:5173");
+		assertThat(edge.limits().maxBodySize()).isEqualTo(DataSize.ofMegabytes(1));
+		assertThat(edge.rateLimit().sensitive()).isEqualTo(new EdgeProperties.Tier(10, Duration.ofMinutes(1)));
+		assertThat(edge.rateLimit().general()).isEqualTo(new EdgeProperties.Tier(300, Duration.ofMinutes(1)));
 	}
 
 	@Test

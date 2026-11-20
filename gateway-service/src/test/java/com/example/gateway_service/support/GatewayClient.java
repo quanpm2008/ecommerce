@@ -41,10 +41,21 @@ public final class GatewayClient {
 	}
 
 	public HttpResponse<String> send(String method, String target, String body, String... headers) {
+		return sendBody(method, target, body == null ? HttpRequest.BodyPublishers.noBody()
+				: HttpRequest.BodyPublishers.ofString(body), headers);
+	}
+
+	/** Sends {@code body} without a {@code Content-Length}, so it goes out chunked. */
+	public HttpResponse<String> sendChunked(String method, String target, byte[] body, String... headers) {
+		return sendBody(method, target,
+				HttpRequest.BodyPublishers.ofInputStream(() -> new java.io.ByteArrayInputStream(body)), headers);
+	}
+
+	private HttpResponse<String> sendBody(String method, String target, HttpRequest.BodyPublisher body,
+			String... headers) {
 		HttpRequest.Builder request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + target))
 				.timeout(Duration.ofSeconds(10))
-				.method(method, body == null ? HttpRequest.BodyPublishers.noBody()
-						: HttpRequest.BodyPublishers.ofString(body));
+				.method(method, body);
 		if (defaultHeaders.length > 0) {
 			request.headers(defaultHeaders);
 		}

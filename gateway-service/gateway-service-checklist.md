@@ -11,7 +11,7 @@ Paths are written in full (`/api/v1/...`, `/internal/v1/...`) because the gatewa
 - [x] One web stack, the one the accepted baseline names: Spring Cloud Gateway **WebFlux** (SAD ADR-02, `docs/engineering.md` REQ-ENG-002); security and route config use the reactive APIs — `spring-cloud-starter-gateway-server-webflux` on Netty since 2026-11-20 (it was servlet/WebMVC before); `dependency:tree` has no `spring-webmvc` or Tomcat, `runsOnTheReactiveStackOnly`
 - [x] Temporary `HelloController` and the temporary `SecurityConfig` replaced (no `/hello` left) — `security.SecurityConfig` is stateless with no CSRF, form login, basic auth or logout; it lets everything through until JWT (§3)
 - [x] `mvn test` passes with no manual env vars and no running Eureka or downstream services — `eureka.client.enabled=false` in tests; downstream services are JDK `HttpServer` stubs (`support.StubService`)
-- [ ] All settings come from properties with env overrides: Eureka URL, JWT issuer/audience/JWKS URL, CORS origins, rate limits, timeouts — *Eureka URL, actuator, (§1) timeouts and (§3) JWT done; §6 CORS and §7 rate limits add theirs. Tick when those are in.*
+- [x] All settings come from properties with env overrides: Eureka URL, JWT issuer/audience/JWKS URL, CORS origins, rate limits, timeouts — `GATEWAY_*` variables in `application.properties` (timeouts, `GATEWAY_JWT_*`, `GATEWAY_CORS_*`, `GATEWAY_MAX_BODY_SIZE`, `GATEWAY_RATE_LIMIT_*`); defaults checked in `edgeDefaultsAreTheDecidedOnes`
 - [x] No datasource needed: the app starts without `SPRING_DATASOURCE_*` — no JDBC on the classpath (`startsWithoutADatabase`); in compose the gateway has its own `depends_on` (Eureka only) and `environment` (Eureka URL only)
 - [x] `GET /actuator/health` is public and reports UP; other actuator endpoints are not exposed — no details or components, `/actuator` index page off; `GatewayServiceApplicationTests` and a manual check in Docker
 - [x] Port 8081 consistent across `application.properties`, Dockerfile `EXPOSE` and `compose.yaml`; the API §3.1 base URL `http://localhost:8080/api/v1` conflict resolved and written down (8080 is cart-service) — the gateway stays on 8081; the FE base URL is `http://localhost:8081/api/v1` (`DEVELOPMENT.md`)
@@ -85,31 +85,31 @@ Tokens are issued by identity-service: RS256, `iss` `ecommerce-identity`, `aud` 
 
 ## 5. Error envelope (API §3.3, §3.4, §4.1)
 
-- [ ] Every error the gateway itself produces uses `{ "error": { code, message, details, requestId } }` with `Content-Type: application/json`; never the Spring Whitelabel page, a default `/error` JSON, or an empty 401/403 body — *unknown paths and other statuses (`GatewayErrorHandler`), firewall rejections (step 2) and 401/503 for tokens (step 3) done; 429 comes with rate limiting (step 7). The gateway never answers 403 itself.*
-- [ ] Codes come only from API §4.1: `UNAUTHENTICATED`, `TOKEN_EXPIRED` (401), `FORBIDDEN` (403), `NOT_FOUND` (404), `RATE_LIMITED` (429), `INTERNAL_ERROR` (500), `SERVICE_UNAVAILABLE` (503)
-- [ ] Messages in English (team decision, same as identity-service); no stack traces, class names or downstream host names in the body
-- [ ] Request body too large → rejected with a clear error (limit can be configured; status and code decided)
+- [x] Every error the gateway itself produces uses `{ "error": { code, message, details, requestId } }` with `Content-Type: application/json`; never the Spring Whitelabel page, a default `/error` JSON, or an empty 401/403 body — all go through `error.ErrorWriter`: unknown paths and other statuses (`GatewayErrorHandler`), firewall rejections, blocked `/internal`, 401/503 for tokens, 403 for a refused CORS origin, 413, 429
+- [x] Codes come only from API §4.1: `UNAUTHENTICATED`, `TOKEN_EXPIRED` (401), `FORBIDDEN` (403), `NOT_FOUND` (404), `RATE_LIMITED` (429), `INTERNAL_ERROR` (500), `SERVICE_UNAVAILABLE` (503) — plus `VALIDATION_ERROR` for 400 and for statuses without a code of their own (405, 413); `error.ErrorCode`
+- [x] Messages in English (team decision, same as identity-service; API §3.3 says Vietnamese); no stack traces, class names or downstream host names in the body — checked in `DownstreamFailureTests` and `JwtTests`
+- [x] Request body too large → rejected with a clear error (limit can be configured; status and code decided) — **413 + `VALIDATION_ERROR`**, "The request body must not be larger than 1 MB." (`GATEWAY_MAX_BODY_SIZE`, decision 0002); a declared `Content-Length` is refused before reading, a chunked body while it streams (`web.BodySizeFilter`, `EdgeTests`)
 
 ## 6. CORS (API §2.1)
 
-- [ ] Allowed origins are exactly the SPA's origin(s) for the environment (one React SPA, ADR-02; dev `http://localhost:5173`), set by config; no `*`; credentials allowed so the refresh cookie works (decision 0001)
-- [ ] A preflight `OPTIONS` from an allowed origin gets 200 with the right `Access-Control-Allow-*` headers, without a token, and is not forwarded to a service
-- [ ] Allowed methods: GET, POST, PUT, PATCH, DELETE. Allowed request headers: `Authorization`, `Content-Type`, `Idempotency-Key`, `X-Request-Id`, `Accept-Language`
-- [ ] `X-Request-Id` is in `Access-Control-Expose-Headers` so the browser can read it
-- [ ] A disallowed origin gets no `Access-Control-Allow-Origin` header
-- [ ] CORS headers are not duplicated: the gateway sets them and the services don't (or downstream values are removed)
-- [ ] CORS headers are present on error responses too (401, 404, 429, 503), so the browser can show the error
+- [x] Allowed origins are exactly the SPA's origin(s) for the environment (one React SPA, ADR-02; dev `http://localhost:5173`), set by config; no `*`; credentials allowed so the refresh cookie works (decision 0001) — `GATEWAY_CORS_ALLOWED_ORIGINS` (comma-separated; a `*` fails startup), `web.CorsFilter`
+- [x] A preflight `OPTIONS` from an allowed origin gets 200 with the right `Access-Control-Allow-*` headers, without a token, and is not forwarded to a service — answered before rate limiting and security; `Access-Control-Max-Age` 30 min
+- [x] Allowed methods: GET, POST, PUT, PATCH, DELETE. Allowed request headers: `Authorization`, `Content-Type`, `Idempotency-Key`, `X-Request-Id`, `Accept-Language` — also `If-Match` (API §3.8); a preflight for anything else is refused
+- [x] `X-Request-Id` is in `Access-Control-Expose-Headers` so the browser can read it — with `Retry-After`, `Idempotent-Replayed` (API §3.7) and `Location`
+- [x] A disallowed origin gets no `Access-Control-Allow-Origin` header — its cross-origin requests (and preflights) are refused with 403 `FORBIDDEN` in the envelope and never forwarded
+- [x] CORS headers are not duplicated: the gateway sets them and the services don't (or downstream values are removed) — a service's `Access-Control-*` are dropped and its `Vary` merged (`routing.ProxiedResponseHeaders`)
+- [x] CORS headers are present on error responses too (401, 404, 429, 503), so the browser can show the error — set before anything writes the response (`gatewayErrorsCarryTheCorsHeadersToo`, 429 in `RateLimitTests`)
 
 ## 7. Rate limiting (API §3.4 N-04)
 
 N-04 gives no numbers yet; the values are the team's proposal in decision 0002 (`docs/decisions/0002-gioi-han-tan-suat-gateway.md`) and must be configurable.
 
-- [ ] Per-client-IP limit on public routes; 429 `RATE_LIMITED` in the error envelope, with `Retry-After`
-- [ ] Stricter limits on sensitive endpoints: `POST /api/v1/identity/auth/login`, `/register`, `/register-seller`, `/refresh`, `/password/forgot`, `/password/reset`, `/seller-reapplication/challenge`, `/seller-reapplication` (10/min per IP; others 300/min per IP, decision 0002)
-- [ ] Optional per-user limit (by `sub`) on authenticated routes
-- [ ] The client IP is the real one (see `X-Forwarded-For` above); faking the header does not reset the counter
-- [ ] Limits and windows set by properties; how counters work with more than one gateway instance is decided (in-memory is fine for the MVP, and written down)
-- [ ] How it fits identity-service's own per-IP limits (register, forgot-password) is decided; requests under the gateway limit are not rejected without reason
+- [x] Per-client-IP limit on public routes; 429 `RATE_LIMITED` in the error envelope, with `Retry-After` — every request except `/actuator/health` and preflights: 300/min per IP (`web.RateLimitFilter`, token bucket); `Retry-After` in whole seconds
+- [x] Stricter limits on sensitive endpoints: `POST /api/v1/identity/auth/login`, `/register`, `/register-seller`, `/refresh`, `/password/forgot`, `/password/reset`, `/seller-reapplication/challenge`, `/seller-reapplication` (10/min per IP; others 300/min per IP, decision 0002) — counted in their own tier (`RateLimitTests`)
+- [ ] Optional per-user limit (by `sub`) on authenticated routes — *not built (optional; decision 0002 limits per IP only)*
+- [x] The client IP is the real one (see `X-Forwarded-For` above); faking the header does not reset the counter — the connection's address (`fakingTheForwardedForHeaderDoesNotResetTheCount`)
+- [x] Limits and windows set by properties; how counters work with more than one gateway instance is decided (in-memory is fine for the MVP, and written down) — `GATEWAY_RATE_LIMIT_{SENSITIVE,GENERAL}_{REQUESTS,WINDOW}`; per instance, so N instances allow up to N times the limit (decision 0002, SAD C.5)
+- [x] How it fits identity-service's own per-IP limits (register, forgot-password) is decided; requests under the gateway limit are not rejected without reason — both apply: the gateway's is a coarse per-minute guard, identity keeps its own per-hour limits, which now see the real client IP (§4)
 
 ## 8. Security hygiene
 
