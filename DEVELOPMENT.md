@@ -162,15 +162,18 @@ openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/identity-
 IDENTITY_TOKEN_SIGNING_KEY="$(cat /tmp/identity-signing-key.pem)" mvn spring-boot:run
 ```
 
-Password reset emails link to `IDENTITY_PASSWORD_RESET_LINK_BASE` (default `http://localhost:3000/reset-password`) with `?token=...` appended; set it to the FE's reset page.
+Password reset emails link to `IDENTITY_PASSWORD_RESET_LINK_BASE` (default `http://localhost:5173/reset-password`) with `?token=...` appended; set it to the FE's reset page.
 
 Quick check of the auth flow against identity-service directly (with the stack in Docker, the same paths also work through the gateway: `B=http://localhost:8081/api/v1/identity/auth`):
 
 ```bash
 B=http://localhost:8083/api/v1/identity/auth
 curl -s -H 'Content-Type: application/json' -d '{"email":"an@example.test","fullName":"An","phoneNumber":"0912345678","password":"Secret123","confirmPassword":"Secret123"}' $B/register
-curl -s -H 'Content-Type: application/json' -d '{"email":"an@example.test","password":"Secret123","accountType":"CUSTOMER"}' $B/login
+curl -s -c /tmp/jar -H 'Content-Type: application/json' -d '{"email":"an@example.test","password":"Secret123","accountType":"CUSTOMER"}' $B/login
+curl -s -b /tmp/jar -c /tmp/jar -H 'Origin: http://localhost:5173' -X POST $B/refresh
 ```
+
+The refresh token is never in a response body: login and refresh set it as the HttpOnly cookie `refresh_token` (Secure, SameSite=Strict, Path `/api/v1/identity/auth`), and refresh/logout read only that cookie. Both also need an `Origin` from `IDENTITY_ALLOWED_ORIGINS` (default `http://localhost:5173`), otherwise 403; the SPA calls them with `credentials: "include"`. Browsers accept Secure cookies on `http://localhost`; for anything else over plain http, run identity with the `local` profile (`SPRING_PROFILES_ACTIVE=local`), which turns Secure off.
 
 Every role is its own account (API v1.1 §3.2.1): login names the web app's `accountType` (`CUSTOMER`, `SELLER` or `ADMIN`), and the same email and password on another channel is refused like a wrong password. A seller signs in only after an admin approved the application.
 

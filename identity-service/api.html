@@ -856,7 +856,7 @@
     },
     "/api/v1/identity/auth/login" : {
       "post" : {
-        "description" : "Signs in to one account: `accountType` is the web app's channel (CUSTOMER, SELLER or ADMIN). Returns an access token (15 min), a refresh token and the current profile. Unknown email, wrong password and an account of another type all give the same error. A seller signs in only once approved.",
+        "description" : "Signs in to one account: `accountType` is the web app's channel (CUSTOMER, SELLER or ADMIN). Returns an access token (15 min) and the current profile; the refresh token is set as the HttpOnly `refresh_token` cookie (Path /api/v1/identity/auth), never in the body. Unknown email, wrong password and an account of another type all give the same error. A seller signs in only once approved.",
         "operationId" : "login",
         "requestBody" : {
           "content" : {
@@ -927,21 +927,19 @@
     },
     "/api/v1/identity/auth/logout" : {
       "post" : {
-        "description" : "Revokes the session of the given refresh token if it belongs to the caller; anything else is a silent 204.\n\n**Permission:** any signed-in user",
+        "description" : "Revokes the session of the `refresh_token` cookie if it belongs to the caller, then clears the cookie (same name and path, Max-Age 0). Needs a trusted `Origin`. Anything else is a silent 204.\n\n**Permission:** any signed-in user",
         "operationId" : "logout",
-        "requestBody" : {
-          "content" : {
-            "application/json" : {
-              "schema" : {
-                "$ref" : "#/components/schemas/RefreshToken"
-              }
-            }
-          },
-          "required" : true
-        },
+        "parameters" : [ {
+          "in" : "cookie",
+          "name" : "refresh_token",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
         "responses" : {
-          "204" : {
-            "description" : "No Content"
+          "200" : {
+            "description" : "OK"
           },
           "400" : {
             "content" : {
@@ -1068,18 +1066,16 @@
     },
     "/api/v1/identity/auth/refresh" : {
       "post" : {
-        "description" : "Rotates the refresh token: use the new one next time. Reusing an old refresh token revokes the whole session.",
+        "description" : "Reads only the `refresh_token` cookie (no body) and needs an `Origin` the server trusts (403 otherwise). Rotates the token: the response sets the new cookie. Reusing an old refresh token revokes the whole session.",
         "operationId" : "refresh",
-        "requestBody" : {
-          "content" : {
-            "application/json" : {
-              "schema" : {
-                "$ref" : "#/components/schemas/RefreshToken"
-              }
-            }
-          },
-          "required" : true
-        },
+        "parameters" : [ {
+          "in" : "cookie",
+          "name" : "refresh_token",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
         "responses" : {
           "200" : {
             "content" : {
@@ -3081,9 +3077,6 @@
           "profile" : {
             "$ref" : "#/components/schemas/UserSelfProfile"
           },
-          "refreshToken" : {
-            "type" : "string"
-          },
           "tokenType" : {
             "type" : "string"
           }
@@ -3466,16 +3459,6 @@
             "type" : "string"
           }
         }
-      },
-      "RefreshToken" : {
-        "type" : "object",
-        "properties" : {
-          "refreshToken" : {
-            "type" : "string",
-            "minLength" : 1
-          }
-        },
-        "required" : [ "refreshToken" ]
       },
       "Register" : {
         "type" : "object",

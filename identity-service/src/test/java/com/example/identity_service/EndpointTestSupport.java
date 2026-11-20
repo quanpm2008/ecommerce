@@ -196,12 +196,42 @@ public abstract class EndpointTestSupport {
 	}
 
 	/** Logs in and returns the response body. */
+	/** The SPA origin the tests' refresh and logout calls come from (identity.session-cookie.allowed-origins). */
+	protected static final String SPA_ORIGIN = "http://localhost:5173";
+
+	/**
+	 * Logs in and returns the response body with the {@code refresh_token} cookie's value added as a top-level
+	 * {@code refreshToken} (a test convenience: the real body never carries it).
+	 */
 	protected String loginBody(String email) throws Exception {
-		return login(email, PASSWORD).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+		return withRefreshToken(login(email, PASSWORD).andExpect(status().isOk()));
 	}
 
+	/** The response body plus its {@code refresh_token} cookie as top-level {@code refreshToken}. */
+	protected static String withRefreshToken(ResultActions result) throws Exception {
+		var response = result.andReturn().getResponse();
+		String body = response.getContentAsString();
+		jakarta.servlet.http.Cookie cookie = response.getCookie("refresh_token");
+		String token = cookie == null ? "" : cookie.getValue();
+		return "{\"refreshToken\":\"" + token + "\"," + body.substring(1);
+	}
+
+	/** {@code POST /auth/refresh} with the token as the {@code refresh_token} cookie, from the SPA's origin. */
 	protected ResultActions refresh(String refreshToken) throws Exception {
-		return postJson("/refresh", json("refreshToken", refreshToken));
+		return mvc.perform(withIp(post(AuthController.PATH + "/refresh"))
+				.cookie(new jakarta.servlet.http.Cookie("refresh_token", refreshToken)).header("Origin", SPA_ORIGIN));
+	}
+
+	/** {@code POST /auth/logout} with the access token and the refresh token cookie, from the SPA's origin. */
+	protected ResultActions logout(String refreshToken, String accessToken) throws Exception {
+		var request = withIp(post(AuthController.PATH + "/logout")).header("Origin", SPA_ORIGIN);
+		if (refreshToken != null) {
+			request.cookie(new jakarta.servlet.http.Cookie("refresh_token", refreshToken));
+		}
+		if (accessToken != null) {
+			request.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken);
+		}
+		return mvc.perform(request);
 	}
 
 	/** Registers a customer, logs in and returns the session. */

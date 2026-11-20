@@ -70,7 +70,7 @@ class AuthorizationContextTests extends EndpointTestSupport {
 		Session customer = customer();
 		String body = loginBody(customer.email());
 		String accessToken = read(body, "$.data.accessToken");
-		postJson("/logout", json("refreshToken", read(body, "$.data.refreshToken")), accessToken)
+		logout(read(body, "$.refreshToken"), accessToken)
 				.andExpect(status().isNoContent());
 
 		context(accessToken).andExpect(status().isOk())

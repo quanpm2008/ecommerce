@@ -37,10 +37,6 @@ public final class AuthRequests {
 	public record Login(@NotBlank String email, @NotBlank String password, @NotNull AccountType accountType) {
 	}
 
-	/** Body of refresh and logout. */
-	public record RefreshToken(@NotBlank String refreshToken) {
-	}
-
 	public record ForgotPassword(@NotBlank String email) {
 	}
 

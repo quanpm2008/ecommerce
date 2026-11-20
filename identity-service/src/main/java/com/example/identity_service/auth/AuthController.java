@@ -12,7 +12,12 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import com.example.identity_service.common.error.ApiException;
+import com.example.identity_service.common.error.ErrorCode;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -60,6 +65,8 @@ public class AuthController {
 	private final PasswordService passwords;
 
 	private final SellerReapplicationService reapplications;
+
+	private final RefreshCookies cookies;
 
 	private final RateLimiter rateLimiter;
 
@@ -118,30 +125,47 @@ public class AuthController {
 	}
 
 	@Operation(summary = "Sign in", description = "Signs in to one account: `accountType` is the web app's channel "
-			+ "(CUSTOMER, SELLER or ADMIN). Returns an access token (15 min), a refresh token and the current profile. "
+			+ "(CUSTOMER, SELLER or ADMIN). Returns an access token (15 min) and the current profile; the refresh token is "
+			+ "set as the HttpOnly `refresh_token` cookie (Path /api/v1/identity/auth), never in the body. "
 			+ "Unknown email, wrong password and an account of another type all give the same error. A seller signs in "
 			+ "only once approved.")
 	@ErrorCodes({ INVALID_CREDENTIALS, WRONG_AUTH_METHOD, SELLER_PENDING_APPROVAL, SELLER_REJECTED, ACCOUNT_DISABLED })
 	@PostMapping("/login")
-	ApiResponse<AuthTokens> login(@Valid @RequestBody AuthRequests.Login body) {
-		return ApiResponse.of(auth.login(body));
+	ResponseEntity<ApiResponse<AuthTokens>> login(@Valid @RequestBody AuthRequests.Login body) {
+		return withCookie(auth.login(body));
 	}
 
-	@Operation(summary = "Refresh tokens", description = "Rotates the refresh token: use the new one next time. "
-			+ "Reusing an old refresh token revokes the whole session.")
+	@Operation(summary = "Refresh tokens", description = "Reads only the `refresh_token` cookie (no body) and needs an "
+			+ "`Origin` the server trusts (403 otherwise). Rotates the token: the response sets the new cookie. Reusing "
+			+ "an old refresh token revokes the whole session.")
 	@ErrorCodes({ INVALID_REFRESH_TOKEN, SELLER_PENDING_APPROVAL, SELLER_REJECTED })
 	@PostMapping("/refresh")
-	ApiResponse<AuthTokens> refresh(@Valid @RequestBody AuthRequests.RefreshToken body) {
-		return ApiResponse.of(auth.refresh(body.refreshToken()));
+	ResponseEntity<ApiResponse<AuthTokens>> refresh(
+			@CookieValue(name = RefreshCookies.NAME, required = false) String refreshToken, HttpServletRequest request) {
+		cookies.requireTrustedOrigin(request);
+		if (refreshToken == null || refreshToken.isBlank()) {
+			throw new ApiException(ErrorCode.INVALID_REFRESH_TOKEN);
+		}
+		return withCookie(auth.refresh(refreshToken));
 	}
 
-	@Operation(summary = "Sign out", description = "Revokes the session of the given refresh token if it belongs to "
-			+ "the caller; anything else is a silent 204.")
+	@Operation(summary = "Sign out", description = "Revokes the session of the `refresh_token` cookie if it belongs to "
+			+ "the caller, then clears the cookie (same name and path, Max-Age 0). Needs a trusted `Origin`. Anything "
+			+ "else is a silent 204.")
 	@PreAuthorize("isAuthenticated()")
 	@PostMapping("/logout")
-	@ResponseStatus(HttpStatus.NO_CONTENT)
-	void logout(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody AuthRequests.RefreshToken body) {
-		auth.logout(Caller.of(jwt), body.refreshToken());
+	ResponseEntity<Void> logout(@AuthenticationPrincipal Jwt jwt,
+			@CookieValue(name = RefreshCookies.NAME, required = false) String refreshToken, HttpServletRequest request) {
+		cookies.requireTrustedOrigin(request);
+		if (refreshToken != null && !refreshToken.isBlank()) {
+			auth.logout(Caller.of(jwt), refreshToken);
+		}
+		return ResponseEntity.noContent().header(HttpHeaders.SET_COOKIE, cookies.clear().toString()).build();
+	}
+
+	private ResponseEntity<ApiResponse<AuthTokens>> withCookie(AuthTokens.Issued issued) {
+		return ResponseEntity.ok().header(HttpHeaders.SET_COOKIE, cookies.issue(issued.refreshToken()).toString())
+				.body(ApiResponse.of(issued.body()));
 	}
 
 	@Operation(summary = "Request a password reset email", description = "Always the same 202, whether or not the "

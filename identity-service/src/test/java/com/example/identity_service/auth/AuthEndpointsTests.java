@@ -16,7 +16,9 @@ import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.Matchers.not;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -195,7 +197,12 @@ class AuthEndpointsTests extends EndpointTestSupport {
 				.andExpect(jsonPath("$.data.tokenType").value("Bearer"))
 				.andExpect(jsonPath("$.data.accessTokenExpiresIn").value(900))
 				.andExpect(jsonPath("$.data.accessToken").isNotEmpty())
-				.andExpect(jsonPath("$.data.refreshToken").isNotEmpty())
+				.andExpect(jsonPath("$.data.refreshToken").doesNotExist())
+				.andExpect(cookie().httpOnly("refresh_token", true))
+				.andExpect(cookie().secure("refresh_token", true))
+				.andExpect(cookie().path("refresh_token", "/api/v1/identity/auth"))
+				.andExpect(cookie().sameSite("refresh_token", "Strict"))
+				.andExpect(cookie().maxAge("refresh_token", 7 * 24 * 3600))
 				.andExpect(jsonPath("$.data.accountType").value("CUSTOMER"))
 				.andExpect(jsonPath("$.data.profile.accountType").value("CUSTOMER"))
 				.andExpect(jsonPath("$.data.profile.roles", contains("CUSTOMER")))
@@ -296,7 +303,7 @@ class AuthEndpointsTests extends EndpointTestSupport {
 	@Test
 	void refreshChecksTheSellerApprovalAgain() throws Exception {
 		Session seller = approvedSeller();
-		String refreshToken = read(loginBody(seller.email()), "$.data.refreshToken");
+		String refreshToken = read(loginBody(seller.email()), "$.refreshToken");
 		jdbc.update("""
 				update sellers set approval_status = 'PENDING', reviewed_at = null, reviewed_by_user_id = null
 				where seller_id = ?""", seller.userId());
@@ -326,15 +333,15 @@ class AuthEndpointsTests extends EndpointTestSupport {
 	void refreshReturnsNewTokensWithTheCurrentRoles() throws Exception {
 		String email = uniqueEmail();
 		UUID userId = UUID.fromString(registerCustomer(email));
-		String first = read(loginBody(email), "$.data.refreshToken");
+		String first = read(loginBody(email), "$.refreshToken");
 		tx.executeWithoutResult(status -> roleAssignments.revoke(users.findById(userId).orElseThrow(), RoleCode.CUSTOMER));
 
-		String body = refresh(first).andExpect(status().isOk())
+		String body = withRefreshToken(refresh(first).andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.profile.roles", empty()))
 				.andExpect(jsonPath("$.data.profile.permissions", not(hasItem("cart:manage:own"))))
-				.andReturn().getResponse().getContentAsString();
+				.andExpect(jsonPath("$.data.refreshToken").doesNotExist()));
 
-		assertThat(read(body, "$.data.refreshToken")).isNotEqualTo(first);
+		assertThat(read(body, "$.refreshToken")).isNotEqualTo(first);
 		refresh(first).andExpect(status().isUnauthorized())
 				.andExpect(jsonPath("$.error.code").value("INVALID_REFRESH_TOKEN"));
 	}
@@ -348,13 +355,13 @@ class AuthEndpointsTests extends EndpointTestSupport {
 		String phone = loginBody(email);
 		String laptop = loginBody(email);
 
-		postJson("/logout", json("refreshToken", read(phone, "$.data.refreshToken")), read(phone, "$.data.accessToken"))
+		logout(read(phone, "$.refreshToken"), read(phone, "$.data.accessToken"))
 				.andExpect(status().isNoContent());
 
-		refresh(read(phone, "$.data.refreshToken")).andExpect(status().isUnauthorized());
-		postJson("/logout", json("refreshToken", read(phone, "$.data.refreshToken")), read(phone, "$.data.accessToken"))
+		refresh(read(phone, "$.refreshToken")).andExpect(status().isUnauthorized());
+		logout(read(phone, "$.refreshToken"), read(phone, "$.data.accessToken"))
 				.andExpect(status().isUnauthorized());
-		refresh(read(laptop, "$.data.refreshToken")).andExpect(status().isOk());
+		refresh(read(laptop, "$.refreshToken")).andExpect(status().isOk());
 	}
 
 	@Test
@@ -362,26 +369,62 @@ class AuthEndpointsTests extends EndpointTestSupport {
 		String mine = loginBody(withCustomer(uniqueEmail()));
 		String theirs = loginBody(withCustomer(uniqueEmail()));
 
-		postJson("/logout", json("refreshToken", read(theirs, "$.data.refreshToken")), read(mine, "$.data.accessToken"))
+		logout(read(theirs, "$.refreshToken"), read(mine, "$.data.accessToken"))
 				.andExpect(status().isNoContent());
 
-		refresh(read(theirs, "$.data.refreshToken")).andExpect(status().isOk());
+		refresh(read(theirs, "$.refreshToken")).andExpect(status().isOk());
 	}
 
 	@Test
 	void logoutWithAnUnknownRefreshTokenStillSucceedsAndChangesNothing() throws Exception {
 		String session = loginBody(withCustomer(uniqueEmail()));
 
-		postJson("/logout", json("refreshToken", "not-a-real-token"), read(session, "$.data.accessToken"))
+		logout("not-a-real-token", read(session, "$.data.accessToken"))
 				.andExpect(status().isNoContent())
 				.andExpect(content().string(""));
 
-		refresh(read(session, "$.data.refreshToken")).andExpect(status().isOk());
+		refresh(read(session, "$.refreshToken")).andExpect(status().isOk());
+	}
+
+	@Test
+	void logoutClearsTheCookie() throws Exception {
+		String session = loginBody(withCustomer(uniqueEmail()));
+
+		logout(read(session, "$.refreshToken"), read(session, "$.data.accessToken")).andExpect(status().isNoContent())
+				.andExpect(cookie().maxAge("refresh_token", 0))
+				.andExpect(cookie().path("refresh_token", "/api/v1/identity/auth"))
+				.andExpect(cookie().httpOnly("refresh_token", true));
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = { "http://evil.example", "" })
+	void refreshAndLogoutNeedATrustedOrigin(String origin) throws Exception {
+		String session = loginBody(withCustomer(uniqueEmail()));
+		String refreshToken = read(session, "$.refreshToken");
+
+		var refresh = post(AuthController.PATH + "/refresh").cookie(new jakarta.servlet.http.Cookie("refresh_token",
+				refreshToken));
+		var logout = post(AuthController.PATH + "/logout").cookie(new jakarta.servlet.http.Cookie("refresh_token",
+				refreshToken)).header("Authorization", "Bearer " + read(session, "$.data.accessToken"));
+		if (!origin.isEmpty()) {
+			refresh.header("Origin", origin);
+			logout.header("Origin", origin);
+		}
+		mvc.perform(refresh).andExpect(status().isForbidden());
+		mvc.perform(logout).andExpect(status().isForbidden());
+		refresh(refreshToken).andExpect(status().isOk());
+	}
+
+	@Test
+	void refreshWithoutTheCookieIsAnInvalidRefreshToken() throws Exception {
+		mvc.perform(post(AuthController.PATH + "/refresh").header("Origin", SPA_ORIGIN))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.error.code").value("INVALID_REFRESH_TOKEN"));
 	}
 
 	@Test
 	void logoutNeedsAnAccessToken() throws Exception {
-		postJson("/logout", json("refreshToken", "anything")).andExpect(status().isUnauthorized())
+		logout("anything", null).andExpect(status().isUnauthorized())
 				.andExpect(jsonPath("$.error.code").value("UNAUTHENTICATED"));
 	}
 

@@ -129,7 +129,7 @@ public class AuthService {
 	 * matched ({@link SignInPolicy}); a banned account is reconciled with its obligations first (late obligation →
 	 * limited session; none → 403 {@code ACCOUNT_DISABLED}; source down → 503).
 	 */
-	public AuthTokens login(AuthRequests.Login request) {
+	public AuthTokens.Issued login(AuthRequests.Login request) {
 		Optional<User> found = users.findByEmail(User.normalizeEmail(request.email()))
 				.filter(user -> user.getAccountType() == request.accountType());
 		if (found.isEmpty()) {
@@ -157,7 +157,7 @@ public class AuthService {
 	 * Roles and permissions in the response are read again, never copied from the old token; the sign-in rules are
 	 * checked again before the token rotates.
 	 */
-	public AuthTokens refresh(String refreshToken) {
+	public AuthTokens.Issued refresh(String refreshToken) {
 		sessions.ownerOf(refreshToken).ifPresent(signIn::reconcile);
 		return withProfile(sessions.refresh(refreshToken, signIn::check));
 	}
@@ -166,7 +166,7 @@ public class AuthService {
 		sessions.logout(caller.userId(), caller.sessionId(), refreshToken);
 	}
 
-	private AuthTokens withProfile(IssuedTokens tokens) {
+	private AuthTokens.Issued withProfile(IssuedTokens tokens) {
 		return AuthTokens.of(tokens, profiles.of(tokens.userId()));
 	}
 
