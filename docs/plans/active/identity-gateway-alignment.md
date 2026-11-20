@@ -68,7 +68,7 @@ cũ được sửa theo đặc tả mới, không xóa để cho qua.
 - [x] I3 Địa chỉ + địa giới tĩnh
 - [x] I4 Vòng đời cấm/J7
 - [x] I5 Refresh cookie
-- [ ] I6 Tìm kiếm P-37 + rate limit
+- [x] I6 Tìm kiếm P-37 + rate limit
 - [ ] G8 End-to-end + tài liệu
 
 ## Quyết định

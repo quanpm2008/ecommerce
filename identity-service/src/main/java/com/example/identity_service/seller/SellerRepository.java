@@ -37,8 +37,9 @@ public interface SellerRepository extends JpaRepository<Seller, UUID> {
 	boolean existsActiveShopName(String name, UUID exceptSellerId);
 
 	/**
-	 * Sellers a buyer may see (G-06): User ACTIVE, Seller APPROVED + ACTIVE and an unrevoked SELLER role, whose name
-	 * matches {@code namePattern} case-insensitively ({@code like} with {@code \} as escape character).
+	 * Sellers a buyer may see (G-06): User ACTIVE, Seller APPROVED + ACTIVE and an unrevoked SELLER role, whose shop
+	 * name matches {@code namePattern} without Vietnamese diacritics or case (P-37,
+	 * {@code search_key()} of V11; {@code like} with {@code \} as escape character).
 	 */
 	default Page<Seller> findPublic(String namePattern, Pageable pageable) {
 		return findVisible(null, namePattern, UserStatus.ACTIVE, SellerApprovalStatus.APPROVED, SellerStatus.ACTIVE,
@@ -57,7 +58,8 @@ public interface SellerRepository extends JpaRepository<Seller, UUID> {
 			  and u.status = :userStatus and s.approvalStatus = :approvalStatus and s.status = :sellerStatus
 			  and exists (select 1 from UserRole ur where ur.id.userId = s.sellerId and ur.role.code = :role
 			              and ur.revokedAt is null)
-			  and lower(u.fullName) like lower(:namePattern) escape '\\'""")
+			  and cast(function('search_key', u.fullName) as String)
+			      like cast(function('search_key', :namePattern) as String) escape '\\'""")
 	Page<Seller> findVisible(UUID sellerId, String namePattern, UserStatus userStatus,
 			SellerApprovalStatus approvalStatus, SellerStatus sellerStatus, RoleCode role, Pageable pageable);
 

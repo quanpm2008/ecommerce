@@ -4,6 +4,8 @@ import com.example.identity_service.EndpointTestSupport;
 import com.example.identity_service.rbac.RoleCode;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.ParameterizedTest;
 import org.springframework.http.HttpMethod;
 
 import java.util.Map;
@@ -63,6 +65,18 @@ class PublicSellerEndpointsTests extends EndpointTestSupport {
 				.andExpect(jsonPath("$.data[*].sellerId", contains(alpha.toString(), beta.toString())));
 		call(HttpMethod.GET, "/sellers?q=BETA SHOP " + tag, null, null)
 				.andExpect(jsonPath("$.data[*].sellerId", contains(beta.toString())));
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = { "dien thoai", "Điện Thoại", "ĐIỆN THOẠI", "điện thoại" })
+	void searchIgnoresVietnameseDiacriticsAndCase(String query) throws Exception {
+		String tag = tag();
+		UUID shop = seller("Điện Thoại Hà Nội " + tag, true);
+		seller("Dien Tu " + tag, true);
+
+		call(HttpMethod.GET, "/sellers?q=" + query + " ha noi " + tag, null, null).andExpect(status().isOk())
+				.andExpect(jsonPath("$.data[*].sellerId", contains(shop.toString())))
+				.andExpect(jsonPath("$.data[0].sellerName").value("Điện Thoại Hà Nội " + tag));
 	}
 
 	@Test

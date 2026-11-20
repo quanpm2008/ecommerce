@@ -856,7 +856,7 @@
     },
     "/api/v1/identity/auth/login" : {
       "post" : {
-        "description" : "Signs in to one account: `accountType` is the web app's channel (CUSTOMER, SELLER or ADMIN). Returns an access token (15 min) and the current profile; the refresh token is set as the HttpOnly `refresh_token` cookie (Path /api/v1/identity/auth), never in the body. Unknown email, wrong password and an account of another type all give the same error. A seller signs in only once approved.",
+        "description" : "Signs in to one account: `accountType` is the web app's channel (CUSTOMER, SELLER or ADMIN). Returns an access token (15 min) and the current profile; the refresh token is set as the HttpOnly `refresh_token` cookie (Path /api/v1/identity/auth), never in the body. Unknown email, wrong password and an account of another type all give the same error. A seller signs in only once approved. Limited per client IP; failed attempts never lock the account (P-18).",
         "operationId" : "login",
         "requestBody" : {
           "content" : {
@@ -918,6 +918,16 @@
               }
             },
             "description" : "- `WRONG_AUTH_METHOD`: This email is registered with a different sign-in method"
+          },
+          "429" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description" : "- `RATE_LIMITED`: Too many requests"
           }
         },
         "security" : [ ],

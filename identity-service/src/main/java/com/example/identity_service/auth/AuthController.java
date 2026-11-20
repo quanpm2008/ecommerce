@@ -128,10 +128,13 @@ public class AuthController {
 			+ "(CUSTOMER, SELLER or ADMIN). Returns an access token (15 min) and the current profile; the refresh token is "
 			+ "set as the HttpOnly `refresh_token` cookie (Path /api/v1/identity/auth), never in the body. "
 			+ "Unknown email, wrong password and an account of another type all give the same error. A seller signs in "
-			+ "only once approved.")
-	@ErrorCodes({ INVALID_CREDENTIALS, WRONG_AUTH_METHOD, SELLER_PENDING_APPROVAL, SELLER_REJECTED, ACCOUNT_DISABLED })
+			+ "only once approved. Limited per client IP; failed attempts never lock the account (P-18).")
+	@ErrorCodes({ INVALID_CREDENTIALS, WRONG_AUTH_METHOD, SELLER_PENDING_APPROVAL, SELLER_REJECTED, ACCOUNT_DISABLED,
+			RATE_LIMITED })
 	@PostMapping("/login")
-	ResponseEntity<ApiResponse<AuthTokens>> login(@Valid @RequestBody AuthRequests.Login body) {
+	ResponseEntity<ApiResponse<AuthTokens>> login(@Valid @RequestBody AuthRequests.Login body,
+			HttpServletRequest request) {
+		rateLimiter.check("login", request.getRemoteAddr(), limits.login());
 		return withCookie(auth.login(body));
 	}
 

@@ -38,6 +38,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * between tests.
  */
 @SpringBootTest(properties = { "eureka.client.enabled=false", "identity.ban-reconciliation.enabled=false",
+		// fixtures sign in often from one test IP; AuthEndpointsTests proves the limit itself
+		"identity.rate-limit.login.limit=30",
 		"identity.internal.clients.order-service=" + EndpointTestSupport.ORDER_TOKEN,
 		"identity.internal.clients.notification-service=" + EndpointTestSupport.NOTIFICATION_TOKEN,
 		"identity.internal.clients.gateway-service=" + EndpointTestSupport.GATEWAY_TOKEN,

@@ -83,6 +83,20 @@ class AuthEndpointsTests extends EndpointTestSupport {
 	}
 
 	@Test
+	void loginIsRateLimitedPerClientIpButNeverLocksTheAccount() throws Exception {
+		String email = uniqueEmail();
+		registerCustomer(email);
+		for (int i = 1; i <= 30; i++) { // identity.rate-limit.login.limit in the tests
+			login(email, "Wrong-password-1").andExpect(status().isUnauthorized());
+		}
+
+		login(email, PASSWORD).andExpect(status().isTooManyRequests())
+				.andExpect(jsonPath("$.error.code").value("RATE_LIMITED"));
+		clientIp = randomIp();
+		login(email, PASSWORD).andExpect(status().isOk()); // P-18: no lockout after failures
+	}
+
+	@Test
 	void registrationIsRateLimitedPerClientIp() throws Exception {
 		String email = uniqueEmail();
 		register(email, uniquePhone(), PASSWORD).andExpect(status().isCreated());
