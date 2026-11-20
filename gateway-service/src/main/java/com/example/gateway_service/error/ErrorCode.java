@@ -7,6 +7,7 @@ public enum ErrorCode {
 
 	VALIDATION_ERROR(HttpStatus.BAD_REQUEST, "The request is not valid."),
 	UNAUTHENTICATED(HttpStatus.UNAUTHORIZED, "Authentication is required."),
+	TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "The access token has expired. Refresh it and try again."),
 	FORBIDDEN(HttpStatus.FORBIDDEN, "Access is denied."),
 	NOT_FOUND(HttpStatus.NOT_FOUND, "No resource exists at this path."),
 	RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "Too many requests. Try again later."),

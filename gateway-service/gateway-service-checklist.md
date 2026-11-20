@@ -11,7 +11,7 @@ Paths are written in full (`/api/v1/...`, `/internal/v1/...`) because the gatewa
 - [x] One web stack chosen and the other removed from `pom.xml` (`gateway-server-webmvc` servlet *or* reactive `webflux`); security and route config use the matching APIs — servlet (`gateway-server-webmvc`), the same as identity-service; webflux and webflux-test removed, `dependency:tree` has no webflux or reactor-netty
 - [x] Temporary `HelloController` and the temporary `SecurityConfig` replaced (no `/hello` left) — `security.SecurityConfig` is stateless with no CSRF, form login, basic auth or logout; it lets everything through until JWT (§3)
 - [x] `mvn test` passes with no manual env vars and no running Eureka or downstream services — `eureka.client.enabled=false` in tests; downstream stubs (e.g. WireMock) arrive with routing (§1)
-- [ ] All settings come from properties with env overrides: Eureka URL, JWT issuer/audience/JWKS URL, CORS origins, rate limits, timeouts — *Eureka URL, actuator and (§1) timeouts done; each later step adds its own properties (§3 JWT, §6 CORS, §7 rate limits). Tick when those are in.*
+- [ ] All settings come from properties with env overrides: Eureka URL, JWT issuer/audience/JWKS URL, CORS origins, rate limits, timeouts — *Eureka URL, actuator, (§1) timeouts and (§3) JWT done; §6 CORS and §7 rate limits add theirs. Tick when those are in.*
 - [x] No datasource needed: the app starts without `SPRING_DATASOURCE_*` — no JDBC on the classpath (`startsWithoutADatabase`); in compose the gateway has its own `depends_on` (Eureka only) and `environment` (Eureka URL only)
 - [x] `GET /actuator/health` is public and reports UP; other actuator endpoints are not exposed — no details or components, `/actuator` index page off; `GatewayServiceApplicationTests` and a manual check in Docker
 - [x] Port 8081 consistent across `application.properties`, Dockerfile `EXPOSE` and `compose.yaml`; the API §3.1 base URL `http://localhost:8080/api/v1` conflict resolved and written down (8080 is cart-service) — the gateway stays on 8081; the FE base URL is `http://localhost:8081/api/v1` (`DEVELOPMENT.md`)
@@ -55,18 +55,18 @@ Routes resolve services through Eureka (`lb://<spring.application.name>`), never
 
 Tokens are issued by identity-service: RS256, `iss` `ecommerce-identity`, `aud` `ecommerce-api`, public key at `http://identity-service:8083/.well-known/jwks.json`.
 
-- [ ] The JWKS is fetched from identity-service and cached; the URL can be configured (in Docker this is a service URL, not localhost)
-- [ ] The gateway starts and serves public routes while identity-service is still starting (keys are fetched lazily or retried, not required at boot)
-- [ ] Only RS256 is accepted: `alg: none`, HS256 signed with the public key, and other algorithms → 401
-- [ ] Bad signature, wrong `iss`, wrong `aud`, expired `exp`, or a missing `sub`/`sessionId` → 401
-- [ ] Expired token → 401 `TOKEN_EXPIRED`; any other invalid token → 401 `UNAUTHENTICATED`, both in the error envelope with `requestId`
-- [ ] Malformed `Authorization` header (not `Bearer <token>`, empty token, several Bearer values) → 401
-- [ ] Small clock skew is allowed and the amount can be configured
-- [ ] A valid token is forwarded unchanged as `Authorization: Bearer ...` so the service can verify it again
-- [ ] Identity rotates its signing key (restart without `IDENTITY_TOKEN_SIGNING_KEY`): new tokens are accepted after the JWKS refreshes, without restarting the gateway
-- [ ] Public endpoints work with **no** token: register, register-seller, login, refresh, password forgot/reset, regions, public sellers, public catalog reads, and guest cart if Cart allows it. How the gateway knows a path is public is decided and documented: a path allowlist at the gateway, or "verify only when a token is sent" and leave the decision to the service
-- [ ] Decided and documented what happens to an invalid token sent to a public endpoint (reject with 401, or drop it and forward the request as anonymous)
-- [ ] The gateway does not decide permissions or roles, does not read `roles` from the token, and does not cache authorization. Whether it also calls `POST /internal/v1/identity/auth/authorization-context` (the spec lists the Gateway as a consumer) is decided. If it does: it needs its own `X-Service-Token`, revoked session or stale `authzVersion` → 401, Identity down → 503 `SERVICE_UNAVAILABLE`, never allowed through
+- [x] The JWKS is fetched from identity-service and cached; the URL can be configured (in Docker this is a service URL, not localhost) — `GATEWAY_JWT_JWK_SET_URI`, compose sets `http://identity-service:8083/.well-known/jwks.json`; fetch timeout `GATEWAY_JWT_JWKS_TIMEOUT` (2 s)
+- [x] The gateway starts and serves public routes while identity-service is still starting (keys are fetched lazily or retried, not required at boot) — `JwksUnavailableTests`; a token that can't be checked then is 503 `SERVICE_UNAVAILABLE`, never let through
+- [x] Only RS256 is accepted: `alg: none`, HS256 signed with the public key, and other algorithms → 401 — also RS512 and PS256 with the right key
+- [x] Bad signature, wrong `iss`, wrong `aud`, expired `exp`, or a missing `sub`/`sessionId` → 401 — 19 bad tokens in `JwtTests` (also missing `exp`, future `nbf`, blank or non-string `sub`/`sessionId`, tampered payload); in Docker against identity-service's real tokens
+- [x] Expired token → 401 `TOKEN_EXPIRED`; any other invalid token → 401 `UNAUTHENTICATED`, both in the error envelope with `requestId` — `TOKEN_EXPIRED` only when expiry is the only problem; `WWW-Authenticate: Bearer` (no token) or `Bearer error="invalid_token"`
+- [x] Malformed `Authorization` header (not `Bearer <token>`, empty token, several Bearer values) → 401 — `StrictBearerTokenResolver`; also `Basic ...` and two `Authorization` headers, on public endpoints too; a token in the query string is not accepted
+- [x] Small clock skew is allowed and the amount can be configured — `GATEWAY_JWT_CLOCK_SKEW` (60 s, as identity-service)
+- [x] A valid token is forwarded unchanged as `Authorization: Bearer ...` so the service can verify it again
+- [x] Identity rotates its signing key (restart without `IDENTITY_TOKEN_SIGNING_KEY`): new tokens are accepted after the JWKS refreshes, without restarting the gateway — an unknown `kid` triggers a refetch; `aNewSigningKeyIsPickedUpWithoutRestart` and in Docker (identity restarted, new token 200, old token 401)
+- [x] Public endpoints work with **no** token: register, register-seller, login, refresh, password forgot/reset, regions, public sellers, public catalog reads, and guest cart if Cart allows it. How the gateway knows a path is public is decided and documented: a path allowlist at the gateway, or "verify only when a token is sent" and leave the decision to the service — **allowlist** (team decision 2026-11-02): the 16 PUBLIC endpoints of the spec in `security.PublicEndpoints`; every other routed path needs a valid token (401); unrouted paths stay 404. No guest cart (API §9)
+- [x] Decided and documented what happens to an invalid token sent to a public endpoint (reject with 401, or drop it and forward the request as anonymous) — **reject with 401** (team decision), as identity-service does
+- [x] The gateway does not decide permissions or roles, does not read `roles` from the token, and does not cache authorization. Whether it also calls `POST /internal/v1/identity/auth/authorization-context` (the spec lists the Gateway as a consumer) is decided. If it does: it needs its own `X-Service-Token`, revoked session or stale `authzVersion` → 401, Identity down → 503 `SERVICE_UNAVAILABLE`, never allowed through — **not called** (team decision): each service calls it (API §2.3); a logged-out token passes the gateway and is refused by the service (checked in Docker)
 
 ## 4. Headers (API §2.3, §3.10)
 
@@ -85,7 +85,7 @@ Tokens are issued by identity-service: RS256, `iss` `ecommerce-identity`, `aud` 
 
 ## 5. Error envelope (API §3.3, §3.4, §4.1)
 
-- [ ] Every error the gateway itself produces uses `{ "error": { code, message, details, requestId } }` with `Content-Type: application/json`; never the Spring Whitelabel page, a default `/error` JSON, or an empty 401/403 body — *`/error` (step 1) and Tomcat's own rejections (step 2) done; 401/403 come with JWT (step 3)*
+- [ ] Every error the gateway itself produces uses `{ "error": { code, message, details, requestId } }` with `Content-Type: application/json`; never the Spring Whitelabel page, a default `/error` JSON, or an empty 401/403 body — *`/error` (step 1), Tomcat's own rejections (step 2) and 401/503 for tokens (step 3) done; 429 comes with rate limiting (step 7). The gateway never answers 403 itself.*
 - [ ] Codes come only from API §4.1: `UNAUTHENTICATED`, `TOKEN_EXPIRED` (401), `FORBIDDEN` (403), `NOT_FOUND` (404), `RATE_LIMITED` (429), `INTERNAL_ERROR` (500), `SERVICE_UNAVAILABLE` (503)
 - [ ] Messages in English (team decision, same as identity-service); no stack traces, class names or downstream host names in the body
 - [ ] Request body too large → rejected with a clear error (limit can be configured; status and code decided)

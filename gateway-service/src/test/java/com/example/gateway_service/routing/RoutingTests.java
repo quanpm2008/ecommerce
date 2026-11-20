@@ -13,6 +13,7 @@ import java.util.stream.Stream;
 import com.example.gateway_service.support.GatewayClient;
 import com.example.gateway_service.support.StubService;
 import com.example.gateway_service.support.StubService.Reply;
+import com.example.gateway_service.support.TestTokens;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,7 +32,8 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Checklist §1: the API §2.2 route table, pass-through of requests and responses, and 404 for everything else. Each
  * service is a {@link StubService} registered through Spring Cloud's simple discovery client (Eureka off), so the
- * real load-balancer path is used; product-service has two instances.
+ * real load-balancer path is used; product-service has two instances. Requests carry a valid token (token rules are
+ * {@code JwtTests}); unknown paths are 404 even without one.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
 		properties = "eureka.client.enabled=false")
@@ -43,29 +45,37 @@ class RoutingTests {
 
 	static final StubService SECOND_CATALOG = StubService.start("product-service-2");
 
+	static final StubService JWKS = TestTokens.startJwks(TestTokens.KEY);
+
 	static final ObjectMapper JSON = new ObjectMapper();
 
 	@LocalServerPort
 	int port;
 
+	/** Signed in, so protected routes are forwarded too. */
 	GatewayClient gateway;
+
+	GatewayClient anonymous;
 
 	@DynamicPropertySource
 	static void instances(DynamicPropertyRegistry registry) {
 		SERVICES.forEach((id, stub) -> registry.add(
 				"spring.cloud.discovery.client.simple.instances." + id + "[0].uri", stub::uri));
 		registry.add("spring.cloud.discovery.client.simple.instances.product-service[1].uri", SECOND_CATALOG::uri);
+		registry.add("gateway.jwt.jwk-set-uri", () -> TestTokens.jwksUri(JWKS));
 	}
 
 	@AfterAll
 	static void stopStubs() {
 		SERVICES.values().forEach(StubService::close);
 		SECOND_CATALOG.close();
+		JWKS.close();
 	}
 
 	@BeforeEach
 	void setUp() {
-		gateway = new GatewayClient(port);
+		anonymous = new GatewayClient(port);
+		gateway = anonymous.withToken(TestTokens.valid());
 		allStubs().forEach(StubService::reset);
 	}
 
@@ -102,7 +112,7 @@ class RoutingTests {
 			"/api/v1/unknown", "/api/v1", "/api/v2/identity/users/me", "/identity/users/me", "/products",
 			"/.well-known/jwks.json", "/v3/api-docs", "/swagger-ui.html", "/swagger-ui/index.html", "/error", "/" })
 	void everythingElseIsANotFoundEnvelope(String path) throws Exception {
-		HttpResponse<String> response = gateway.get(path, "X-Request-Id", "req-404", "Accept", "text/html");
+		HttpResponse<String> response = anonymous.get(path, "X-Request-Id", "req-404", "Accept", "text/html");
 
 		assertThat(response.statusCode()).isEqualTo(404);
 		assertThat(response.headers().firstValue("Content-Type")).hasValueSatisfying(

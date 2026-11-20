@@ -129,7 +129,7 @@ class InternalPathTests {
 	void serviceTokenIsRemovedOnPublicRoutes() {
 		StubService identity = SERVICES.get("identity-service");
 
-		HttpResponse<String> response = gateway.get("/api/v1/identity/users/me", "X-Service-Token", SERVICE_TOKEN,
+		HttpResponse<String> response = gateway.get("/api/v1/identity/sellers", "X-Service-Token", SERVICE_TOKEN,
 				"x-service-token", "second-value", "X-SERVICE-TOKEN", "third-value");
 
 		assertThat(response.statusCode()).isEqualTo(200);

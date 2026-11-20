@@ -20,8 +20,20 @@ public final class GatewayClient {
 
 	private final int port;
 
+	private final String[] defaultHeaders;
+
 	public GatewayClient(int port) {
+		this(port, new String[0]);
+	}
+
+	private GatewayClient(int port, String[] defaultHeaders) {
 		this.port = port;
+		this.defaultHeaders = defaultHeaders;
+	}
+
+	/** A client that sends {@code Authorization: Bearer <token>} with every request. */
+	public GatewayClient withToken(String token) {
+		return new GatewayClient(port, new String[] { "Authorization", "Bearer " + token });
 	}
 
 	public HttpResponse<String> get(String target, String... headers) {
@@ -33,6 +45,9 @@ public final class GatewayClient {
 				.timeout(Duration.ofSeconds(10))
 				.method(method, body == null ? HttpRequest.BodyPublishers.noBody()
 						: HttpRequest.BodyPublishers.ofString(body));
+		if (defaultHeaders.length > 0) {
+			request.headers(defaultHeaders);
+		}
 		if (headers.length > 0) {
 			request.headers(headers);
 		}

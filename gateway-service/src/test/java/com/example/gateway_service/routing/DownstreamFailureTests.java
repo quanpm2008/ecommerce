@@ -8,6 +8,7 @@ import java.time.Duration;
 import com.example.gateway_service.support.GatewayClient;
 import com.example.gateway_service.support.StubService;
 import com.example.gateway_service.support.StubService.Reply;
+import com.example.gateway_service.support.TestTokens;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,6 +32,8 @@ class DownstreamFailureTests {
 
 	static final StubService SLOW_ORDER = StubService.start("order-service");
 
+	static final StubService JWKS = TestTokens.startJwks(TestTokens.KEY);
+
 	static final ObjectMapper JSON = new ObjectMapper();
 
 	@LocalServerPort
@@ -42,16 +45,18 @@ class DownstreamFailureTests {
 	static void instances(DynamicPropertyRegistry registry) {
 		registry.add("spring.cloud.discovery.client.simple.instances.identity-service[0].uri", StubService::refusedUri);
 		registry.add("spring.cloud.discovery.client.simple.instances.order-service[0].uri", SLOW_ORDER::uri);
+		registry.add("gateway.jwt.jwk-set-uri", () -> TestTokens.jwksUri(JWKS));
 	}
 
 	@AfterAll
 	static void stopStubs() {
 		SLOW_ORDER.close();
+		JWKS.close();
 	}
 
 	@BeforeEach
 	void setUp() {
-		gateway = new GatewayClient(port);
+		gateway = new GatewayClient(port).withToken(TestTokens.valid());
 		SLOW_ORDER.reply(Reply.json(200, "{\"data\":{}}").after(Duration.ofSeconds(2)));
 	}
 
