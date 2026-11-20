@@ -63,8 +63,8 @@ cũ được sửa theo đặc tả mới, không xóa để cho qua.
 - [x] G5 CORS — `51e15cc`
 - [x] G6 Rate limit — `51e15cc`
 - [x] G7 Log/Docker — `5405244`; smoke test Docker 24/24 + TOKEN_STALE + identity dừng → 503
-- [ ] I1 accountType/RBAC
-- [ ] I2 Seller trên User + SellerApplication
+- [x] I1 accountType/RBAC — `469c19a`
+- [x] I2 Seller trên User + SellerApplication — `6844666`
 - [ ] I3 Địa chỉ + địa giới tĩnh
 - [ ] I4 Vòng đời cấm/J7
 - [ ] I5 Refresh cookie

@@ -271,6 +271,8 @@ Các nội dung sau **đề xuất/cần review trước code**, không tự t�
 | OQ-009 | identity-service/should.md A8; API enum vs DB §6 | Tên AuditAction khác nhau giữa source API và DB chưa được baseline hiệu chỉnh cụ thể; giữ mở, không tự rename enum/CHECK. |
 | OQ-010 | API §3.4 N-04; P-18; SAD C.5 | Giá trị rate limit tại Gateway và giới hạn body **đã chọn 20/11/2026** tại [quyết định 0002](../decisions/0002-gioi-han-tan-suat-gateway.md) (đề xuất của team, theo từng instance). N-04 chính thức và bộ đếm dùng chung cho nhiều instance vẫn mở. |
 | OQ-011 | API §6.1 #30/#31 | Token xác minh email đăng ký lại Seller "một lần, có hạn" không có thời hạn trong nguồn. **Đã chọn 20/11/2026:** 30 phút từ khi tạo, dùng một lần, lưu dạng hash như P-05; cấu hình được. |
+| OQ-012 | API §6.1 #30, §7.2 | API không đặt tên sự kiện gửi email xác minh đăng ký lại Seller. **Đã chọn 20/11/2026:** Identity ghi Outbox `seller.reapplication_requested` {userId, sellerId, verificationUrl (bí mật, không log), expiresAt}, theo mẫu `password.reset_requested`; link = cấu hình `identity.seller-reapplication.link-base` + `?token=`. Cần bổ sung vào API §7.2 và hợp đồng Notification. |
+| OQ-013 | API §6.1 #13 | Bảng endpoint ghi quyền `seller:profile:own`, mục chi tiết ghi `account:update:own` cho purpose AVATAR mọi loại tài khoản. Implementation theo mục chi tiết (20/11/2026); bảng cần sửa cho khớp. |
 
 Hai hạn 7 ngày và P-WD-01=10.000 VND đã chốt; không đưa lại TBD. ADR-05 đã hoãn
 phân tích, P-14/P-15 không chặn Must tra cứu vận hành. Bảng nguồn tham số SAD:
