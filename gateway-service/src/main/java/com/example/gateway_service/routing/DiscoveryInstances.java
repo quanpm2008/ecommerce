@@ -6,14 +6,14 @@ import org.springframework.context.annotation.Bean;
 
 /**
  * Load-balancer configuration applied in each service's own child context (see {@link LoadBalancingConfig}): instances
- * from the blocking discovery client, without a cache. Deliberately not annotated and not nested in a configuration
+ * from the reactive discovery client, without a cache. Deliberately not annotated and not nested in a configuration
  * class, so the main context never loads it (there it has no service id).
  */
 class DiscoveryInstances {
 
 	@Bean
 	ServiceInstanceListSupplier discoveryClientServiceInstanceListSupplier(ConfigurableApplicationContext context) {
-		return ServiceInstanceListSupplier.builder().withBlockingDiscoveryClient().build(context);
+		return ServiceInstanceListSupplier.builder().withDiscoveryClient().build(context);
 	}
 
 }

@@ -1,40 +1,38 @@
 # gateway-service — Progress
 
-API Gateway for the platform: routing, JWT verification, stripping client-supplied identity headers, blocking `/internal/**`, rate limiting and CORS (see `docs/api.docx` §2.2–2.3). The definition of done is in `gateway-service-checklist.md`.
+API Gateway for the platform: routing, JWT verification, stripping client-supplied identity headers, blocking `/internal/**`, rate limiting and CORS (see `docs/requirements/api_specs.md` §2.1–2.3). The definition of done is in `gateway-service-checklist.md`. Work plan: `docs/plans/active/identity-gateway-alignment.md`.
 
 ## Done
 
 - **Scaffold**: Spring Boot 4.1.2, Java 21, Spring Cloud 2025.1.4, package `com.example.gateway_service`.
-- **Web stack: servlet.** `spring-cloud-starter-gateway-server-webmvc`, the same model as identity-service. `spring-boot-starter-webflux` and its test starter were removed, so routes, filters and security use the servlet/MVC APIs.
+- **Web stack: reactive (WebFlux on Netty).** `spring-cloud-starter-gateway-server-webflux`, as the accepted baseline requires (SAD ADR-02, `docs/engineering.md` REQ-ENG-002). Routes, filters and security use the reactive APIs; there is no servlet container or Spring MVC on the classpath (`runsOnTheReactiveStackOnly`). Until 2026-11-20 it was servlet-based (WebMVC).
 - **Dependencies** (`pom.xml`):
-  - `spring-cloud-starter-gateway-server-webmvc` for routing
+  - `spring-cloud-starter-gateway-server-webflux` for routing
   - `spring-boot-starter-security` and `spring-boot-starter-security-oauth2-resource-server` for JWT checks
   - `spring-cloud-starter-netflix-eureka-client` for service discovery
   - `spring-boot-starter-actuator` for health checks
-  - test starters: actuator, security, oauth2-resource-server, webmvc (MockMvc)
+  - test starters: actuator, security, oauth2-resource-server, webflux
 - **Config** (`application.properties`): `spring.application.name=gateway-service`, `server.port=8081`, Eureka at `http://localhost:8761/eureka/`. Actuator exposes only `health`, with no details or components, and the `/actuator` index page is off.
 - **Docker**:
-  - Two-stage Dockerfile: Maven build, then `eclipse-temurin:21-jre`, running as UID 10001 and exposing 8081.
+  - The team's single-stage dev image (`maven:3.9-eclipse-temurin-21`, `mvn spring-boot:run`), exposing 8081; the root `compose.yaml` mounts `src` read-only.
   - `.dockerignore`.
 - **Compose**: uses the `x-eureka-client` anchor but overrides `depends_on` (only `discovery-service`) and `environment` (only the Eureka URL via `SPRING_APPLICATION_JSON`, anchor `*eureka-url-json`), because the gateway has no database. Published on port 8081.
-- **Security** (`security.SecurityConfig`): stateless, with no CSRF, HTTP session, request cache, form login, basic auth or logout. It lets every request through for now; that's only safe because there are no routes yet. JWT verification replaces it in checklist §3.
+- **Security** (`security.SecurityConfig`, a `SecurityWebFilterChain`): stateless (no-op security context repository and request cache), with no CSRF, form login, basic auth or logout.
 - **Tests** (`GatewayServiceApplicationTests`, no Eureka, no database): no `DataSource`, public detail-free health, other actuator endpoints 404, `/hello` gone, no session cookie or login challenge.
 - **Checklist step 0 (Foundation)** done except the externalized-settings item, which finishes as the later steps add their properties.
 - **Routing** (checklist §1, `routing` package):
-  - `ServiceRoute` is the API §2.2 table (service id → public paths); `RoutesConfig` builds one route per service: any method, path unchanged, instance chosen through Eureka (`lb(...)` + `http()`).
-  - `LoadBalancingConfig` / `DiscoveryInstances`: instances come straight from the discovery client, with no LoadBalancer cache (`spring.cloud.loadbalancer.cache.enabled=false`).
-  - `DownstreamErrors`: no instance, connection refused or read timeout → 503 `SERVICE_UNAVAILABLE`; anything else → 500 `INTERNAL_ERROR` (logged). It is registered as the first route filter, because the builder's `onError` only wraps the handler, not the `lb` filter.
-  - Timeouts are Spring Boot's `spring.http.clients.*`: connect `GATEWAY_CONNECT_TIMEOUT` (2 s), read `GATEWAY_READ_TIMEOUT` (30 s).
-- **Errors** (`error` package): `ErrorResponse` / `ErrorCode` (the API §4.1 codes the gateway uses) and `GatewayErrorController`, which replaces Boot's `/error` so that 404s and other gateway-side errors use the envelope. `web.RequestIds` reads a safe `X-Request-Id` (identity-service's pattern); generating one is §4. Static resource mappings are off and `PageNotFound` warnings are muted.
-- **`/internal/**` blocked** (checklist §2): `security.InternalPathFilter`, the first filter of the security chain, answers 404 `NOT_FOUND` (like an unknown path, so nothing is revealed) to any path with a segment `internal`, in any case and after percent-decoding. Encoded `/`, `\`, `.`, `;`, `//` and `../` are rejected with 400 before that, by Tomcat or Spring Security's `StrictHttpFirewall`. A client-sent `X-Service-Token` is removed from every proxied request.
+  - `ServiceRoute` is the API §2.2 table (service id → public paths); `RoutesConfig` builds one route per service with `RouteLocatorBuilder`: any method, path unchanged, instance chosen through Eureka (`lb://<service>`).
+  - `LoadBalancingConfig` / `DiscoveryInstances`: instances come straight from the (reactive) discovery client, with no LoadBalancer cache (`spring.cloud.loadbalancer.cache.enabled=false`).
+  - Timeouts: connect `GATEWAY_CONNECT_TIMEOUT` (2 s, `gateway.proxy.connect-timeout`, applied by an `HttpClientCustomizer`), response `GATEWAY_READ_TIMEOUT` (30 s, `spring.cloud.gateway.server.webflux.httpclient.response-timeout`).
+- **Errors** (`error` package): `ErrorResponse` / `ErrorCode` (the API §4.1 codes the gateway uses), `ErrorWriter` (writes the envelope with the request id; every gateway-side error goes through it) and `GatewayErrorHandler`, an `ErrorWebExceptionHandler` ahead of Boot's: no instance, connection refused or response timeout (504 inside the gateway) → 503 `SERVICE_UNAVAILABLE`; no route → 404 `NOT_FOUND`; other statuses keep their status; anything else → 500 `INTERNAL_ERROR` (logged). `web.RequestIds` reads a safe `X-Request-Id` (identity-service's pattern); generating one is §4. Static resource mappings are off.
+- **`/internal/**` blocked** (checklist §2): `security.InternalPathFilter`, a `WebFilter` first in the security chain, answers 404 `NOT_FOUND` (like an unknown path, so nothing is revealed) to any path with a segment `internal`, in any case and after percent-decoding. Encoded `/`, `\`, `.`, `;`, `//` and `../` are rejected with 400 `VALIDATION_ERROR` before that by Spring Security's `StrictServerWebExchangeFirewall` (its `ServerExchangeRejectedHandler` writes the envelope). A client-sent `X-Service-Token` is removed from every proxied request.
 - **Access tokens** (checklist §3, `security` package; team decisions 2026-11-02):
-  - `JwtConfig`: RS256 only, signature against identity-service's JWKS (`gateway.jwt.*`, fetched on the first token, cached, refetched for an unknown `kid`), `exp` with 60 s skew, `iss`, `aud`, non-blank `sub` and `sessionId`. Session state and permissions are left to each service (the gateway does not call authorization-context).
+  - `JwtConfig`: a `NimbusReactiveJwtDecoder`, RS256 only, signature against identity-service's JWKS (`gateway.jwt.*`, fetched on the first token over a `WebClient` with `gateway.jwt.jwks-timeout`, cached, refetched for an unknown `kid`), `exp` with 60 s skew, `iss`, `aud`, non-blank `sub` and `sessionId`. Session state and permissions are left to each service (the gateway does not call authorization-context).
   - `PublicEndpoints`: the spec's 16 PUBLIC endpoints (11 Identity, 5 Catalog) are the only routed requests forwarded without a token; every other routed path needs a valid one. Unrouted paths stay 404.
-  - Any `Authorization` header is checked, even on public endpoints: a bad or malformed one is a 401 (`StrictBearerTokenResolver`: exactly one `Bearer <token>`, no query-string tokens).
+  - Any `Authorization` header is checked, even on public endpoints: a bad or malformed one is a 401 (`StrictBearerTokenConverter`: exactly one `Bearer <token>`, no query-string tokens).
   - `AuthenticationErrors`: 401 `UNAUTHENTICATED` / `TOKEN_EXPIRED` in the envelope with `WWW-Authenticate`; JWKS unreachable → 503 `SERVICE_UNAVAILABLE`. Tokens are never logged.
-- **Tomcat error page** (`error.JsonErrorReportValve`, installed by `TomcatErrorPageConfig`): requests Tomcat rejects itself (e.g. `%2F` in the path) also get the JSON envelope instead of Tomcat's HTML.
 - **Token tests**: `JwtTests` (public vs protected routes, 19 bad tokens, expiry and skew, malformed headers, forwarding, key rotation) and `JwksUnavailableTests`, with test keys and a JWKS stub (`support.TestTokens`).
-- **Routing tests**: `RoutingTests` (every prefix, 404s, pass-through of methods, query, body, headers and downstream statuses/bodies, round robin over two instances) and `DownstreamFailureTests` (refused, no instance, timeout), against JDK-`HttpServer` stubs (`support.StubService`) over real HTTP. 59 tests.
+- **Routing tests**: `RoutingTests` (every prefix, 404s, pass-through of methods, query, body, headers and downstream statuses/bodies, round robin over two instances) and `DownstreamFailureTests` (refused, no instance, timeout), against JDK-`HttpServer` stubs (`support.StubService`) over real HTTP. All gateway tests are black-box over real HTTP (`support.GatewayClient`), so they carried over unchanged when the stack moved to WebFlux.
 
 ## Not implemented yet
 
@@ -62,3 +60,4 @@ API Gateway for the platform: routing, JWT verification, stripping client-suppli
 | 2026-11-02 | Checklist step 1 (routing): API §2.2 route table through Eureka with paths unchanged, 404 envelope for everything else (`GatewayErrorController`), 503 `SERVICE_UNAVAILABLE` for no instance / refused / timeout, configurable timeouts, no LoadBalancer cache; 59 tests; register → login → me → refresh → logout checked through the gateway in Docker |
 | 2026-11-02 | Checklist step 2 (`/internal/**`): `InternalPathFilter` blocks any `internal` path segment (any case, decoded) with 404 before token checks; encoding tricks rejected with 400 (16 variants tested); `X-Service-Token` stripped from proxied requests; Tomcat's own error page replaced by the JSON envelope; 95 tests |
 | 2026-11-02 | Checklist step 3 (JWT): RS256 tokens checked against identity-service's JWKS (lazy, cached, refetched on a new `kid`), `exp` with skew, `iss`, `aud`, `sub`, `sessionId`; spec PUBLIC allowlist, bad tokens rejected even on public endpoints, no authorization-context call (team decisions); 401 `UNAUTHENTICATED` / `TOKEN_EXPIRED`, 503 when keys can't be fetched; 173 tests; real tokens and a key rotation checked in Docker |
+| 2026-11-20 | Moved to the reactive stack (SAD ADR-02 / REQ-ENG-002): `spring-cloud-starter-gateway-server-webflux` on Netty, `SecurityWebFilterChain`, `NimbusReactiveJwtDecoder`, `WebFilter` for `/internal/**`, one `ErrorWebExceptionHandler` + `ErrorWriter` for every gateway error (replacing `GatewayErrorController`, `DownstreamErrors` and the Tomcat valve), firewall rejections as a 400 envelope. Every existing black-box test passes unchanged (only the timeout property name moved); `GatewayServiceApplicationTests` uses real HTTP instead of MockMvc and checks no servlet stack is present; 174 tests |

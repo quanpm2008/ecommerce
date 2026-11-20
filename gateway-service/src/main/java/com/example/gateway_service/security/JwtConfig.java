@@ -7,10 +7,12 @@ import java.util.List;
 
 import com.example.gateway_service.error.ErrorCode;
 
+import io.netty.channel.ChannelOption;
+
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.OAuth2ErrorCodes;
@@ -20,10 +22,13 @@ import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtClaimNames;
 import org.springframework.security.oauth2.jwt.JwtClaimValidator;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.security.oauth2.jwt.JwtIssuerValidator;
-import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.security.oauth2.jwt.NimbusReactiveJwtDecoder;
+import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
+import org.springframework.web.reactive.function.client.WebClient;
+
+import reactor.netty.http.client.HttpClient;
 
 /**
  * Access token checks at the gateway (API §2.3): RS256 only, signature against identity-service's JWKS, {@code exp}
@@ -41,16 +46,20 @@ class JwtConfig {
 	static final String SESSION_ID = "sessionId";
 
 	@Bean
-	JwtDecoder jwtDecoder(JwtProperties properties) {
-		SimpleClientHttpRequestFactory http = new SimpleClientHttpRequestFactory();
-		http.setConnectTimeout(properties.jwksTimeout());
-		http.setReadTimeout(properties.jwksTimeout());
-		NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(properties.jwkSetUri().toString())
+	ReactiveJwtDecoder jwtDecoder(JwtProperties properties) {
+		HttpClient http = HttpClient.create()
+				.option(ChannelOption.CONNECT_TIMEOUT_MILLIS, Math.toIntExact(properties.jwksTimeout().toMillis()))
+				.responseTimeout(properties.jwksTimeout());
+		NimbusReactiveJwtDecoder decoder = NimbusReactiveJwtDecoder.withJwkSetUri(properties.jwkSetUri().toString())
 				.jwsAlgorithm(SignatureAlgorithm.RS256)
-				.restOperations(new RestTemplate(http))
+				.webClient(WebClient.builder().clientConnector(new ReactorClientHttpConnector(http)).build())
 				.build();
 		decoder.setJwtValidator(validator(properties, Clock.systemUTC()));
-		return decoder;
+		// The reactive decoder reports an unreachable JWKS as an IllegalStateException, which would skip the
+		// authentication failure handling; as a (non-"bad token") JwtException it becomes an AuthenticationServiceException,
+		// which AuthenticationErrors answers with 503.
+		return token -> decoder.decode(token).onErrorMap(IllegalStateException.class,
+				failure -> new JwtException("Cannot fetch identity-service's signing keys", failure));
 	}
 
 	static OAuth2TokenValidator<Jwt> validator(JwtProperties properties, Clock clock) {

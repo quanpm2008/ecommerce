@@ -2,7 +2,7 @@ package com.example.gateway_service.web;
 
 import java.util.regex.Pattern;
 
-import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.server.reactive.ServerHttpRequest;
 
 /**
  * The request's {@code X-Request-Id} (API §3.10). Only ids in identity-service's safe format are used; anything else
@@ -18,8 +18,8 @@ public final class RequestIds {
 	}
 
 	/** The safe id sent with the request, or {@code null}. */
-	public static String current(HttpServletRequest request) {
-		String id = request.getHeader(HEADER);
+	public static String current(ServerHttpRequest request) {
+		String id = request.getHeaders().getFirst(HEADER);
 		return id != null && SAFE_ID.matcher(id).matches() ? id : null;
 	}
 

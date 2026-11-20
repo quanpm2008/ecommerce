@@ -1,26 +1,21 @@
 package com.example.gateway_service.security;
 
-import java.io.IOException;
-
 import com.example.gateway_service.error.ErrorCode;
-import com.example.gateway_service.error.ErrorResponse;
-import com.example.gateway_service.web.RequestIds;
-
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
+import com.example.gateway_service.error.ErrorWriter;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
+import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.security.authentication.AuthenticationServiceException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.jwt.JwtValidationException;
-import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.security.web.server.ServerAuthenticationEntryPoint;
 import org.springframework.stereotype.Component;
+import org.springframework.web.server.ServerWebExchange;
 
-import tools.jackson.databind.json.JsonMapper;
+import reactor.core.publisher.Mono;
 
 /**
  * Writes the gateway's authentication failures in the API §3.3 envelope (never logging the token):
@@ -33,46 +28,35 @@ import tools.jackson.databind.json.JsonMapper;
  * </ul>
  */
 @Component
-class AuthenticationErrors implements AuthenticationEntryPoint {
+class AuthenticationErrors implements ServerAuthenticationEntryPoint {
 
 	private static final Logger log = LoggerFactory.getLogger(AuthenticationErrors.class);
 
-	private final JsonMapper json;
+	private final ErrorWriter errors;
 
-	AuthenticationErrors(JsonMapper json) {
-		this.json = json;
+	AuthenticationErrors(ErrorWriter errors) {
+		this.errors = errors;
 	}
 
 	@Override
-	public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException failure)
-			throws IOException {
+	public Mono<Void> commence(ServerWebExchange exchange, AuthenticationException failure) {
+		ServerHttpRequest request = exchange.getRequest();
+		HttpHeaders headers = exchange.getResponse().getHeaders();
 		if (failure instanceof AuthenticationServiceException) {
 			log.warn("{} {}: cannot check the access token, keys unavailable ({})", request.getMethod(),
-					request.getRequestURI(), rootMessage(failure));
-			write(request, response, ErrorCode.SERVICE_UNAVAILABLE, ErrorCode.SERVICE_UNAVAILABLE.defaultMessage());
-			return;
+					request.getPath(), rootMessage(failure));
+			return errors.write(exchange, ErrorCode.SERVICE_UNAVAILABLE);
 		}
 		if (!(failure instanceof OAuth2AuthenticationException)) {
-			response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
-			write(request, response, ErrorCode.UNAUTHENTICATED, ErrorCode.UNAUTHENTICATED.defaultMessage());
-			return;
+			headers.set(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
+			return errors.write(exchange, ErrorCode.UNAUTHENTICATED);
 		}
-		response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer error=\"invalid_token\"");
+		headers.set(HttpHeaders.WWW_AUTHENTICATE, "Bearer error=\"invalid_token\"");
 		if (onlyExpired(failure)) {
-			write(request, response, ErrorCode.TOKEN_EXPIRED, ErrorCode.TOKEN_EXPIRED.defaultMessage());
+			return errors.write(exchange, ErrorCode.TOKEN_EXPIRED);
 		}
-		else {
-			log.debug("{} {}: invalid access token ({})", request.getMethod(), request.getRequestURI(),
-					failure.getMessage());
-			write(request, response, ErrorCode.UNAUTHENTICATED, "The access token is not valid.");
-		}
-	}
-
-	private void write(HttpServletRequest request, HttpServletResponse response, ErrorCode code, String message)
-			throws IOException {
-		response.setStatus(code.status().value());
-		response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-		json.writeValue(response.getOutputStream(), ErrorResponse.of(code, message, RequestIds.current(request)));
+		log.debug("{} {}: invalid access token ({})", request.getMethod(), request.getPath(), failure.getMessage());
+		return errors.write(exchange, ErrorCode.UNAUTHENTICATED, "The access token is not valid.");
 	}
 
 	private static boolean onlyExpired(Throwable failure) {

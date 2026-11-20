@@ -27,7 +27,7 @@ import tools.jackson.databind.ObjectMapper;
  * closed port, cart-service has no instance at all, and order-service answers after the (shortened) read timeout.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-		properties = { "eureka.client.enabled=false", "spring.http.clients.read-timeout=300ms" })
+		properties = { "eureka.client.enabled=false", "spring.cloud.gateway.server.webflux.httpclient.response-timeout=300ms" })
 class DownstreamFailureTests {
 
 	static final StubService SLOW_ORDER = StubService.start("order-service");

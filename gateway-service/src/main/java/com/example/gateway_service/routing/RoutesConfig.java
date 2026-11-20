@@ -1,24 +1,20 @@
 package com.example.gateway_service.routing;
 
-import static org.springframework.cloud.gateway.server.mvc.filter.BeforeFilterFunctions.removeRequestHeader;
-import static org.springframework.cloud.gateway.server.mvc.filter.LoadBalancerFilterFunctions.lb;
-import static org.springframework.cloud.gateway.server.mvc.handler.GatewayRouterFunctions.route;
-import static org.springframework.cloud.gateway.server.mvc.handler.HandlerFunctions.http;
+import java.time.Duration;
 
-import java.util.Arrays;
+import io.netty.channel.ChannelOption;
 
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.gateway.config.HttpClientCustomizer;
+import org.springframework.cloud.gateway.route.RouteLocator;
+import org.springframework.cloud.gateway.route.builder.RouteLocatorBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.servlet.function.HandlerFilterFunction;
-import org.springframework.web.servlet.function.RequestPredicate;
-import org.springframework.web.servlet.function.RequestPredicates;
-import org.springframework.web.servlet.function.RouterFunction;
-import org.springframework.web.servlet.function.ServerResponse;
 
 /**
  * One route per {@link ServiceRoute}: any method on its paths is proxied unchanged to an instance picked through
  * Eureka ({@code lb://<service>}). Downstream responses, error bodies included, are returned as they are; only failures
- * to get a response are turned into gateway errors by {@link DownstreamErrors}.
+ * to get a response become gateway errors ({@code error.GatewayErrorHandler}).
  * <p>
  * A client-sent {@code X-Service-Token} (the credential services use on {@code /internal}) is removed, so the gateway can
  * never carry one; services never accept it on public paths anyway.
@@ -26,29 +22,27 @@ import org.springframework.web.servlet.function.ServerResponse;
 @Configuration
 class RoutesConfig {
 
-	@Bean
-	RouterFunction<ServerResponse> serviceRoutes(DownstreamErrors errors) {
-		return Arrays.stream(ServiceRoute.values())
-				.map(service -> serviceRoute(service, errors))
-				.reduce(RouterFunction::and)
-				.orElseThrow();
-	}
-
 	static final String SERVICE_TOKEN = "X-Service-Token";
 
-	private static RouterFunction<ServerResponse> serviceRoute(ServiceRoute service, DownstreamErrors errors) {
-		RequestPredicate paths = service.paths().stream()
-				.map(RequestPredicates::path)
-				.reduce(RequestPredicate::or)
-				.orElseThrow();
-		// The error handler is the first filter so it wraps the load-balancer filter too ("no instance" is thrown
-		// there). The builder's onError(...) would not: Spring applies those inside every filter, around the handler only.
-		return route(service.serviceId())
-				.route(paths, http())
-				.before(removeRequestHeader(SERVICE_TOKEN))
-				.filter(HandlerFilterFunction.ofErrorHandler(Exception.class::isInstance, errors::toResponse))
-				.filter(lb(service.serviceId()))
-				.build();
+	@Bean
+	RouteLocator serviceRoutes(RouteLocatorBuilder builder) {
+		RouteLocatorBuilder.Builder routes = builder.routes();
+		for (ServiceRoute service : ServiceRoute.values()) {
+			routes.route(service.serviceId(), route -> route
+					.path(service.paths().toArray(String[]::new))
+					.filters(filters -> filters.removeRequestHeader(SERVICE_TOKEN))
+					.uri("lb://" + service.serviceId()));
+		}
+		return routes.build();
+	}
+
+	/**
+	 * Connect timeout of the proxy's HTTP client as a duration ({@code gateway.proxy.connect-timeout}); the gateway's own
+	 * property takes milliseconds. The read side is {@code spring.cloud.gateway.server.webflux.httpclient.response-timeout}.
+	 */
+	@Bean
+	HttpClientCustomizer connectTimeout(@Value("${gateway.proxy.connect-timeout}") Duration timeout) {
+		return client -> client.option(ChannelOption.CONNECT_TIMEOUT_MILLIS, Math.toIntExact(timeout.toMillis()));
 	}
 
 }

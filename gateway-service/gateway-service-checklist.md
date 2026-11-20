@@ -8,9 +8,9 @@ Paths are written in full (`/api/v1/...`, `/internal/v1/...`) because the gatewa
 
 ## 0. Foundation
 
-- [x] One web stack chosen and the other removed from `pom.xml` (`gateway-server-webmvc` servlet *or* reactive `webflux`); security and route config use the matching APIs — servlet (`gateway-server-webmvc`), the same as identity-service; webflux and webflux-test removed, `dependency:tree` has no webflux or reactor-netty
+- [x] One web stack, the one the accepted baseline names: Spring Cloud Gateway **WebFlux** (SAD ADR-02, `docs/engineering.md` REQ-ENG-002); security and route config use the reactive APIs — `spring-cloud-starter-gateway-server-webflux` on Netty since 2026-11-20 (it was servlet/WebMVC before); `dependency:tree` has no `spring-webmvc` or Tomcat, `runsOnTheReactiveStackOnly`
 - [x] Temporary `HelloController` and the temporary `SecurityConfig` replaced (no `/hello` left) — `security.SecurityConfig` is stateless with no CSRF, form login, basic auth or logout; it lets everything through until JWT (§3)
-- [x] `mvn test` passes with no manual env vars and no running Eureka or downstream services — `eureka.client.enabled=false` in tests; downstream stubs (e.g. WireMock) arrive with routing (§1)
+- [x] `mvn test` passes with no manual env vars and no running Eureka or downstream services — `eureka.client.enabled=false` in tests; downstream services are JDK `HttpServer` stubs (`support.StubService`)
 - [ ] All settings come from properties with env overrides: Eureka URL, JWT issuer/audience/JWKS URL, CORS origins, rate limits, timeouts — *Eureka URL, actuator, (§1) timeouts and (§3) JWT done; §6 CORS and §7 rate limits add theirs. Tick when those are in.*
 - [x] No datasource needed: the app starts without `SPRING_DATASOURCE_*` — no JDBC on the classpath (`startsWithoutADatabase`); in compose the gateway has its own `depends_on` (Eureka only) and `environment` (Eureka URL only)
 - [x] `GET /actuator/health` is public and reports UP; other actuator endpoints are not exposed — no details or components, `/actuator` index page off; `GatewayServiceApplicationTests` and a manual check in Docker
@@ -34,7 +34,7 @@ Routes resolve services through Eureka (`lb://<spring.application.name>`), never
 - [x] `/api/v1/identity/media/upload-urls` goes to Identity; `/api/v1/media/upload-urls` goes to Catalog
 - [x] There is no `/api/v1/catalog/**` route (API §10.5): it returns 404
 - [x] `/api/v1/seller/**` and `/api/v1/admin/**` paths not in the table (e.g. `/api/v1/admin/foo`) return 404 and are not sent to any service
-- [x] Unknown paths, and anything outside `/api/v1`, return 404 `NOT_FOUND` in the error envelope — `GatewayErrorController` replaces Boot's `/error`, so this also holds with `Accept: text/html`; static resource mappings are off
+- [x] Unknown paths, and anything outside `/api/v1`, return 404 `NOT_FOUND` in the error envelope — `error.GatewayErrorHandler` runs ahead of Boot's error handler, so this also holds with `Accept: text/html`; static resource mappings are off
 - [x] Method, query string, body and status code pass through unchanged (including 201, 202, 204 with no body, and 409/422 bodies) — raw query encoding kept; `Idempotency-Key`, `Accept-Language`, `Location` too
 - [x] Downstream error bodies are returned exactly as the service sent them; the gateway does not rewrite them — 400/401/409/422/503 checked byte for byte
 - [x] Service not registered in Eureka, connection refused, or timeout → 503 `SERVICE_UNAVAILABLE`; the timeout can be configured — `DownstreamFailureTests`; `GATEWAY_CONNECT_TIMEOUT` (2 s) and `GATEWAY_READ_TIMEOUT` (30 s, longer than the 15 s payment wait P-02)
@@ -47,7 +47,7 @@ Routes resolve services through Eureka (`lb://<spring.application.name>`), never
 
 - [x] Every external request to `/internal/**` is rejected and never reaches a service. Any method, with or without a token or `X-Service-Token`. Status and code decided and documented (404 `NOT_FOUND` hides the path, 403 `FORBIDDEN` is explicit) — **404 `NOT_FOUND`**, the same as an unknown path; `security.InternalPathFilter` is the first filter of the security chain (before any token check), `InternalPathTests`, manual check in Docker
 - [x] `/api/v1/internal/**` and other paths that put `internal/v1` under a public prefix are rejected too, or are not routable at all — any path segment `internal` (any case, after percent-decoding) is blocked; no public API path has one
-- [x] Encoding and normalization tricks cannot get through: `/api/v1/identity/../../internal/v1/...`, `%2e%2e`, `%2F`, `//internal/v1`, `/INTERNAL/v1`, `;` path parameters, trailing `/` — 400 `VALIDATION_ERROR` (Tomcat or Spring Security's `StrictHttpFirewall`) or 404; 16 variants tested, none reaches a service. Tomcat's own rejections also use the envelope (`error.JsonErrorReportValve`)
+- [x] Encoding and normalization tricks cannot get through: `/api/v1/identity/../../internal/v1/...`, `%2e%2e`, `%2F`, `//internal/v1`, `/INTERNAL/v1`, `;` path parameters, trailing `/` — 400 `VALIDATION_ERROR` (Spring Security's `StrictServerWebExchangeFirewall`, answered in the envelope) or 404; 16 variants tested, none reaches a service
 - [x] Client-sent `X-Service-Token` is removed on public routes, so the gateway is never used to pass a service credential *(not in the spec; defensive)* — `RoutesConfig` (`removeRequestHeader`), every casing and repeat
 - [x] In the Docker setup, services' own ports being published to the host (8083 etc.) is a dev shortcut and recorded as such. In a deployment only the gateway is reachable from outside — `DEVELOPMENT.md` and `gateway-service.md`
 
