@@ -22,14 +22,14 @@
     "description" : "The caller's own shop, for approved sellers",
     "name" : "Seller shop"
   }, {
+    "description" : "Customer and seller lists, seller review and bans (UC-E01, E03, E06)",
+    "name" : "Admin"
+  }, {
     "description" : "The caller's address book, at most 5 addresses (UC-A06, DB §3.1.4)",
     "name" : "Addresses"
   }, {
     "description" : "Token verification keys for other services",
     "name" : "Keys"
-  }, {
-    "description" : "Customer and seller lists, seller review and scoped bans (UC-E01, E03, E06)",
-    "name" : "Admin"
   }, {
     "description" : "Service-to-service API (API §7.1). Never routed by the gateway; each endpoint accepts only the services listed under Callers.",
     "name" : "Internal"
@@ -65,7 +65,7 @@
     },
     "/api/v1/identity/admin/ban/{userId}" : {
       "post" : {
-        "description" : "`scope` is required:\n- `USER`: disables the account and signs out every session.\n- `CUSTOMER`: G-14. Asks Order whether the customer has a paid order: yes → `PAYMENT_ONLY` (keeps old orders, no new payments), no → `CUSTOMER_SCOPE` (no customer features). Order unavailable → 503, nothing changed.\n- `SELLER`: blocks selling and withdrawals; approval and role are kept.\n\nThe same ban again is a 200 with nothing written; another reason while banned is 409. Users with ADMIN can't be banned (403).\n\n**Permission:** `account:moderate`",
+        "description" : "G-14, one lifecycle, no `scope` (sending it is a 400). Only this account, never other accounts of the same person; never an ADMIN account (403) or a seller that is not APPROVED (409). `reason` is a P-21d label, optionally `Label: description` (required for `Khác`): `Gian lận/lừa đảo` or `Khác` for a customer; also `Kinh doanh hàng cấm`, `Kinh doanh hàng giả/vi phạm sở hữu trí tuệ` for a seller.\n\nThe account's obligations are read again from Order (and Finance for a seller): open ones → BANNED with a limited session (`accessMode`); every one verified gone → DISABLED, every session revoked, restorable for 30 days (`restoreUntil`). A source that cannot answer → 503 and nothing is changed. Banning a banned account again changes and announces nothing.\n\n**Permission:** `account:moderate`",
         "operationId" : "ban",
         "parameters" : [ {
           "in" : "path",
@@ -161,7 +161,7 @@
         "security" : [ {
           "bearerAuth" : [ ]
         } ],
-        "summary" : "Ban a user, customer or seller",
+        "summary" : "Ban a customer or seller account",
         "tags" : [ "Admin" ]
       }
     },
@@ -753,7 +753,7 @@
     },
     "/api/v1/identity/admin/unban/{userId}" : {
       "post" : {
-        "description" : "Only that scope; never grants SELLER to an unapproved seller. Already ACTIVE → 200 with nothing written.\n\n**Permission:** `account:moderate`",
+        "description" : "BANNED at any time; DISABLED until `restoreUntil` (409 ACCOUNT_RESTORE_WINDOW_EXPIRED after; nothing is deleted). Back to ACTIVE with the episode's timestamps cleared; cancelled orders, hidden products and unapproved seller rights are not restored. Already ACTIVE → 200 with nothing written. No `scope`.\n\n**Permission:** `account:moderate`",
         "operationId" : "unban",
         "parameters" : [ {
           "in" : "path",
@@ -771,15 +771,14 @@
                 "$ref" : "#/components/schemas/UnbanRequest"
               }
             }
-          },
-          "required" : true
+          }
         },
         "responses" : {
           "200" : {
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/ApiResponseUnbanResult"
+                  "$ref" : "#/components/schemas/ApiResponseBanResult"
                 }
               }
             },
@@ -824,12 +823,22 @@
               }
             },
             "description" : "- `NOT_FOUND`: Resource not found"
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description" : "- `INVALID_STATE_TRANSITION`: The current state does not allow this action\n- `ACCOUNT_RESTORE_WINDOW_EXPIRED`: The 30-day restore window of this disabled account has passed"
           }
         },
         "security" : [ {
           "bearerAuth" : [ ]
         } ],
-        "summary" : "Lift a ban in one scope",
+        "summary" : "Lift a ban",
         "tags" : [ "Admin" ]
       }
     },
@@ -2588,6 +2597,31 @@
   },
   "components" : {
     "schemas" : {
+      "AccountObligations" : {
+        "type" : "object",
+        "properties" : {
+          "availableBalanceVnd" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "hasOpenOrders" : {
+            "type" : "boolean"
+          },
+          "hasPendingFinance" : {
+            "type" : "boolean"
+          },
+          "hasPendingPayment" : {
+            "type" : "boolean"
+          },
+          "hasUnresolvedRefund" : {
+            "type" : "boolean"
+          },
+          "pendingBalanceVnd" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        }
+      },
       "Address" : {
         "type" : "object",
         "properties" : {
@@ -3003,17 +3037,6 @@
           }
         }
       },
-      "ApiResponseUnbanResult" : {
-        "type" : "object",
-        "properties" : {
-          "data" : {
-            "$ref" : "#/components/schemas/UnbanResult"
-          },
-          "meta" : {
-            "description" : "Lists: { page, size, totalItems, totalPages }; some endpoints add their own, e.g. { maxAddresses } or { sourceVersion, fetchedAt }. Absent otherwise."
-          }
-        }
-      },
       "ApiResponseUserSelfProfile" : {
         "type" : "object",
         "properties" : {
@@ -3028,6 +3051,10 @@
       "AuthTokens" : {
         "type" : "object",
         "properties" : {
+          "accessMode" : {
+            "type" : "string",
+            "enum" : [ "FULL", "OPEN_ORDERS_ONLY", "ORDERS_AND_WITHDRAWAL", "WITHDRAWAL_ONLY", "OBLIGATIONS_READ_ONLY", "LOGIN_BLOCKED" ]
+          },
           "accessToken" : {
             "type" : "string"
           },
@@ -3053,18 +3080,42 @@
       "AuthorizationContext" : {
         "type" : "object",
         "properties" : {
+          "accessMode" : {
+            "type" : "string",
+            "enum" : [ "FULL", "OPEN_ORDERS_ONLY", "ORDERS_AND_WITHDRAWAL", "WITHDRAWAL_ONLY", "OBLIGATIONS_READ_ONLY", "LOGIN_BLOCKED" ]
+          },
+          "accountStatus" : {
+            "type" : "string",
+            "enum" : [ "ACTIVE", "BANNED", "DISABLED" ]
+          },
+          "accountType" : {
+            "type" : "string",
+            "enum" : [ "CUSTOMER", "SELLER", "ADMIN" ]
+          },
           "authzVersion" : {
             "type" : "integer",
             "format" : "int64"
           },
+          "bannedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
           "customerProfile" : {
             "$ref" : "#/components/schemas/CustomerAccess"
+          },
+          "disabledAt" : {
+            "type" : "string",
+            "format" : "date-time"
           },
           "permissions" : {
             "type" : "array",
             "items" : {
               "type" : "string"
             }
+          },
+          "restoreUntil" : {
+            "type" : "string",
+            "format" : "date-time"
           },
           "roles" : {
             "type" : "array",
@@ -3088,39 +3139,71 @@
           }
         }
       },
+      "BanImpact" : {
+        "type" : "object",
+        "properties" : {
+          "evaluatedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "obligations" : {
+            "$ref" : "#/components/schemas/AccountObligations"
+          },
+          "resultingAccountStatus" : {
+            "type" : "string",
+            "enum" : [ "ACTIVE", "BANNED", "DISABLED" ]
+          }
+        }
+      },
       "BanRequest" : {
         "type" : "object",
+        "description" : "Exactly this field; `scope` and anything else are rejected.",
         "properties" : {
           "reason" : {
             "type" : "string",
-            "maxLength" : 1000,
-            "minLength" : 0
-          },
-          "scope" : {
-            "type" : "string",
-            "enum" : [ "USER", "CUSTOMER", "SELLER" ]
+            "example" : "Gian lận/lừa đảo: chargeback abuse",
+            "maxLength" : 1000
           }
         },
-        "required" : [ "reason", "scope" ]
+        "required" : [ "reason" ]
       },
       "BanResult" : {
         "type" : "object",
         "properties" : {
+          "accessMode" : {
+            "type" : "string",
+            "enum" : [ "FULL", "OPEN_ORDERS_ONLY", "ORDERS_AND_WITHDRAWAL", "WITHDRAWAL_ONLY", "OBLIGATIONS_READ_ONLY", "LOGIN_BLOCKED" ]
+          },
+          "accountStatus" : {
+            "type" : "string",
+            "enum" : [ "ACTIVE", "BANNED", "DISABLED" ]
+          },
+          "accountType" : {
+            "type" : "string",
+            "enum" : [ "CUSTOMER", "SELLER", "ADMIN" ]
+          },
           "authzVersion" : {
             "type" : "integer",
             "format" : "int64"
           },
-          "banMode" : {
+          "bannedAt" : {
             "type" : "string",
-            "enum" : [ "PAYMENT_ONLY", "CUSTOMER_SCOPE" ]
+            "format" : "date-time"
           },
           "customerStatus" : {
             "type" : "string",
             "enum" : [ "ACTIVE", "BANNED" ]
           },
-          "scope" : {
+          "disabledAt" : {
             "type" : "string",
-            "enum" : [ "USER", "CUSTOMER", "SELLER" ]
+            "format" : "date-time"
+          },
+          "obligations" : {
+            "$ref" : "#/components/schemas/AccountObligations"
+          },
+          "restoreUntil" : {
+            "type" : "string",
+            "format" : "date-time"
           },
           "sellerStatus" : {
             "type" : "string",
@@ -3206,10 +3289,6 @@
       "CustomerAccess" : {
         "type" : "object",
         "properties" : {
-          "accessMode" : {
-            "type" : "string",
-            "enum" : [ "FULL", "PAYMENT_BLOCKED", "BLOCKED" ]
-          },
           "paymentBlocked" : {
             "type" : "boolean"
           },
@@ -3222,14 +3301,14 @@
       "CustomerAdminView" : {
         "type" : "object",
         "properties" : {
+          "banImpact" : {
+            "$ref" : "#/components/schemas/BanImpact"
+          },
           "banReason" : {
             "type" : "string"
           },
           "customerProfile" : {
             "$ref" : "#/components/schemas/CustomerProfile"
-          },
-          "hasPaidOrder" : {
-            "type" : "boolean"
           },
           "user" : {
             "$ref" : "#/components/schemas/UserSummary"
@@ -3241,7 +3320,7 @@
         "properties" : {
           "accessMode" : {
             "type" : "string",
-            "enum" : [ "FULL", "PAYMENT_BLOCKED", "BLOCKED" ]
+            "enum" : [ "FULL", "OPEN_ORDERS_ONLY", "ORDERS_AND_WITHDRAWAL", "WITHDRAWAL_ONLY", "OBLIGATIONS_READ_ONLY", "LOGIN_BLOCKED" ]
           },
           "banReason" : {
             "type" : "string"
@@ -3253,9 +3332,6 @@
           "customerId" : {
             "type" : "string",
             "format" : "uuid"
-          },
-          "paymentBlocked" : {
-            "type" : "boolean"
           },
           "profileComplete" : {
             "type" : "boolean"
@@ -3512,6 +3588,9 @@
       "SellerAdminView" : {
         "type" : "object",
         "properties" : {
+          "banImpact" : {
+            "$ref" : "#/components/schemas/BanImpact"
+          },
           "reviewedByUserId" : {
             "type" : "string",
             "format" : "uuid"
@@ -3742,45 +3821,11 @@
       },
       "UnbanRequest" : {
         "type" : "object",
+        "description" : "Optional reason; `scope` and anything else are rejected.",
         "properties" : {
           "reason" : {
             "type" : "string",
-            "maxLength" : 1000,
-            "minLength" : 0
-          },
-          "scope" : {
-            "type" : "string",
-            "enum" : [ "USER", "CUSTOMER", "SELLER" ]
-          }
-        },
-        "required" : [ "scope" ]
-      },
-      "UnbanResult" : {
-        "type" : "object",
-        "properties" : {
-          "authzVersion" : {
-            "type" : "integer",
-            "format" : "int64"
-          },
-          "customerStatus" : {
-            "type" : "string",
-            "enum" : [ "ACTIVE", "BANNED" ]
-          },
-          "scope" : {
-            "type" : "string",
-            "enum" : [ "USER", "CUSTOMER", "SELLER" ]
-          },
-          "sellerStatus" : {
-            "type" : "string",
-            "enum" : [ "ACTIVE", "BANNED" ]
-          },
-          "userId" : {
-            "type" : "string",
-            "format" : "uuid"
-          },
-          "userStatus" : {
-            "type" : "string",
-            "enum" : [ "ACTIVE", "DISABLED" ]
+            "maxLength" : 1000
           }
         }
       },
@@ -3832,6 +3877,14 @@
       "UserSelfProfile" : {
         "type" : "object",
         "properties" : {
+          "accessMode" : {
+            "type" : "string",
+            "enum" : [ "FULL", "OPEN_ORDERS_ONLY", "ORDERS_AND_WITHDRAWAL", "WITHDRAWAL_ONLY", "OBLIGATIONS_READ_ONLY", "LOGIN_BLOCKED" ]
+          },
+          "accountStatus" : {
+            "type" : "string",
+            "enum" : [ "ACTIVE", "BANNED", "DISABLED" ]
+          },
           "accountType" : {
             "type" : "string",
             "enum" : [ "CUSTOMER", "SELLER", "ADMIN" ]
@@ -3850,12 +3903,20 @@
           "avatarUrl" : {
             "type" : "string"
           },
+          "bannedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
           "createdAt" : {
             "type" : "string",
             "format" : "date-time"
           },
           "customerProfile" : {
             "$ref" : "#/components/schemas/CustomerProfile"
+          },
+          "disabledAt" : {
+            "type" : "string",
+            "format" : "date-time"
           },
           "email" : {
             "type" : "string"
@@ -3871,6 +3932,10 @@
           },
           "phoneNumber" : {
             "type" : "string"
+          },
+          "restoreUntil" : {
+            "type" : "string",
+            "format" : "date-time"
           },
           "roles" : {
             "type" : "array",
@@ -3894,6 +3959,14 @@
       "UserSummary" : {
         "type" : "object",
         "properties" : {
+          "accessMode" : {
+            "type" : "string",
+            "enum" : [ "FULL", "OPEN_ORDERS_ONLY", "ORDERS_AND_WITHDRAWAL", "WITHDRAWAL_ONLY", "OBLIGATIONS_READ_ONLY", "LOGIN_BLOCKED" ]
+          },
+          "accountStatus" : {
+            "type" : "string",
+            "enum" : [ "ACTIVE", "BANNED", "DISABLED" ]
+          },
           "accountType" : {
             "type" : "string",
             "enum" : [ "CUSTOMER", "SELLER", "ADMIN" ]
@@ -3901,6 +3974,14 @@
           "authzVersion" : {
             "type" : "integer",
             "format" : "int64"
+          },
+          "bannedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "disabledAt" : {
+            "type" : "string",
+            "format" : "date-time"
           },
           "email" : {
             "type" : "string"
@@ -3910,6 +3991,10 @@
           },
           "phoneNumber" : {
             "type" : "string"
+          },
+          "restoreUntil" : {
+            "type" : "string",
+            "format" : "date-time"
           },
           "userId" : {
             "type" : "string",

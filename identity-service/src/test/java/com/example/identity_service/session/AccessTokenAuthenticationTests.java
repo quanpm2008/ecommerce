@@ -136,7 +136,8 @@ class AccessTokenAuthenticationTests {
 		User user = newUser();
 		IssuedTokens tokens = sessions.start(user);
 		User stored = users.findById(user.getUserId()).orElseThrow();
-		stored.disable("Fraud");
+		stored.startBan(java.time.Instant.now(), com.example.identity_service.user.AccessMode.LOGIN_BLOCKED);
+		stored.disableForBan("Khác: Fraud", java.time.Instant.now());
 		users.save(stored);
 
 		// The version bump alone would say TOKEN_STALE; a disabled user must not be told to refresh.

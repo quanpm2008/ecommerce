@@ -12,6 +12,10 @@ import java.util.UUID;
 
 public interface AuthSessionRepository extends JpaRepository<AuthSession, UUID> {
 
+	/** The owner of a current refresh token, without locking anything. */
+	@Query("select s.userId from AuthSession s where s.refreshTokenHash = :refreshTokenHash")
+	Optional<UUID> findUserIdByRefreshTokenHash(String refreshTokenHash);
+
 	/** Locks the session so two refreshes with the same token cannot both rotate it. */
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	Optional<AuthSession> findByRefreshTokenHash(String refreshTokenHash);

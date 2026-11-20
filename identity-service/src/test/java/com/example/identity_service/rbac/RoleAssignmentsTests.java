@@ -1,6 +1,7 @@
 package com.example.identity_service.rbac;
 
 import com.example.identity_service.TestcontainersConfiguration;
+import com.example.identity_service.user.AccessMode;
 import com.example.identity_service.user.AccountType;
 import com.example.identity_service.user.User;
 import com.example.identity_service.user.UserRepository;
@@ -14,6 +15,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -124,14 +126,15 @@ class RoleAssignmentsTests {
 	}
 
 	@Test
-	void disableAndEnableBumpTheAuthzVersion() {
+	void banDisableAndLiftEachBumpTheAuthzVersion() {
 		User user = newUser(AccountType.CUSTOMER);
 
-		user.disable("Fraud");
-		user.enable();
+		user.startBan(Instant.now(), AccessMode.OBLIGATIONS_READ_ONLY);
+		user.disableForBan("Khác: Fraud", Instant.now());
+		user.liftBan();
 		users.flush();
 
-		assertThat(storedVersion(user)).isEqualTo(3);
+		assertThat(storedVersion(user)).isEqualTo(4);
 		assertThat(jdbc.queryForObject("select disabled_reason from users where user_id = ?", String.class,
 				user.getUserId())).isNull();
 	}

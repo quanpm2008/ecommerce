@@ -169,8 +169,7 @@ class AddressEndpointsTests extends EndpointTestSupport {
 		Session customer = customer();
 		String id = create(customer, "Before ban", HANOI, BA_DINH);
 		jdbc.update("""
-				update customers set status = 'BANNED', ban_reason = 'Khác: Fraud', ban_mode = 'CUSTOMER_SCOPE',
-				has_paid_order_before_ban = false where customer_id = ?""", customer.userId());
+				update customers set status = 'BANNED', ban_reason = 'Khác: Fraud' where customer_id = ?""", customer.userId());
 
 		call(HttpMethod.GET, PATH, null, customer.accessToken()).andExpect(status().isForbidden())
 				.andExpect(jsonPath("$.error.code").value("ACCOUNT_BANNED"));

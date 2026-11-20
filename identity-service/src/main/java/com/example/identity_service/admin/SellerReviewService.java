@@ -115,7 +115,7 @@ public class SellerReviewService {
 			payload.put("reason", reason);
 		}
 		outbox.write(eventType, seller.getSellerId(), EventActor.user(adminId, EventActor.Context.ADMIN), payload);
-		return views.seller(seller);
+		return views.seller(seller, null);
 	}
 
 	private AuditState capture(User user, Seller seller) {

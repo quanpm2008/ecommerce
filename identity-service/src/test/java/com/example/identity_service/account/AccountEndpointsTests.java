@@ -126,8 +126,7 @@ class AccountEndpointsTests extends EndpointTestSupport {
 	void aBannedAccountCannotEditItsProfile() throws Exception {
 		Session customer = customer();
 		jdbc.update("""
-				update customers set status = 'BANNED', ban_reason = 'Khác: Fraud', ban_mode = 'CUSTOMER_SCOPE',
-				has_paid_order_before_ban = false where customer_id = ?""", customer.userId());
+				update customers set status = 'BANNED', ban_reason = 'Khác: Fraud' where customer_id = ?""", customer.userId());
 
 		call(HttpMethod.PATCH, "/users/me", json("fullName", "New Name"), customer.accessToken())
 				.andExpect(status().isForbidden())

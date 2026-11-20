@@ -9,6 +9,9 @@ import com.example.identity_service.seller.Seller;
 import com.example.identity_service.seller.SellerApplication;
 import com.example.identity_service.seller.SellerApplicationRepository;
 import com.example.identity_service.seller.SellerRepository;
+import com.example.identity_service.customer.CustomerStatus;
+import com.example.identity_service.seller.SellerStatus;
+import com.example.identity_service.user.AccountStatus;
 import com.example.identity_service.user.User;
 import com.example.identity_service.user.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -43,11 +46,14 @@ public class SelfProfileAssembler {
 		User user = users.findById(userId).orElseThrow();
 		CustomerProfile customer = customers.findById(userId).map(this::customer).orElse(null);
 		SellerSelfProfile seller = sellers.findById(userId).map(this::seller).orElse(null);
+		boolean profileBanned = customer != null && customer.status() == CustomerStatus.BANNED
+				|| seller != null && seller.status() == SellerStatus.BANNED;
 		return new UserSelfProfile(user.getUserId(), user.getAccountType(), user.getEmail(), user.getAuthMethod(),
-				user.getFullName(), user.getPhoneNumber(), user.getAvatarObjectKey(), avatarUrl(user), user.getStatus(),
-				permissions.activeRolesOf(user).stream().map(Enum::name).sorted().toList(),
-				permissions.permissionsOf(user).stream().toList(), user.getAuthzVersion(), customer, seller,
-				user.getCreatedAt());
+				user.getFullName(), user.getPhoneNumber(), user.getAvatarObjectKey(), avatarUrl(user),
+				AccountStatus.of(user, profileBanned), user.getStatus(), user.getBannedAt(), user.getDisabledAt(),
+				user.getRestoreUntil(), permissions.activeRolesOf(user).stream().map(Enum::name).sorted().toList(),
+				permissions.permissionsOf(user).stream().toList(), user.getAuthzVersion(), user.getAccessMode(),
+				customer, seller, user.getCreatedAt());
 	}
 
 

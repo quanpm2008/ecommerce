@@ -169,11 +169,21 @@ class SchemaConstraintsTests {
 	}
 
 	@Test
-	void bannedCustomerNeedsReasonAndBanPolicySnapshot() {
+	void bannedCustomerNeedsAReason() {
 		UUID userId = insertLocalUser("banned-customer@example.test", null);
 
-		assertViolation("ck_customers_ban_fields", () -> jdbc.update(
-				"insert into customers (customer_id, status, ban_reason) values (?, 'BANNED', 'Fraud')", userId));
+		assertViolation("ck_customers_ban_reason", () -> jdbc.update(
+				"insert into customers (customer_id, status) values (?, 'BANNED')", userId));
+	}
+
+	@ParameterizedTest
+	@CsvSource(nullValues = "null", value = { "now(), null", "null, now() + interval '30 days'",
+			"now(), now() + interval '29 days'" })
+	void theRestoreWindowIsExactly30DaysFromTheFirstDisable(String disabledAt, String restoreUntil) {
+		UUID userId = insertLocalUser("window@example.test", null);
+
+		assertViolation("ck_users_ban_timestamps", () -> jdbc.update("update users set banned_at = now(), disabled_at = "
+				+ disabledAt + ", restore_until = " + restoreUntil + " where user_id = ?", userId));
 	}
 
 	@Test
@@ -304,9 +314,11 @@ class SchemaConstraintsTests {
 			String disabledReason) {
 		return jdbc.queryForObject("""
 				insert into users (email, account_type, auth_method, password_hash, google_subject, full_name, status,
-				                   disabled_reason)
-				values (?, 'CUSTOMER', ?, ?, ?, 'Test User', ?, ?) returning user_id""", UUID.class, email, authMethod,
-				passwordHash, googleSubject, status, disabledReason);
+				                   disabled_reason, banned_at, disabled_at, restore_until)
+				values (?, 'CUSTOMER', ?, ?, ?, 'Test User', ?, ?, case when ? = 'DISABLED' then now() end,
+				        case when ? = 'DISABLED' then now() end, case when ? = 'DISABLED' then now() + interval '30 days' end)
+				returning user_id""", UUID.class, email, authMethod, passwordHash, googleSubject, status, disabledReason,
+				status, status, status);
 	}
 
 	private void grantRole(UUID userId, String role) {

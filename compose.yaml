@@ -107,6 +107,7 @@ services:
       IDENTITY_MEDIA_ENDPOINT: http://object-storage:8333
       IDENTITY_MEDIA_PUBLIC_ENDPOINT: http://localhost:${S3_HOST_PORT:-8333}
       IDENTITY_ORDER_BASE_URL: http://order-service:8085
+      IDENTITY_FINANCE_BASE_URL: http://finance-service:8082
     ports:
       - "8083:8083"
 

@@ -9,11 +9,11 @@ import com.example.identity_service.seller.SellerStatus;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
@@ -29,8 +29,10 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
+import static com.example.identity_service.common.error.ErrorCode.ACCOUNT_RESTORE_WINDOW_EXPIRED;
 import static com.example.identity_service.common.error.ErrorCode.ALREADY_PROCESSED;
 import static com.example.identity_service.common.error.ErrorCode.INVALID_STATE_TRANSITION;
 import static com.example.identity_service.common.error.ErrorCode.NOT_FOUND;
@@ -41,7 +43,7 @@ import static com.example.identity_service.common.error.ErrorCode.SERVICE_UNAVAI
  * Admin API of Identity (API §6.1, UC-E01, E03, E06). Each endpoint checks its own permission; the acting admin is
  * always the token's {@code sub}.
  */
-@Tag(name = "Admin", description = "Customer and seller lists, seller review and scoped bans (UC-E01, E03, E06)")
+@Tag(name = "Admin", description = "Customer and seller lists, seller review and bans (UC-E01, E03, E06)")
 @RestController
 @RequestMapping("/api/v1/identity/admin")
 @RequiredArgsConstructor
@@ -133,41 +135,50 @@ public class AdminController {
 		return ApiResponse.of(reviews.reject(Caller.of(jwt).userId(), sellerId, body.reason().strip()));
 	}
 
-	@Operation(summary = "Ban a user, customer or seller", description = """
-			`scope` is required:
-			- `USER`: disables the account and signs out every session.
-			- `CUSTOMER`: G-14. Asks Order whether the customer has a paid order: yes → `PAYMENT_ONLY` (keeps old \
-			orders, no new payments), no → `CUSTOMER_SCOPE` (no customer features). Order unavailable → 503, nothing \
-			changed.
-			- `SELLER`: blocks selling and withdrawals; approval and role are kept.
+	@Operation(summary = "Ban a customer or seller account", description = """
+			G-14, one lifecycle, no `scope` (sending it is a 400). Only this account, never other accounts of the same \
+			person; never an ADMIN account (403) or a seller that is not APPROVED (409). `reason` is a P-21d label, \
+			optionally `Label: description` (required for `Khác`): `Gian lận/lừa đảo` or `Khác` for a customer; also \
+			`Kinh doanh hàng cấm`, `Kinh doanh hàng giả/vi phạm sở hữu trí tuệ` for a seller.
 
-			The same ban again is a 200 with nothing written; another reason while banned is 409. Users with ADMIN \
-			can't be banned (403).""")
+			The account's obligations are read again from Order (and Finance for a seller): open ones → BANNED with a \
+			limited session (`accessMode`); every one verified gone → DISABLED, every session revoked, restorable for \
+			30 days (`restoreUntil`). A source that cannot answer → 503 and nothing is changed. Banning a banned \
+			account again changes and announces nothing.""")
 	@ErrorCodes({ NOT_FOUND, INVALID_STATE_TRANSITION, SERVICE_UNAVAILABLE })
+	@io.swagger.v3.oas.annotations.parameters.RequestBody(
+			content = @Content(schema = @Schema(implementation = BanRequest.class)))
 	@PostMapping("/ban/{userId}")
 	@PreAuthorize("hasAuthority('account:moderate')")
 	ApiResponse<ModerationService.BanResult> ban(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID userId,
-			@Valid @RequestBody BanRequest body) {
-		return ApiResponse.of(moderation.ban(Caller.of(jwt).userId(), userId, body.scope(), body.reason()));
+			@RequestBody Map<String, Object> body) {
+		return ApiResponse.of(moderation.ban(Caller.of(jwt).userId(), userId, body));
 	}
 
-	@Operation(summary = "Lift a ban in one scope", description = "Only that scope; never grants SELLER to an "
-			+ "unapproved seller. Already ACTIVE → 200 with nothing written.")
-	@ErrorCodes(NOT_FOUND)
+	@Operation(summary = "Lift a ban", description = "BANNED at any time; DISABLED until `restoreUntil` (409 "
+			+ "ACCOUNT_RESTORE_WINDOW_EXPIRED after; nothing is deleted). Back to ACTIVE with the episode's timestamps "
+			+ "cleared; cancelled orders, hidden products and unapproved seller rights are not restored. Already ACTIVE "
+			+ "→ 200 with nothing written. No `scope`.")
+	@ErrorCodes({ NOT_FOUND, INVALID_STATE_TRANSITION, ACCOUNT_RESTORE_WINDOW_EXPIRED })
+	@io.swagger.v3.oas.annotations.parameters.RequestBody(
+			content = @Content(schema = @Schema(implementation = UnbanRequest.class)))
 	@PostMapping("/unban/{userId}")
 	@PreAuthorize("hasAuthority('account:moderate')")
-	ApiResponse<ModerationService.UnbanResult> unban(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID userId,
-			@Valid @RequestBody UnbanRequest body) {
-		return ApiResponse.of(moderation.unban(Caller.of(jwt).userId(), userId, body.scope(), body.reason()));
+	ApiResponse<ModerationService.BanResult> unban(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID userId,
+			@RequestBody(required = false) Map<String, Object> body) {
+		return ApiResponse.of(moderation.unban(Caller.of(jwt).userId(), userId, body == null ? Map.of() : body));
 	}
 
 	record RejectRequest(@NotBlank @Size(max = 1000) String reason) {
 	}
 
-	record BanRequest(@NotNull ModerationScope scope, @NotBlank @Size(max = 1000) String reason) {
+	@Schema(description = "Exactly this field; `scope` and anything else are rejected.")
+	record BanRequest(@Schema(requiredMode = Schema.RequiredMode.REQUIRED, maxLength = 1000,
+			example = "Gian lận/lừa đảo: chargeback abuse") String reason) {
 	}
 
-	record UnbanRequest(@NotNull ModerationScope scope, @Size(max = 1000) String reason) {
+	@Schema(description = "Optional reason; `scope` and anything else are rejected.")
+	record UnbanRequest(@Schema(maxLength = 1000) String reason) {
 	}
 
 }

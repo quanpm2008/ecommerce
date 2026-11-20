@@ -7,6 +7,10 @@ import com.example.identity_service.customer.Customer;
 import com.example.identity_service.seller.Seller;
 import com.example.identity_service.seller.SellerApplication;
 import com.example.identity_service.seller.SellerApprovalStatus;
+import com.example.identity_service.customer.CustomerStatus;
+import com.example.identity_service.seller.SellerStatus;
+import com.example.identity_service.user.AccessMode;
+import com.example.identity_service.user.AccountStatus;
 import com.example.identity_service.user.AccountType;
 import com.example.identity_service.user.User;
 import com.example.identity_service.user.UserStatus;
@@ -26,22 +30,26 @@ public class AdminViews {
 
 	private final SelfProfileAssembler profiles;
 
-	public CustomerAdminView customer(Customer customer) {
-		return new CustomerAdminView(UserSummary.of(customer.getUser()), profiles.customer(customer),
-				customer.getHasPaidOrderBeforeBan(), customer.getBanReason());
+	/** {@code banImpact} only on the detail views (null in lists, and when a source cannot answer). */
+	public CustomerAdminView customer(Customer customer, ModerationService.BanImpact banImpact) {
+		return new CustomerAdminView(UserSummary.of(customer.getUser(), customer.getStatus() == CustomerStatus.BANNED),
+				profiles.customer(customer), customer.getBanReason(), banImpact);
 	}
 
-	public SellerAdminView seller(Seller seller) {
-		return new SellerAdminView(UserSummary.of(seller.getUser()), profiles.seller(seller),
-				seller.getReviewedByUserId());
+	public SellerAdminView seller(Seller seller, ModerationService.BanImpact banImpact) {
+		return new SellerAdminView(UserSummary.of(seller.getUser(), seller.getStatus() == SellerStatus.BANNED),
+				profiles.seller(seller), seller.getReviewedByUserId(), banImpact);
 	}
 
+	/** API §6.1 {@code UserSummary}. */
 	public record UserSummary(UUID userId, String email, String fullName, String phoneNumber, AccountType accountType,
-			UserStatus userStatus, long authzVersion) {
+			AccountStatus accountStatus, UserStatus userStatus, AccessMode accessMode, Instant bannedAt,
+			Instant disabledAt, Instant restoreUntil, long authzVersion) {
 
-		static UserSummary of(User user) {
+		static UserSummary of(User user, boolean profileBanned) {
 			return new UserSummary(user.getUserId(), user.getEmail(), user.getFullName(), user.getPhoneNumber(),
-					user.getAccountType(), user.getStatus(), user.getAuthzVersion());
+					user.getAccountType(), AccountStatus.of(user, profileBanned), user.getStatus(), user.getAccessMode(),
+					user.getBannedAt(), user.getDisabledAt(), user.getRestoreUntil(), user.getAuthzVersion());
 		}
 
 	}
@@ -60,15 +68,14 @@ public class AdminViews {
 
 	}
 
-	/**
-	 * {@code hasPaidOrder} is Order's answer stored with the current ban (G-14), null when not banned: Identity
-	 * cannot see orders, and the FE gets order counts from Order.
-	 */
-	public record CustomerAdminView(UserSummary user, CustomerProfile customerProfile, Boolean hasPaidOrder,
-			String banReason) {
+	/** API §6.1 {@code CustomerAdminView}: no ban history or credentials. */
+	public record CustomerAdminView(UserSummary user, CustomerProfile customerProfile, String banReason,
+			ModerationService.BanImpact banImpact) {
 	}
 
-	public record SellerAdminView(UserSummary user, SellerSelfProfile sellerProfile, UUID reviewedByUserId) {
+	/** API §6.1 {@code SellerAdminView}. */
+	public record SellerAdminView(UserSummary user, SellerSelfProfile sellerProfile, UUID reviewedByUserId,
+			ModerationService.BanImpact banImpact) {
 	}
 
 }

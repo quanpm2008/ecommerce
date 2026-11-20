@@ -73,9 +73,10 @@ class PermissionResolverTests {
 	void disabledUserHasNoPermissions() {
 		User user = newUser(AccountType.CUSTOMER);
 		grant(user, RoleCode.CUSTOMER);
-		user.disable("Fraud");
+		user.startBan(java.time.Instant.now(), com.example.identity_service.user.AccessMode.LOGIN_BLOCKED);
+		user.disableForBan("Khác: Fraud", java.time.Instant.now());
 
-		assertThat(user.getAuthzVersion()).as("one bump for the grant, one for disable").isEqualTo(3);
+		assertThat(user.getAuthzVersion()).as("one bump for the grant, two for the ban").isEqualTo(4);
 		assertThat(resolver.permissionsOf(user)).isEmpty();
 	}
 

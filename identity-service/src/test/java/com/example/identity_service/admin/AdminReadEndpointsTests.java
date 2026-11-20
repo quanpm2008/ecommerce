@@ -27,8 +27,7 @@ class AdminReadEndpointsTests extends EndpointTestSupport {
 		UUID an = namedCustomer("An " + tag);
 		UUID banned = namedCustomer("Cuong " + tag);
 		jdbc.update("""
-				update customers set status = 'BANNED', ban_reason = 'Spam', ban_mode = 'CUSTOMER_SCOPE',
-				has_paid_order_before_ban = false where customer_id = ?""", banned);
+				update customers set status = 'BANNED', ban_reason = 'Spam' where customer_id = ?""", banned);
 
 		call(HttpMethod.GET, "/admin/customers?q=" + tag.toUpperCase() + "&sort=fullName,asc", null,
 				admin.accessToken()).andExpect(status().isOk())
@@ -38,8 +37,8 @@ class AdminReadEndpointsTests extends EndpointTestSupport {
 		call(HttpMethod.GET, "/admin/customers?q=" + tag + "&status=BANNED", null, admin.accessToken())
 				.andExpect(jsonPath("$.data[*].user.userId", contains(banned.toString())))
 				.andExpect(jsonPath("$.data[0].banReason").value("Spam"))
-				.andExpect(jsonPath("$.data[0].hasPaidOrder").value(false))
-				.andExpect(jsonPath("$.data[0].customerProfile.accessMode").value("BLOCKED"));
+				.andExpect(jsonPath("$.data[0].user.accountStatus").value("BANNED"))
+				.andExpect(jsonPath("$.data[0].banImpact").isEmpty());
 	}
 
 	@Test
@@ -71,7 +70,7 @@ class AdminReadEndpointsTests extends EndpointTestSupport {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.user.email").value(customer.email()))
 				.andExpect(jsonPath("$.data.customerProfile.status").value("ACTIVE"))
-				.andExpect(jsonPath("$.data.hasPaidOrder").isEmpty())
+				.andExpect(jsonPath("$.data.banImpact.resultingAccountStatus").value("DISABLED"))
 				.andExpect(content().string(not(containsString("passwordHash"))))
 				.andExpect(content().string(not(containsString("googleSubject"))))
 				.andExpect(content().string(not(containsString("$2a$"))));

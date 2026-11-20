@@ -49,15 +49,18 @@ public class AdminDirectory {
 
 	private final AdminViews views;
 
+	private final ModerationService moderation;
+
 	@Transactional(readOnly = true)
 	public Page<AdminViews.CustomerAdminView> customers(String q, CustomerStatus status, Pageable pageable) {
 		Pageable page = page(pageable, CUSTOMER_SORTS, CUSTOMER_DEFAULT, "customerId");
-		return customers.findForAdmin(status, LikePattern.contains(q), page).map(views::customer);
+		return customers.findForAdmin(status, LikePattern.contains(q), page).map(customer -> views.customer(customer, null));
 	}
 
 	@Transactional(readOnly = true)
 	public AdminViews.CustomerAdminView customer(UUID customerId) {
-		return customers.findById(customerId).map(views::customer)
+		return customers.findById(customerId)
+				.map(customer -> views.customer(customer, moderation.banImpact(customer.getUser())))
 				.orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Customer not found"));
 	}
 
@@ -65,12 +68,12 @@ public class AdminDirectory {
 	public Page<AdminViews.SellerAdminView> sellers(String q, SellerApprovalStatus approvalStatus,
 			SellerStatus status, Pageable pageable) {
 		Pageable page = page(pageable, SELLER_SORTS, SELLER_DEFAULT, "sellerId");
-		return sellers.findForAdmin(approvalStatus, status, LikePattern.contains(q), page).map(views::seller);
+		return sellers.findForAdmin(approvalStatus, status, LikePattern.contains(q), page).map(seller -> views.seller(seller, null));
 	}
 
 	@Transactional(readOnly = true)
 	public AdminViews.SellerAdminView seller(UUID sellerId) {
-		return sellers.findById(sellerId).map(views::seller)
+		return sellers.findById(sellerId).map(seller -> views.seller(seller, moderation.banImpact(seller.getUser())))
 				.orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Seller not found"));
 	}
 

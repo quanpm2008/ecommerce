@@ -42,7 +42,7 @@ class AuthEndpointsTests extends EndpointTestSupport {
 				.andExpect(jsonPath("$.data.roles", contains("CUSTOMER")))
 				.andExpect(jsonPath("$.data.permissions", hasItems("cart:manage:own", "account:read:own")))
 				.andExpect(jsonPath("$.data.customerProfile.status").value("ACTIVE"))
-				.andExpect(jsonPath("$.data.customerProfile.paymentBlocked").value(false))
+				.andExpect(jsonPath("$.data.customerProfile.accessMode").value("FULL"))
 				.andExpect(jsonPath("$.data.customerProfile.accessMode").value("FULL"))
 				.andExpect(jsonPath("$.data.customerProfile.profileComplete").value(false))
 				.andExpect(jsonPath("$.data.sellerProfile").isEmpty())
@@ -306,17 +306,18 @@ class AuthEndpointsTests extends EndpointTestSupport {
 	}
 
 	@Test
-	void bannedCustomerStillLogsIn() throws Exception {
+	void aBannedCustomerWithOpenOrdersStillSignsIn() throws Exception {
 		String customerEmail = uniqueEmail();
 		UUID customerId = UUID.fromString(registerCustomer(customerEmail));
 		jdbc.update("""
-				update customers set status = 'BANNED', ban_reason = 'Fraud', ban_mode = 'CUSTOMER_SCOPE',
-				has_paid_order_before_ban = false where customer_id = ?""", customerId);
+				update customers set status = 'BANNED', ban_reason = 'Fraud' where customer_id = ?""", customerId);
 
+		obligations.openOrders(customerId);
 		login(customerEmail, PASSWORD).andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.accessMode").value("OPEN_ORDERS_ONLY"))
+				.andExpect(jsonPath("$.data.profile.accountStatus").value("BANNED"))
 				.andExpect(jsonPath("$.data.profile.customerProfile.status").value("BANNED"))
-				.andExpect(jsonPath("$.data.profile.customerProfile.paymentBlocked").value(true))
-				.andExpect(jsonPath("$.data.profile.customerProfile.accessMode").value("BLOCKED"));
+				.andExpect(jsonPath("$.data.profile.customerProfile.accessMode").value("OPEN_ORDERS_ONLY"));
 	}
 
 	// --- refresh ---

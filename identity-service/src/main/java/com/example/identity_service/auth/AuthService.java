@@ -126,7 +126,8 @@ public class AuthService {
 	/**
 	 * Unknown email, an account of another type and a wrong password all give the same {@code INVALID_CREDENTIALS}
 	 * (and cost the same time). A seller not yet approved, or a disabled account, is only told so after the password
-	 * matched ({@link SignInPolicy}).
+	 * matched ({@link SignInPolicy}); a banned account is reconciled with its obligations first (late obligation →
+	 * limited session; none → 403 {@code ACCOUNT_DISABLED}; source down → 503).
 	 */
 	public AuthTokens login(AuthRequests.Login request) {
 		Optional<User> found = users.findByEmail(User.normalizeEmail(request.email()))
@@ -144,6 +145,8 @@ public class AuthService {
 			throw new ApiException(ErrorCode.INVALID_CREDENTIALS);
 		}
 		signIn.check(user);
+		signIn.reconcile(user.getUserId());
+		user = users.findById(user.getUserId()).orElseThrow();
 		if (!user.isActive()) {
 			throw new ApiException(ErrorCode.ACCOUNT_DISABLED);
 		}
@@ -155,6 +158,7 @@ public class AuthService {
 	 * checked again before the token rotates.
 	 */
 	public AuthTokens refresh(String refreshToken) {
+		sessions.ownerOf(refreshToken).ifPresent(signIn::reconcile);
 		return withProfile(sessions.refresh(refreshToken, signIn::check));
 	}
 

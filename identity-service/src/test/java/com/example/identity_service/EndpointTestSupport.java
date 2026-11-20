@@ -37,14 +37,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * clock), fresh emails and phone numbers per test, and a random client IP per test so per-IP rate limits never leak
  * between tests.
  */
-@SpringBootTest(properties = { "eureka.client.enabled=false",
+@SpringBootTest(properties = { "eureka.client.enabled=false", "identity.ban-reconciliation.enabled=false",
 		"identity.internal.clients.order-service=" + EndpointTestSupport.ORDER_TOKEN,
 		"identity.internal.clients.notification-service=" + EndpointTestSupport.NOTIFICATION_TOKEN,
 		"identity.internal.clients.gateway-service=" + EndpointTestSupport.GATEWAY_TOKEN,
 		"identity.internal.clients.payment-service=too-short" })
 @AutoConfigureMockMvc
 @Import({ TestcontainersConfiguration.class, TestClockConfiguration.class, SeaweedfsTestConfiguration.class,
-		FakeOrderClient.Configuration.class })
+		FakeObligations.Configuration.class })
 public abstract class EndpointTestSupport {
 
 	protected static final String API = "/api/v1/identity";
@@ -68,7 +68,7 @@ public abstract class EndpointTestSupport {
 	protected MutableClock clock;
 
 	@Autowired
-	protected FakeOrderClient orders;
+	protected FakeObligations obligations;
 
 	@Autowired
 	protected RoleAssignments roleAssignments;
@@ -87,7 +87,7 @@ public abstract class EndpointTestSupport {
 	@BeforeEach
 	void freshClientAndClock() {
 		clock.reset();
-		orders.reset();
+		obligations.reset();
 		clientIp = randomIp();
 	}
 
@@ -306,8 +306,19 @@ public abstract class EndpointTestSupport {
 				UUID.randomUUID().toString());
 	}
 
+	/**
+	 * Puts a customer or seller account in the DISABLED state of a ban with nothing left (G-14): profile BANNED, user
+	 * DISABLED, a 30-day restore window from now. With no obligations set, sign-in keeps it disabled.
+	 */
 	protected void disableUser(String email) {
-		jdbc.update("update users set status = 'DISABLED', disabled_reason = 'Fraud' where email = ?", email);
+		jdbc.update("update customers set status = 'BANNED', ban_reason = 'Khác: Fraud' where customer_id = "
+				+ "(select user_id from users where email = ?)", email);
+		jdbc.update("update sellers set status = 'BANNED', ban_reason = 'Khác: Fraud' where seller_id = "
+				+ "(select user_id from users where email = ?)", email);
+		jdbc.update("""
+				update users set status = 'DISABLED', disabled_reason = 'Khác: Fraud', banned_at = now(),
+				disabled_at = now(), restore_until = now() + interval '30 days', access_mode = 'LOGIN_BLOCKED',
+				authz_version = authz_version + 1 where email = ?""", email);
 	}
 
 	/** A flat JSON object from alternating keys and string values. */

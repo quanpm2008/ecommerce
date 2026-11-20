@@ -70,8 +70,7 @@ class InternalQueriesTests extends EndpointTestSupport {
 				.andExpect(jsonPath("$.data.authzVersion").value(2));
 
 		jdbc.update("""
-				update customers set status = 'BANNED', ban_reason = 'Chargebacks', ban_mode = 'PAYMENT_ONLY',
-				has_paid_order_before_ban = true where customer_id = ?""", customer.userId());
+				update customers set status = 'BANNED', ban_reason = 'Chargebacks' where customer_id = ?""", customer.userId());
 		internal(HttpMethod.GET, path, null, ORDER_TOKEN, null)
 				.andExpect(jsonPath("$.data.customerStatus").value("BANNED"))
 				.andExpect(jsonPath("$.data.paymentBlocked").value(true))

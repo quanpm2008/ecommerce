@@ -82,6 +82,12 @@ public class SessionService {
 		return tokens(user, session, next);
 	}
 
+	/** The account a current (not rotated) refresh token belongs to, if any; changes nothing. */
+	@Transactional(readOnly = true)
+	public Optional<UUID> ownerOf(String refreshToken) {
+		return sessions.findUserIdByRefreshTokenHash(OpaqueTokens.hash(refreshToken));
+	}
+
 	/**
 	 * Logout: revokes the session only if {@code refreshToken} (current or already rotated) belongs to the caller's
 	 * own session. Anything else, including an expired or already revoked session, is silently ignored.

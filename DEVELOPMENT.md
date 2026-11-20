@@ -143,7 +143,7 @@ mvn spring-boot:run
 
 The Docker compose entry doesn't pass these variables yet.
 
-The admin API is under `/api/v1/identity/admin` (lists, seller approve/reject, ban/unban). Banning with scope `CUSTOMER` asks order-service whether the customer has a paid order (`IDENTITY_ORDER_BASE_URL`, default `http://localhost:8085`, `http://order-service:8085` in compose). order-service doesn't implement that endpoint yet, so such bans return 503 and change nothing; `USER` and `SELLER` bans don't need it.
+The admin API is under `/api/v1/identity/admin` (lists, seller approve/reject, ban/unban). A ban has no scope: it reads the account's obligations from order-service (`IDENTITY_ORDER_BASE_URL`, default `http://localhost:8085`) and, for a seller, finance-service (`IDENTITY_FINANCE_BASE_URL`, default `http://localhost:8082`); open obligations → BANNED with a limited session, none → DISABLED for a 30-day restore window. Neither service implements its obligations endpoint yet, so bans, and sign-ins of banned accounts, return 503 and change nothing until they do. J7 reconciles banned accounts every `IDENTITY_BAN_RECONCILIATION_INTERVAL` (default 10 minutes).
 
 ```bash
 B=http://localhost:8083/api/v1/identity

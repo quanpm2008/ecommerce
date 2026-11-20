@@ -35,7 +35,10 @@ class PublicSellerEndpointsTests extends EndpointTestSupport {
 		UUID banned = seller("Banned " + tag, true);
 		jdbc.update("update sellers set status = 'BANNED', ban_reason = 'Fraud' where seller_id = ?", banned);
 		UUID disabled = seller("Disabled " + tag, true);
-		jdbc.update("update users set status = 'DISABLED', disabled_reason = 'Fraud' where user_id = ?", disabled);
+		jdbc.update("update sellers set status = 'BANNED', ban_reason = 'Khác: Fraud' where seller_id = ?", disabled);
+		jdbc.update("""
+				update users set status = 'DISABLED', disabled_reason = 'Khác: Fraud', banned_at = now(), disabled_at = now(),
+				restore_until = now() + interval '30 days' where user_id = ?""", disabled);
 		UUID roleRevoked = seller("Revoked " + tag, true);
 		tx.executeWithoutResult(status -> roleAssignments.revoke(users.findById(roleRevoked).orElseThrow(),
 				RoleCode.SELLER));

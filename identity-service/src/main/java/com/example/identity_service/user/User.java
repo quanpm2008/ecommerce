@@ -13,6 +13,7 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.Objects;
@@ -56,6 +57,18 @@ public class User {
 
 	private String disabledReason;
 
+	/** Start of the current ban episode (G-14); null when not banned. */
+	private Instant bannedAt;
+
+	/** First time the current episode went DISABLED; kept if it goes BANNED and DISABLED again. */
+	private Instant disabledAt;
+
+	/** {@code disabledAt} + 30 days: the last moment an admin may lift the ban. */
+	private Instant restoreUntil;
+
+	@Enumerated(EnumType.STRING)
+	private AccessMode accessMode;
+
 	private long authzVersion;
 
 	@CreationTimestamp
@@ -77,6 +90,7 @@ public class User {
 		user.fullName = fullName;
 		user.phoneNumber = phoneNumber;
 		user.status = UserStatus.ACTIVE;
+		user.accessMode = AccessMode.FULL;
 		user.authzVersion = 1;
 		return user;
 	}
@@ -109,16 +123,63 @@ public class User {
 		this.passwordHash = Objects.requireNonNull(passwordHash);
 	}
 
-	public void disable(String reason) {
-		status = UserStatus.DISABLED;
-		disabledReason = Objects.requireNonNull(reason);
+	/** How long a DISABLED account may still be restored (G-14, Thẻ 15). */
+	public static final Duration RESTORE_WINDOW = Duration.ofDays(30);
+
+	/** A new ban episode with open obligations: a limited session of {@code mode}. */
+	public void startBan(Instant now, AccessMode mode) {
+		this.bannedAt = now;
+		this.accessMode = mode;
 		bumpAuthzVersion();
 	}
 
-	public void enable() {
-		status = UserStatus.ACTIVE;
-		disabledReason = null;
+	/**
+	 * Every obligation is gone: no more sessions. The episode's first DISABLED sets {@code disabledAt} and
+	 * {@code restoreUntil}; later ones keep them.
+	 */
+	public void disableForBan(String reason, Instant now) {
+		this.status = UserStatus.DISABLED;
+		this.disabledReason = Objects.requireNonNull(reason);
+		if (disabledAt == null) {
+			this.disabledAt = now;
+			this.restoreUntil = now.plus(RESTORE_WINDOW);
+		}
+		this.accessMode = AccessMode.LOGIN_BLOCKED;
 		bumpAuthzVersion();
+	}
+
+	/** A late obligation reopens a limited session; still banned, the episode's timestamps are kept. */
+	public void reopenForObligations(AccessMode mode) {
+		this.status = UserStatus.ACTIVE;
+		this.disabledReason = null;
+		this.accessMode = mode;
+		bumpAuthzVersion();
+	}
+
+	/** A banned account's obligations changed; returns whether anything did. */
+	public boolean changeAccessMode(AccessMode mode) {
+		if (this.accessMode == mode) {
+			return false;
+		}
+		this.accessMode = mode;
+		bumpAuthzVersion();
+		return true;
+	}
+
+	/** The admin lifted the ban: ACTIVE, and the episode's timestamps go. */
+	public void liftBan() {
+		this.status = UserStatus.ACTIVE;
+		this.disabledReason = null;
+		this.bannedAt = null;
+		this.disabledAt = null;
+		this.restoreUntil = null;
+		this.accessMode = AccessMode.FULL;
+		bumpAuthzVersion();
+	}
+
+	/** Whether a DISABLED account may still be lifted at {@code now} (inclusive). */
+	public boolean restorableAt(Instant now) {
+		return restoreUntil == null || !now.isAfter(restoreUntil);
 	}
 
 	/** Invalidates permissions carried by tokens issued before a role or access-status change. */

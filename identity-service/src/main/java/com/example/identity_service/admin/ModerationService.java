@@ -6,42 +6,64 @@ import com.example.identity_service.audit.AuditTargetType;
 import com.example.identity_service.audit.AuditTrail;
 import com.example.identity_service.common.error.ApiException;
 import com.example.identity_service.common.error.ErrorCode;
+import com.example.identity_service.common.web.StrictBody;
 import com.example.identity_service.customer.Customer;
-import com.example.identity_service.customer.CustomerBanMode;
 import com.example.identity_service.customer.CustomerRepository;
 import com.example.identity_service.customer.CustomerStatus;
-import com.example.identity_service.order.OrderClient;
+import com.example.identity_service.obligation.AccountObligations;
+import com.example.identity_service.obligation.ObligationSource;
 import com.example.identity_service.outbox.EventActor;
 import com.example.identity_service.outbox.OutboxWriter;
-import com.example.identity_service.rbac.PermissionResolver;
-import com.example.identity_service.rbac.RoleCode;
 import com.example.identity_service.seller.Seller;
+import com.example.identity_service.seller.SellerApprovalStatus;
 import com.example.identity_service.seller.SellerRepository;
 import com.example.identity_service.seller.SellerStatus;
 import com.example.identity_service.session.SessionService;
+import com.example.identity_service.user.AccessMode;
+import com.example.identity_service.user.AccountStatus;
+import com.example.identity_service.user.AccountType;
 import com.example.identity_service.user.User;
 import com.example.identity_service.user.UserRepository;
 import com.example.identity_service.user.UserStatus;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
- * Scoped ban and unban (API §6.1, G-14, `account:moderate`). Each change locks the user row and commits the new
- * status, the {@code authzVersion} bump, the audit row and the outbox event together. Repeating the current state is
- * a 200 with nothing written; a different ban reason while banned is a 409, so history is never overwritten.
- *
- * <p>A CUSTOMER ban needs Order's {@code hasPaidOrder}. Order is called outside any transaction: the first pass
- * checks everything and stops before changing anything if it needs the answer; the second applies the ban with the
- * answer, re-checking under the lock. Order unavailable → 503 and nothing changed.
+ * The one ban lifecycle of a customer or seller account (G-14, UC-E03, API §3.2, §6.1 ban/unban, §7.3 J7; Thẻ 15). No
+ * scope: a ban acts on the chosen account only, never on other accounts of the same person, never on an ADMIN
+ * account and never on a seller that is not APPROVED.
+ * <ul>
+ * <li>Ban: the account's current obligations (Order, and Finance for a seller) are read outside any transaction; open
+ * obligations → BANNED with a limited session ({@link AccessMode}); every one verified gone → DISABLED, sessions
+ * revoked. A source that cannot answer → 503 and nothing is written.</li>
+ * <li>Reconcile (J7, and on every login and refresh): BANNED with nothing left → DISABLED; DISABLED with a late
+ * obligation → BANNED again (limited session), never ACTIVE. The episode's timestamps stay.</li>
+ * <li>Unban: BANNED at any time, DISABLED until {@code restoreUntil} (409 {@code ACCOUNT_RESTORE_WINDOW_EXPIRED}
+ * after); needs no obligations.</li>
+ * </ul>
+ * Each change commits the status pair, timestamps, {@code authzVersion}, the audit row and the outbox events in one
+ * Identity transaction. A change that read obligations commits only if the account's {@code authzVersion} is still the
+ * one it read, so a reconciliation never overwrites an admin's unban.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ModerationService {
+
+	static final Set<String> BAN_FIELDS = Set.of("reason");
+
+	private static final int UNBAN_REASON_MAX = 1000;
+
+	private static final EventActor SYSTEM = new EventActor(null, EventActor.Kind.SERVICE, EventActor.Context.ACCOUNT);
 
 	private final UserRepository users;
 
@@ -49,11 +71,9 @@ public class ModerationService {
 
 	private final SellerRepository sellers;
 
-	private final PermissionResolver permissions;
-
 	private final SessionService sessions;
 
-	private final OrderClient orders;
+	private final ObligationSource obligations;
 
 	private final AuditTrail audit;
 
@@ -61,204 +81,280 @@ public class ModerationService {
 
 	private final TransactionTemplate tx;
 
-	public BanResult ban(UUID adminId, UUID userId, ModerationScope scope, String reason) {
-		String banReason = reason.strip();
-		BanResult result = tx.execute(status -> applyBan(adminId, userId, scope, banReason, null));
-		if (result == null) {
-			boolean hasPaidOrder = orders.hasPaidOrder(userId);
-			result = tx.execute(status -> applyBan(adminId, userId, scope, banReason, hasPaidOrder));
-		}
-		return result;
+	private final Clock clock;
+
+	/** {@code POST /admin/ban/{userId}}; body {@code {reason}} only. */
+	public BanResult ban(UUID adminId, UUID userId, Map<String, Object> body) {
+		String rawReason = StrictBody.of(body, BAN_FIELDS).text("reason", 2000);
+		Snapshot before = tx.execute(status -> {
+			Target target = target(userId, false);
+			target.requireBannable();
+			return new Snapshot(target.user(), target.user().getAuthzVersion());
+		});
+		String reason = AdminReasons.check(rawReason, before.user().getAccountType() == AccountType.SELLER
+				? AdminReasons.SELLER_BAN : AdminReasons.CUSTOMER_BAN);
+		AccountObligations current = obligations.of(before.user());
+		return tx.execute(status -> {
+			Target target = target(userId, true);
+			target.requireBannable();
+			requireUnchanged(target.user(), before.version());
+			if (target.profileBanned()) {
+				return result(target, current); // a repeated ban changes nothing and announces nothing
+			}
+			User user = target.user();
+			AuditState stateBefore = capture(target);
+			Instant now = clock.instant();
+			target.ban(reason);
+			if (current.any()) {
+				user.startBan(now, current.accessMode(user.getAccountType()));
+			}
+			else {
+				user.startBan(now, AccessMode.LOGIN_BLOCKED);
+				user.disableForBan(reason, now);
+				sessions.revokeAllOf(user.getUserId());
+			}
+			EventActor admin = EventActor.user(adminId, EventActor.Context.ADMIN);
+			outbox.write(target.eventPrefix() + ".banned", user.getUserId(), admin, profilePayload(target, reason));
+			if (!user.isActive()) {
+				outbox.write("user.disabled", user.getUserId(), admin, userPayload(target, reason));
+			}
+			audit.record(adminId, AuditAction.BAN, target.auditType(), user.getUserId(), reason, stateBefore,
+					capture(target));
+			return result(target, current);
+		});
 	}
 
-	public UnbanResult unban(UUID adminId, UUID userId, ModerationScope scope, String reason) {
-		String unbanReason = reason == null || reason.isBlank() ? null : reason.strip();
-		return tx.execute(status -> applyUnban(adminId, userId, scope, unbanReason));
+	/** {@code POST /admin/unban/{userId}}; body {@code {reason?}} only. */
+	public BanResult unban(UUID adminId, UUID userId, Map<String, Object> body) {
+		StrictBody fields = StrictBody.of(body, BAN_FIELDS);
+		String reason = fields.has("reason") ? fields.nullableText("reason", UNBAN_REASON_MAX) : null;
+		String auditReason = reason == null || reason.isBlank() ? null : reason.strip();
+		return tx.execute(status -> {
+			Target target = target(userId, true);
+			target.requireBannable();
+			if (!target.profileBanned()) {
+				return result(target, null); // already ACTIVE: idempotent, nothing announced
+			}
+			User user = target.user();
+			Instant now = clock.instant();
+			if (!user.isActive() && !user.restorableAt(now)) {
+				throw new ApiException(ErrorCode.ACCOUNT_RESTORE_WINDOW_EXPIRED);
+			}
+			boolean wasDisabled = !user.isActive();
+			AuditState stateBefore = capture(target);
+			target.unban();
+			user.liftBan();
+			EventActor admin = EventActor.user(adminId, EventActor.Context.ADMIN);
+			outbox.write(target.eventPrefix() + ".unbanned", user.getUserId(), admin,
+					profilePayload(target, auditReason));
+			if (wasDisabled) {
+				outbox.write("user.enabled", user.getUserId(), admin, userPayload(target, auditReason));
+			}
+			audit.record(adminId, AuditAction.UNBAN, target.auditType(), user.getUserId(), auditReason, stateBefore,
+					capture(target));
+			return result(target, null);
+		});
 	}
 
-	/** Null means "needs Order's answer"; nothing has been changed then. */
-	private BanResult applyBan(UUID adminId, UUID userId, ModerationScope scope, String reason,
-			Boolean hasPaidOrder) {
-		Target target = lock(userId);
-		if (permissions.activeRolesOf(target.user()).contains(RoleCode.ADMIN)) {
-			throw new ApiException(ErrorCode.FORBIDDEN, "Users with the ADMIN role cannot be banned");
+	/**
+	 * Brings a banned account in line with its obligations (J7, login, refresh). Not banned → nothing. Throws
+	 * {@code ApiException(SERVICE_UNAVAILABLE)} when a source cannot answer (nothing changed); returns false when the
+	 * account changed meanwhile (the change wins, nothing written here).
+	 */
+	public boolean reconcile(UUID userId) {
+		Snapshot before = tx.execute(status -> {
+			Target target = target(userId, false);
+			return target.lifecycleApplies() && target.profileBanned()
+					? new Snapshot(target.user(), target.user().getAuthzVersion()) : null;
+		});
+		if (before == null) {
+			return true;
 		}
+		AccountObligations current = obligations.of(before.user());
+		Boolean applied = tx.execute(status -> {
+			Target target = target(userId, true);
+			if (target.user().getAuthzVersion() != before.version() || !target.profileBanned()) {
+				return false;
+			}
+			apply(target, current);
+			return true;
+		});
+		return Boolean.TRUE.equals(applied);
+	}
+
+	/** What a ban would do now ({@code BanImpact}, API §6.1); null when it does not apply or a source cannot answer. */
+	public BanImpact banImpact(User account) {
+		if (account.getAccountType() == AccountType.ADMIN) {
+			return null;
+		}
+		try {
+			AccountObligations current = obligations.of(account);
+			return new BanImpact(current.evaluatedAt(),
+					current.any() ? AccountStatus.BANNED : AccountStatus.DISABLED, current);
+		}
+		catch (ApiException unavailable) {
+			return null;
+		}
+	}
+
+	private void apply(Target target, AccountObligations current) {
 		User user = target.user();
-		AuditState before = target.state();
-		switch (scope) {
-			case USER -> {
-				if (!user.isActive()) {
-					return unchangedBan(target, scope, user.getDisabledReason(), reason, UserStatus.DISABLED);
-				}
-				user.disable(reason);
-				sessions.revokeAllOf(userId);
-				record(adminId, AuditAction.DISABLE, AuditTargetType.USER, target, reason, before);
-				outbox.write("user.disabled", userId, actor(adminId), userEvent(target, reason));
+		AuditState stateBefore = capture(target);
+		if (current.any()) {
+			AccessMode mode = current.accessMode(user.getAccountType());
+			if (!user.isActive()) {
+				user.reopenForObligations(mode);
+				outbox.write("user.enabled", user.getUserId(), SYSTEM, userPayload(target, target.banReason()));
+				audit.record(null, AuditAction.ENABLE, AuditTargetType.USER, user.getUserId(),
+						"Late obligation reopened a limited session", stateBefore, capture(target));
 			}
-			case CUSTOMER -> {
-				Customer customer = target.requireCustomer();
-				if (customer.isBanned()) {
-					return unchangedBan(target, scope, customer.getBanReason(), reason, CustomerStatus.BANNED);
-				}
-				if (hasPaidOrder == null) {
-					return null;
-				}
-				customer.ban(reason, hasPaidOrder);
-				user.bumpAuthzVersion();
-				record(adminId, AuditAction.BAN, AuditTargetType.CUSTOMER, target, reason, before);
-				outbox.write("customer.banned", userId, actor(adminId), customerEvent(target));
+			else {
+				user.changeAccessMode(mode);
 			}
-			case SELLER -> {
-				Seller seller = target.requireSeller();
-				if (seller.getStatus() == SellerStatus.BANNED) {
-					return unchangedBan(target, scope, seller.getBanReason(), reason, SellerStatus.BANNED);
-				}
-				seller.ban(reason);
-				user.bumpAuthzVersion();
-				record(adminId, AuditAction.BAN, AuditTargetType.SELLER, target, reason, before);
-				outbox.write("seller.banned", userId, actor(adminId), sellerEvent(target, reason));
-			}
+			return;
 		}
-		return BanResult.of(target, scope);
+		if (user.isActive()) {
+			user.disableForBan(target.banReason(), clock.instant());
+			sessions.revokeAllOf(user.getUserId());
+			outbox.write("user.disabled", user.getUserId(), SYSTEM, userPayload(target, target.banReason()));
+			audit.record(null, AuditAction.DISABLE, AuditTargetType.USER, user.getUserId(),
+					"Every obligation verified gone", stateBefore, capture(target));
+		}
 	}
 
-	private UnbanResult applyUnban(UUID adminId, UUID userId, ModerationScope scope, String reason) {
-		Target target = lock(userId);
-		User user = target.user();
-		AuditState before = target.state();
-		switch (scope) {
-			case USER -> {
-				if (user.isActive()) {
-					return UnbanResult.of(target, scope);
-				}
-				user.enable();
-				record(adminId, AuditAction.ENABLE, AuditTargetType.USER, target, reason, before);
-				outbox.write("user.enabled", userId, actor(adminId), userEvent(target, reason));
-			}
-			case CUSTOMER -> {
-				Customer customer = target.requireCustomer();
-				if (!customer.isBanned()) {
-					return UnbanResult.of(target, scope);
-				}
-				customer.unban();
-				user.bumpAuthzVersion();
-				record(adminId, AuditAction.UNBAN, AuditTargetType.CUSTOMER, target, reason, before);
-				outbox.write("customer.unbanned", userId, actor(adminId), customerEvent(target));
-			}
-			case SELLER -> {
-				// Only the ban is lifted: approval and the SELLER role are untouched, so an unapproved seller
-				// gains nothing.
-				Seller seller = target.requireSeller();
-				if (seller.getStatus() == SellerStatus.ACTIVE) {
-					return UnbanResult.of(target, scope);
-				}
-				seller.unban();
-				user.bumpAuthzVersion();
-				record(adminId, AuditAction.UNBAN, AuditTargetType.SELLER, target, reason, before);
-				outbox.write("seller.unbanned", userId, actor(adminId), sellerEvent(target, reason));
-			}
+	private static void requireUnchanged(User user, long version) {
+		if (user.getAuthzVersion() != version) {
+			throw new ApiException(ErrorCode.SERVICE_UNAVAILABLE,
+					"The account changed while its obligations were read; try again");
 		}
-		return UnbanResult.of(target, scope);
 	}
 
-	private Target lock(UUID userId) {
-		User user = users.findLockedById(userId)
+	private Target target(UUID userId, boolean lock) {
+		User user = (lock ? users.findLockedById(userId) : users.findById(userId))
 				.orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "User not found"));
 		return new Target(user, customers.findById(userId).orElse(null), sellers.findById(userId).orElse(null));
 	}
 
-	/** Already banned in this scope: the same reason is a no-op, another reason would overwrite history. */
-	private static BanResult unchangedBan(Target target, ModerationScope scope, String currentReason, String reason,
-			Enum<?> currentStatus) {
-		if (!reason.equals(currentReason)) {
-			throw ApiException.currentStatus(ErrorCode.INVALID_STATE_TRANSITION, currentStatus);
+	private AuditState capture(Target target) {
+		return AuditState.capture(target.user(), target.customer(), target.seller());
+	}
+
+	private BanResult result(Target target, AccountObligations current) {
+		User user = target.user();
+		return new BanResult(user.getUserId(), user.getAccountType(), target.accountStatus(), user.getStatus(),
+				target.customer() == null ? null : target.customer().getStatus(),
+				target.seller() == null ? null : target.seller().getStatus(), user.getAccessMode(), user.getBannedAt(),
+				user.getDisabledAt(), user.getRestoreUntil(), user.getAuthzVersion(), current);
+	}
+
+	/** {@code seller.banned/unbanned} and {@code customer.banned/unbanned} (API §7.2). */
+	private static Map<String, Object> profilePayload(Target target, String reason) {
+		User user = target.user();
+		Map<String, Object> payload = new LinkedHashMap<>();
+		payload.put("userId", user.getUserId());
+		if (target.seller() != null) {
+			payload.put("sellerId", user.getUserId());
+			payload.put("status", target.seller().getStatus());
 		}
-		return BanResult.of(target, scope);
-	}
-
-	private void record(UUID adminId, AuditAction action, AuditTargetType type, Target target, String reason,
-			AuditState before) {
-		audit.record(adminId, action, type, target.user().getUserId(), reason, before, target.state());
-	}
-
-	private static EventActor actor(UUID adminId) {
-		return EventActor.user(adminId, EventActor.Context.ADMIN);
-	}
-
-	private static Map<String, Object> userEvent(Target target, String reason) {
-		Map<String, Object> payload = new LinkedHashMap<>();
-		payload.put("userId", target.user().getUserId());
-		payload.put("authzVersion", target.user().getAuthzVersion());
-		payload.put("reason", reason);
-		payload.put("hasSellerProfile", target.seller() != null);
-		return payload;
-	}
-
-	private static Map<String, Object> customerEvent(Target target) {
-		Customer customer = target.customer();
-		Map<String, Object> payload = new LinkedHashMap<>();
-		payload.put("userId", target.user().getUserId());
-		payload.put("customerId", customer.getCustomerId());
-		payload.put("banMode", customer.getBanMode());
-		payload.put("hasPaidOrderBeforeBan", customer.getHasPaidOrderBeforeBan());
-		payload.put("authzVersion", target.user().getAuthzVersion());
-		return payload;
-	}
-
-	private static Map<String, Object> sellerEvent(Target target, String reason) {
-		Map<String, Object> payload = new LinkedHashMap<>();
-		payload.put("userId", target.user().getUserId());
-		payload.put("sellerId", target.seller().getSellerId());
-		payload.put("status", target.seller().getStatus());
-		payload.put("authzVersion", target.user().getAuthzVersion());
+		else {
+			payload.put("customerId", user.getUserId());
+		}
+		putAccess(payload, target);
 		payload.put("reason", reason);
 		return payload;
 	}
 
+	/** {@code user.disabled/enabled} (API §7.2); {@code user.enabled} with BANNED is a late obligation, not an unban. */
+	private static Map<String, Object> userPayload(Target target, String reason) {
+		Map<String, Object> payload = new LinkedHashMap<>();
+		payload.put("userId", target.user().getUserId());
+		payload.put("accountType", target.user().getAccountType());
+		putAccess(payload, target);
+		payload.put("reason", reason);
+		return payload;
+	}
+
+	private static void putAccess(Map<String, Object> payload, Target target) {
+		User user = target.user();
+		payload.put("accountStatus", target.accountStatus());
+		payload.put("accessMode", user.getAccessMode());
+		payload.put("bannedAt", user.getBannedAt());
+		payload.put("disabledAt", user.getDisabledAt());
+		payload.put("restoreUntil", user.getRestoreUntil());
+		payload.put("authzVersion", user.getAuthzVersion());
+	}
+
+	private record Snapshot(User user, long version) {
+	}
+
+	/** The account and its one profile (Customer or Seller, never both). */
 	private record Target(User user, Customer customer, Seller seller) {
 
-		AuditState state() {
-			return AuditState.capture(user, customer, seller);
+		boolean lifecycleApplies() {
+			return user.getAccountType() != AccountType.ADMIN && (customer != null || seller != null);
 		}
 
-		Customer requireCustomer() {
-			if (customer == null) {
-				throw new ApiException(ErrorCode.NOT_FOUND, "Customer profile not found");
+		void requireBannable() {
+			if (user.getAccountType() == AccountType.ADMIN) {
+				throw new ApiException(ErrorCode.FORBIDDEN, "Admin accounts cannot be banned");
 			}
-			return customer;
+			if (seller != null && seller.getApprovalStatus() != SellerApprovalStatus.APPROVED) {
+				throw ApiException.currentStatus(ErrorCode.INVALID_STATE_TRANSITION, seller.getApprovalStatus());
+			}
+			if (customer == null && seller == null) {
+				throw new ApiException(ErrorCode.NOT_FOUND, "User not found");
+			}
 		}
 
-		Seller requireSeller() {
-			if (seller == null) {
-				throw new ApiException(ErrorCode.NOT_FOUND, "Seller profile not found");
+		boolean profileBanned() {
+			return customer != null ? customer.getStatus() == CustomerStatus.BANNED
+					: seller != null && seller.getStatus() == SellerStatus.BANNED;
+		}
+
+		AccountStatus accountStatus() {
+			return AccountStatus.of(user, profileBanned());
+		}
+
+		String banReason() {
+			return customer != null ? customer.getBanReason() : seller.getBanReason();
+		}
+
+		void ban(String reason) {
+			if (customer != null) {
+				customer.ban(reason);
 			}
-			return seller;
+			else {
+				seller.ban(reason);
+			}
+		}
+
+		void unban() {
+			if (customer != null) {
+				customer.unban();
+			}
+			else {
+				seller.unban();
+			}
+		}
+
+		String eventPrefix() {
+			return customer != null ? "customer" : "seller";
+		}
+
+		AuditTargetType auditType() {
+			return customer != null ? AuditTargetType.CUSTOMER : AuditTargetType.SELLER;
 		}
 
 	}
 
-	public record BanResult(UUID userId, ModerationScope scope, UserStatus userStatus, CustomerStatus customerStatus,
-			SellerStatus sellerStatus, CustomerBanMode banMode, long authzVersion) {
-
-		static BanResult of(Target target, ModerationScope scope) {
-			Customer customer = target.customer();
-			return new BanResult(target.user().getUserId(), scope, target.user().getStatus(),
-					customer == null ? null : customer.getStatus(),
-					target.seller() == null ? null : target.seller().getStatus(),
-					customer == null ? null : customer.getBanMode(), target.user().getAuthzVersion());
-		}
-
+	/** API §6.1 ban/unban 200 body; {@code obligations} only on ban. */
+	public record BanResult(UUID userId, AccountType accountType, AccountStatus accountStatus, UserStatus userStatus,
+			CustomerStatus customerStatus, SellerStatus sellerStatus, AccessMode accessMode, Instant bannedAt,
+			Instant disabledAt, Instant restoreUntil, long authzVersion, AccountObligations obligations) {
 	}
 
-	public record UnbanResult(UUID userId, ModerationScope scope, UserStatus userStatus,
-			CustomerStatus customerStatus, SellerStatus sellerStatus, long authzVersion) {
-
-		static UnbanResult of(Target target, ModerationScope scope) {
-			return new UnbanResult(target.user().getUserId(), scope, target.user().getStatus(),
-					target.customer() == null ? null : target.customer().getStatus(),
-					target.seller() == null ? null : target.seller().getStatus(), target.user().getAuthzVersion());
-		}
-
+	/** API §6.1 {@code BanImpact}: what a ban would do now. */
+	public record BanImpact(Instant evaluatedAt, AccountStatus resultingAccountStatus, AccountObligations obligations) {
 	}
 
 }
