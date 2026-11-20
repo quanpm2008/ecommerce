@@ -12,9 +12,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * One route per {@link ServiceRoute}: any method on its paths is proxied unchanged to an instance picked through
- * Eureka ({@code lb://<service>}). Downstream responses, error bodies included, are returned as they are; only failures
- * to get a response become gateway errors ({@code error.GatewayErrorHandler}).
+ * One route per {@link ServiceRoute}: any method on its paths is proxied to an instance picked through Eureka
+ * ({@code lb://<service>}), with the path unchanged or without {@code /api/v1} ({@link ServiceRoute#stripsBasePath()}).
+ * Downstream responses, error bodies included, are returned as they are; only failures to get a response become gateway
+ * errors ({@code error.GatewayErrorHandler}).
  * <p>
  * A client-sent {@code X-Service-Token} (the credential services use on {@code /internal}) is removed, so the gateway can
  * never carry one; services never accept it on public paths anyway.
@@ -30,11 +31,20 @@ class RoutesConfig {
 		for (ServiceRoute service : ServiceRoute.values()) {
 			routes.route(service.serviceId(), route -> route
 					.path(service.paths().toArray(String[]::new))
-					.filters(filters -> filters.removeRequestHeader(SERVICE_TOKEN))
+					.filters(filters -> {
+						filters.removeRequestHeader(SERVICE_TOKEN);
+						if (service.stripsBasePath()) {
+							// "/api/v1" is two segments; the query string and its encoding are kept as sent.
+							filters.stripPrefix(BASE_PATH_SEGMENTS);
+						}
+						return filters;
+					})
 					.uri("lb://" + service.serviceId()));
 		}
 		return routes.build();
 	}
+
+	private static final int BASE_PATH_SEGMENTS = ServiceRoute.BASE_PATH.substring(1).split("/").length;
 
 	/**
 	 * Connect timeout of the proxy's HTTP client as a duration ({@code gateway.proxy.connect-timeout}); the gateway's own

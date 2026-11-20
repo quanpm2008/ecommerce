@@ -33,7 +33,8 @@ import tools.jackson.databind.ObjectMapper;
  * Checklist §1: the API §2.2 route table, pass-through of requests and responses, and 404 for everything else. Each
  * service is a {@link StubService} registered through Spring Cloud's simple discovery client (Eureka off), so the
  * real load-balancer path is used; product-service has two instances. Requests carry a valid token (token rules are
- * {@code JwtTests}); unknown paths are 404 even without one.
+ * {@code JwtTests}); unknown paths are 404 even without one. product-service is sent its paths without {@code /api/v1}
+ * (it serves {@code /products}, ...); every other service gets the path unchanged.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
 		properties = "eureka.client.enabled=false")
@@ -43,7 +44,7 @@ class RoutingTests {
 			.map(ServiceRoute::serviceId)
 			.collect(Collectors.toMap(Function.identity(), StubService::start));
 
-	static final StubService SECOND_CATALOG = StubService.start("product-service-2");
+	static final StubService SECOND_PRODUCT = StubService.start("product-service-2");
 
 	static final StubService JWKS = TestTokens.startJwks(TestTokens.KEY);
 
@@ -61,14 +62,14 @@ class RoutingTests {
 	static void instances(DynamicPropertyRegistry registry) {
 		SERVICES.forEach((id, stub) -> registry.add(
 				"spring.cloud.discovery.client.simple.instances." + id + "[0].uri", stub::uri));
-		registry.add("spring.cloud.discovery.client.simple.instances.product-service[1].uri", SECOND_CATALOG::uri);
+		registry.add("spring.cloud.discovery.client.simple.instances.product-service[1].uri", SECOND_PRODUCT::uri);
 		registry.add("gateway.jwt.jwk-set-uri", () -> TestTokens.jwksUri(JWKS));
 	}
 
 	@AfterAll
 	static void stopStubs() {
 		SERVICES.values().forEach(StubService::close);
-		SECOND_CATALOG.close();
+		SECOND_PRODUCT.close();
 		JWKS.close();
 	}
 
@@ -81,29 +82,38 @@ class RoutingTests {
 
 	@ParameterizedTest
 	@CsvSource({
-			"/api/v1/identity/users/me, identity-service",
-			"/api/v1/identity/media/upload-urls, identity-service",
-			"/api/v1/identity, identity-service",
-			"/api/v1/categories, product-service",
-			"/api/v1/categories/c1/products, product-service",
-			"/api/v1/products/p1, product-service",
-			"/api/v1/seller/products/p1/media, product-service",
-			"/api/v1/admin/products/p1, product-service",
-			"/api/v1/admin/categories, product-service",
-			"/api/v1/media/upload-urls, product-service",
-			"/api/v1/cart/items, cart-service",
-			"/api/v1/orders/o1, order-service",
-			"/api/v1/payments/checkout-sessions/s1, payment-service",
-			"/api/v1/finance/wallet, finance-service",
-			"/api/v1/notifications/unread-count, notification-service" })
-	void eachPublicPathReachesItsService(String path, String service) {
+			"/api/v1/identity/users/me, identity-service, /api/v1/identity/users/me",
+			"/api/v1/identity/media/upload-urls, identity-service, /api/v1/identity/media/upload-urls",
+			"/api/v1/identity, identity-service, /api/v1/identity",
+			"/api/v1/categories, product-service, /categories",
+			"/api/v1/categories/c1/products, product-service, /categories/c1/products",
+			"/api/v1/products/p1, product-service, /products/p1",
+			"/api/v1/seller/products/p1/media, product-service, /seller/products/p1/media",
+			"/api/v1/admin/products/p1, product-service, /admin/products/p1",
+			"/api/v1/admin/categories, product-service, /admin/categories",
+			"/api/v1/media/upload-urls, product-service, /media/upload-urls",
+			"/api/v1/cart/items, cart-service, /api/v1/cart/items",
+			"/api/v1/orders/o1, order-service, /api/v1/orders/o1",
+			"/api/v1/payments/checkout-sessions/s1, payment-service, /api/v1/payments/checkout-sessions/s1",
+			"/api/v1/finance/wallet, finance-service, /api/v1/finance/wallet",
+			"/api/v1/notifications/unread-count, notification-service, /api/v1/notifications/unread-count" })
+	void eachPublicPathReachesItsService(String path, String service, String forwardedPath) {
 		HttpResponse<String> response = gateway.get(path);
 
 		assertThat(response.statusCode()).isEqualTo(200);
 		List<StubService> reached = allStubs().filter(stub -> !stub.received().isEmpty()).toList();
 		assertThat(reached).hasSize(1);
 		assertThat(reached.getFirst().name()).startsWith(service);
-		assertThat(reached.getFirst().last().target()).isEqualTo(path);
+		assertThat(reached.getFirst().last().target()).isEqualTo(forwardedPath);
+	}
+
+	@Test
+	void productRouteDropsTheBasePathAndKeepsTheQueryAsSent() {
+		HttpResponse<String> response = gateway.get("/api/v1/products?q=%C4%91i%E1%BB%87n%20tho%E1%BA%A1i&page=2");
+
+		assertThat(response.statusCode()).isEqualTo(200);
+		assertThat(allStubs().filter(stub -> !stub.received().isEmpty()).findFirst().orElseThrow().last().target())
+				.isEqualTo("/products?q=%C4%91i%E1%BB%87n%20tho%E1%BA%A1i&page=2");
 	}
 
 	@ParameterizedTest
@@ -195,11 +205,11 @@ class RoutingTests {
 		}
 
 		assertThat(first.received()).hasSize(3);
-		assertThat(SECOND_CATALOG.received()).hasSize(3);
+		assertThat(SECOND_PRODUCT.received()).hasSize(3);
 	}
 
 	static Stream<StubService> allStubs() {
-		return Stream.concat(SERVICES.values().stream(), Stream.of(SECOND_CATALOG));
+		return Stream.concat(SERVICES.values().stream(), Stream.of(SECOND_PRODUCT));
 	}
 
 }

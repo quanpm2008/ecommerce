@@ -90,6 +90,8 @@ class JwtTests {
 			"POST, /api/v1/identity/auth/refresh, identity-service",
 			"POST, /api/v1/identity/auth/password/forgot, identity-service",
 			"POST, /api/v1/identity/auth/password/reset, identity-service",
+			"POST, /api/v1/identity/auth/seller-reapplication/challenge, identity-service",
+			"POST, /api/v1/identity/auth/seller-reapplication, identity-service",
 			"GET, /api/v1/identity/regions/provinces, identity-service",
 			"GET, /api/v1/identity/regions/provinces/01/wards, identity-service",
 			"GET, /api/v1/identity/sellers?q=shop, identity-service",
@@ -104,7 +106,8 @@ class JwtTests {
 				"Content-Type", "application/json");
 
 		assertThat(response.statusCode()).isEqualTo(200);
-		assertThat(SERVICES.get(service).last().target()).isEqualTo(target);
+		String forwarded = service.equals("product-service") ? target.substring("/api/v1".length()) : target;
+		assertThat(SERVICES.get(service).last().target()).isEqualTo(forwarded);
 		assertThat(SERVICES.get(service).last().header("Authorization")).isNull();
 	}
 

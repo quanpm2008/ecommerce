@@ -71,8 +71,12 @@ class InternalPathTests {
 			"GET, /internal/v1/identity/sellers/status?ids=a,b",
 			"POST, /internal/v1/notifications",
 			"GET, /internal/v1/orders/checkout-sessions/s1/payable",
-			"GET, /internal/v1/catalog/products/p1",
+			"POST, /internal/v1/products/batch",
+			"GET, /internal/v1/products/p1",
+			"POST, /internal/v1/inventory/availability",
 			"PUT, /internal/v1/inventory",
+			"GET, /internal/v1/orders/accounts/u1/obligations?accountType=CUSTOMER",
+			"GET, /internal/v1/finance/sellers/s1/obligations",
 			"DELETE, /internal/v1/identity/x",
 			"PATCH, /internal/v1/identity/x",
 			"GET, /internal",
@@ -142,7 +146,7 @@ class InternalPathTests {
 		HttpResponse<String> response = gateway.get("/api/v1/products?q=internalize&tag=internal");
 
 		assertThat(response.statusCode()).isEqualTo(200);
-		assertThat(SERVICES.get("product-service").last().target()).isEqualTo("/api/v1/products?q=internalize&tag=internal");
+		assertThat(SERVICES.get("product-service").last().target()).isEqualTo("/products?q=internalize&tag=internal");
 	}
 
 	private static void assertNoServiceWasCalled() {
