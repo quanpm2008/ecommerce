@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -15,8 +16,13 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -28,6 +34,31 @@ import java.util.List;
 public class OrderSecurityConfig {
 
 	@Bean
+	@Order(1)
+	SecurityFilterChain orderUserSecurity(HttpSecurity http, OrderAuthorization authorization,
+			OrderApiExceptionHandler errors) throws Exception {
+		var paths = PathPatternRequestMatcher.withDefaults();
+		var checkout = new OrRequestMatcher(
+				paths.matcher(HttpMethod.POST, "/api/v1/orders/checkout/preview"),
+				paths.matcher(HttpMethod.POST, "/api/v1/orders/checkout/pay"));
+		var inventory = new OrRequestMatcher(
+				paths.matcher(HttpMethod.GET, "/api/v1/orders/seller/inventory"),
+				paths.matcher(HttpMethod.PUT, "/api/v1/orders/seller/inventory/{productId}"),
+				paths.matcher(HttpMethod.GET, "/api/v1/orders/seller/inventory/{productId}/movements"));
+		return http.securityMatcher(new OrRequestMatcher(checkout, inventory))
+				.csrf(AbstractHttpConfigurer::disable)
+				.requestCache(AbstractHttpConfigurer::disable)
+				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+				.addFilterBefore(new UserAuthorizationFilter(authorization, checkout, errors), AnonymousAuthenticationFilter.class)
+				.authorizeHttpRequests(auth -> auth
+						.requestMatchers(checkout).hasAuthority(OrderAuthorization.CHECKOUT)
+						.requestMatchers(inventory).hasAuthority(OrderAuthorization.INVENTORY)
+						.anyRequest().denyAll())
+				.build();
+	}
+
+	@Bean
+	@Order(2)
 	SecurityFilterChain orderSecurity(HttpSecurity http, OrderApiExceptionHandler errors,
 			@Value("${order.internal.tokens.product}") String productToken,
 			@Value("${order.internal.tokens.cart}") String cartToken) throws Exception {
@@ -50,6 +81,41 @@ public class OrderSecurityConfig {
 						.accessDeniedHandler((request, response, failure) ->
 								errors.write(request, response, 403, "FORBIDDEN", "Không có quyền truy cập")))
 				.build();
+	}
+
+	private static final class UserAuthorizationFilter extends OncePerRequestFilter {
+		private final DefaultBearerTokenResolver bearer = new DefaultBearerTokenResolver();
+		private final OrderAuthorization authorization;
+		private final RequestMatcher checkout;
+		private final OrderApiExceptionHandler errors;
+
+		private UserAuthorizationFilter(OrderAuthorization authorization, RequestMatcher checkout,
+				OrderApiExceptionHandler errors) {
+			this.authorization = authorization;
+			this.checkout = checkout;
+			this.errors = errors;
+		}
+
+		@Override
+		protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+				throws ServletException, IOException {
+			String permission = checkout.matches(request) ? OrderAuthorization.CHECKOUT : OrderAuthorization.INVENTORY;
+			OrderAuthorization.CurrentUser user;
+			try {
+				user = authorization.authorize(bearer.resolve(request), permission);
+			} catch (OAuth2AuthenticationException invalid) {
+				errors.write(request, response, 401, "UNAUTHENTICATED", "Bearer không hợp lệ");
+				return;
+			} catch (OrderAuthorization.Rejected rejected) {
+				errors.write(request, response, rejected.status(), rejected.getMessage(), "Không thể xác nhận quyền yêu cầu");
+				return;
+			}
+			var context = SecurityContextHolder.createEmptyContext();
+			context.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(user, null,
+					List.of(new SimpleGrantedAuthority(permission))));
+			SecurityContextHolder.setContext(context);
+			chain.doFilter(request, response);
+		}
 	}
 
 	private static final class ServiceTokenFilter extends OncePerRequestFilter {
