@@ -19,7 +19,7 @@ POM là quan sát implementation; không tự coi version đó là floor/chính 
 | Mã | Chủ đề | Baseline đã chấp nhận | Quan sát / điểm cần review |
 |---|---|---|---|
 | <a id="req-eng-001"></a>REQ-ENG-001 | Backend | Java 21, Spring Boot, Maven; MVC+JPA/JDBC cho service nghiệp vụ | Identity POM Boot 4.1.2; schema identity/Flyway/JPA validate; nhiều service khác còn scaffold |
-| <a id="req-eng-002"></a>REQ-ENG-002 | Gateway | Spring Cloud Gateway WebFlux; không blocking JDBC/OpenFeign trên event loop | gateway-service/pom.xml còn Gateway Server WebMVC cùng WebFlux; cần task riêng, chưa sửa |
+| <a id="req-eng-002"></a>REQ-ENG-002 | Gateway | Spring Cloud Gateway WebFlux; không blocking JDBC/OpenFeign trên event loop | Đã chuyển 20/11/2026: `spring-cloud-starter-gateway-server-webflux` trên Netty, không còn WebMVC/servlet; security/route/filter reactive; kiểm tra end-to-end Docker 21/11/2026 |
 | <a id="req-eng-003"></a>REQ-ENG-003 | Frontend | Một React SPA, TypeScript/Vite/Tailwind; chung phiên các vùng | Chưa thấy module SPA trong tree được khảo sát |
 | <a id="req-eng-004"></a>REQ-ENG-004 | Đồng bộ | REST/OpenFeign trong service nghiệp vụ; reactive client ở Gateway | Không dùng trực tiếp repository/entity của service khác |
 | <a id="req-eng-005"></a>REQ-ENG-005 | Bất đồng bộ | Kafka + local Outbox/Inbox và business dedupe | Root Compose chưa có Kafka; Identity publisher chưa cấu hình, không coi event đã giao |

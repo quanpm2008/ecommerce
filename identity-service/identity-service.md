@@ -2,7 +2,7 @@
 
 > Đặc tả [Thẻ 15](../docs/requirements/coverage.md#the-15) đã đổi: tài khoản đơn vai trò, ban theo nghĩa vụ/J7, hạn khôi phục và rút số dư nhỏ. Nội dung dưới đây ghi hiện trạng/lịch sử implementation; chưa được kiểm chứng theo contract mới. Không coi tên route, policy snapshot hoặc trạng thái Done dưới đây là authority nghiệp vụ.
 
-The "Identity & Seller" service. It owns `User`, `Customer`, `Seller`, `CustomerAddress`, `Role`, `Permission`, `UserRole` and `RolePermission`. It issues JWTs and provides the authorization context that other services call (see `docs/requirements/api_specs.md` §3.2, §6.1 and `docs/requirements/database.md` §3.1). Work plan for API v1.1 / Thẻ 15: `docs/plans/active/identity-gateway-alignment.md`.
+The "Identity & Seller" service. It owns `User`, `Customer`, `Seller`, `CustomerAddress`, `Role`, `Permission`, `UserRole` and `RolePermission`. It issues JWTs and provides the authorization context that other services call (see `docs/requirements/api_specs.md` §3.2, §6.1 and `docs/requirements/database.md` §3.1). Work plan for API v1.1 / Thẻ 15: `docs/plans/completed/identity-gateway-alignment.md`.
 
 ## Done
 

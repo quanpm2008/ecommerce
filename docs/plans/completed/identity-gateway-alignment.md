@@ -4,7 +4,7 @@ Ngày: 2026-11-20
 
 ## Trạng thái
 
-Active
+Completed 2026-11-21
 
 ## Kết quả cần có
 
@@ -65,11 +65,11 @@ cũ được sửa theo đặc tả mới, không xóa để cho qua.
 - [x] G7 Log/Docker — `5405244`; smoke test Docker 24/24 + TOKEN_STALE + identity dừng → 503
 - [x] I1 accountType/RBAC — `469c19a`
 - [x] I2 Seller trên User + SellerApplication — `6844666`
-- [x] I3 Địa chỉ + địa giới tĩnh
-- [x] I4 Vòng đời cấm/J7
-- [x] I5 Refresh cookie
-- [x] I6 Tìm kiếm P-37 + rate limit
-- [ ] G8 End-to-end + tài liệu
+- [x] I3 Địa chỉ + địa giới tĩnh — `7b4b297`
+- [x] I4 Vòng đời cấm/J7 — `93bb4d2`
+- [x] I5 Refresh cookie — `98a3cdf`
+- [x] I6 Tìm kiếm P-37 + rate limit — `789a1ca`
+- [x] G8 End-to-end + tài liệu
 
 ## Quyết định
 
@@ -98,4 +98,16 @@ cũ được sửa theo đặc tả mới, không xóa để cho qua.
 
 ## Kết quả
 
-Chưa hoàn tất.
+Hoàn tất 21/11/2026.
+
+- `gateway-service`: `mvn test` 239/239 xanh. `identity-service`: `mvn test` 295/295 xanh (V1–V11,
+  OpenAPI sinh lại).
+- End-to-end Docker qua `http://localhost:8081/api/v1`: 36/36 kiểm tra trong mục Kiểm chứng đều đạt.
+  Một request id do gateway sinh xuất hiện ở access log gateway và cảnh báo của identity. 429 đến
+  sớm hơn lần thứ 11 vì register/login/refresh trước đó cùng tính vào hạn mức nhạy cảm của một IP.
+- Dữ liệu dev cũ: V6 dừng đúng thiết kế (1 ADMIN có profile, 1 user nhiều vai trò, 1 user không
+  profile). Chỉ xóa schema `identity` thay vì `down -v`, nên volume object storage và schema khác còn
+  nguyên.
+- Còn mở, ngoài phạm vi: thử CORS bằng trình duyệt (chưa có SPA); 503 từ service hỏi Identity khi
+  Identity dừng (chưa có service nào); ban/J7 thật cần endpoint nghĩa vụ của Order/Finance; Kafka
+  publisher; giới hạn tần suất nhiều instance; compose chưa truyền biến bootstrap admin.

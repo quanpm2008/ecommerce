@@ -1,6 +1,6 @@
 # gateway-service — Progress
 
-API Gateway for the platform: routing, JWT verification, stripping client-supplied identity headers, blocking `/internal/**`, rate limiting and CORS (see `docs/requirements/api_specs.md` §2.1–2.3). The definition of done is in `gateway-service-checklist.md`. Work plan: `docs/plans/active/identity-gateway-alignment.md`.
+API Gateway for the platform: routing, JWT verification, stripping client-supplied identity headers, blocking `/internal/**`, rate limiting and CORS (see `docs/requirements/api_specs.md` §2.1–2.3). The definition of done is in `gateway-service-checklist.md`. Work plan: `docs/plans/completed/identity-gateway-alignment.md`.
 
 ## Done
 
@@ -76,3 +76,4 @@ API Gateway for the platform: routing, JWT verification, stripping client-suppli
 | 2026-11-20 | Checklist step 4 (headers, request id): identity headers and `X-Service-Token` removed, `X-Forwarded-*` rebuilt from the connection, request id kept/generated, forwarded, on every response and error body, in the MDC across Reactor threads; 201 tests |
 | 2026-11-20 | Checklist steps 5–7: every gateway error in the envelope (also 403 CORS, 413, 429), 1 MB body limit (413 `VALIDATION_ERROR`), CORS for the SPA with credentials (preflight at the gateway, other origins 403, headers on errors, services' CORS headers dropped), per-IP rate limits (sensitive 10/min, general 300/min, `Retry-After`); 231 tests |
 | 2026-11-20 | Checklist steps 8–10: access log at response commit, stack-revealing headers dropped, compose health check; Docker smoke test of the whole gateway against identity and product (24 checks + stale token + identity down); 239 tests |
+| 2026-11-21 | G8: Docker end-to-end through `http://localhost:8081/api/v1`, 36 checks green (scratch script, not committed): register/login with `accountType`, refresh cookie attributes and rotation, Origin check, logout clearing the cookie, old refresh and access tokens refused, forged `X-User-Id` ignored, `/internal/**` 404 with `X-Service-Token`, CORS preflight allowed for :5173 and not for others, 34 provinces from the seed, `/api/v1/products` stripped to product-service, 1.2 MB body → 413 `VALIDATION_ERROR`, admin ban → 503 without Order obligations, login 429 + `Retry-After`. One gateway-generated request id appears in the gateway access log and identity's warning. Open: browser CORS check (no SPA yet), Identity-down 503 from a service that asks Identity (none yet) |
