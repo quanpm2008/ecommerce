@@ -73,7 +73,7 @@ Tokens are issued by identity-service: RS256, `iss` `ecommerce-identity`, `aud` 
 - [x] `X-User-Id`, `X-Actor-Id`, `X-Actor-Type`, `X-Permissions` sent by the client are removed before forwarding. Checked with mixed case and with the header repeated, on public and protected routes — `routing.ProxiedRequestHeaders` (every route), `HeadersTests`
 - [x] The gateway does not add its own identity headers either; services take `sub` from the verified JWT — the Bearer token is forwarded as sent
 - [x] Forwarded unchanged: `Authorization`, `Content-Type`, `Idempotency-Key`, `Accept-Language`, `If-Match` / version headers if used (API §3.8) — also `Cookie` (identity's refresh cookie)
-- [x] `X-Forwarded-For` / `X-Forwarded-Proto` / `X-Forwarded-Host` are set by the gateway. A client-supplied `X-Forwarded-For` is not trusted as-is, so identity's per-IP limits (register, forgot-password) see the real client IP and cannot be dodged by faking the header — the gateway is the edge: client `Forwarded` / `X-Forwarded-*` are dropped and `X-Forwarded-For` is exactly the connection's address (plus `-Proto`, `-Host`, `-Port`); the gateway's own appending filters are off. *Identity's view is checked end to end in §10.*
+- [x] `X-Forwarded-For` / `X-Forwarded-Proto` / `X-Forwarded-Host` are set by the gateway. A client-supplied `X-Forwarded-For` is not trusted as-is, so identity's per-IP limits (register, forgot-password) see the real client IP and cannot be dodged by faking the header — the gateway is the edge: client `Forwarded` / `X-Forwarded-*` are dropped and `X-Forwarded-For` is exactly the connection's address (plus `-Proto`, `-Host`, `-Port`); the gateway's own appending filters are off. In Docker (2026-11-20) identity's forgot-password limit (5 / 15 min per IP) still answered 429 on the 6th request although each one faked a different `X-Forwarded-For`.
 - [x] Hop-by-hop headers (`Connection`, `Transfer-Encoding`, ...) are handled correctly; `Host` is right for the downstream — the gateway's `RemoveHopByHopHeadersFilter` (tested with `Proxy-Authorization`, `Keep-Alive`); `Host` is the instance's
 
 **`X-Request-Id`**
@@ -81,7 +81,7 @@ Tokens are issued by identity-service: RS256, `iss` `ecommerce-identity`, `aud` 
 - [x] Sent by the client in a safe format → kept. Unsafe (does not match `[A-Za-z0-9._-]{1,128}`, the pattern identity-service accepts) → replaced with a generated one — also when sent twice; the service gets exactly one
 - [x] Returned in the response header for every request, including gateway errors, 404s and 429s — set at commit, so it also replaces a service's own echo (404, 401, 400, blocked `/internal`, 503 tested; 429 comes with §7)
 - [x] In every gateway log line for the request (MDC), and equal to `error.requestId` in gateway errors — Reactor context + `spring.reactor.context-propagation=auto` (MDC key `requestId`, as identity's; `logging.pattern.level` prints it); also on Spring's own lines (`logLinesForTheRequestCarryItsId`)
-- [ ] Downstream services receive it and echo the same value (checked against identity-service) — *received: tested with stubs; identity's echo is checked end to end in §10*
+- [x] Downstream services receive it and echo the same value (checked against identity-service) — Docker 2026-11-20: identity's error body and its log line carry the gateway's id
 
 ## 5. Error envelope (API §3.3, §3.4, §4.1)
 
@@ -113,27 +113,27 @@ N-04 gives no numbers yet; the values are the team's proposal in decision 0002 (
 
 ## 8. Security hygiene
 
-- [ ] `Authorization` header values, tokens, passwords and reset tokens never appear in gateway logs (request logging masks them)
-- [ ] Access log: method, path, status, duration, `requestId` and client IP for every request; no request bodies
-- [ ] No server/version headers that leak the stack (`Server`, `X-Powered-By`)
-- [ ] Stateless: no session and the gateway sets no cookies of its own; identity's refresh-token cookie (`Cookie` / `Set-Cookie`) passes through unchanged. CSRF protection for that cookie is identity's Origin check (decision 0001), so the gateway's CSRF stays off
+- [x] `Authorization` header values, tokens, passwords and reset tokens never appear in gateway logs (request logging masks them) — headers, query strings and bodies are never logged (`queryStringsTokensPasswordsAndCookiesAreNeverLogged`)
+- [x] Access log: method, path, status, duration, `requestId` and client IP for every request; no request bodies — `web.AccessLogFilter` (logger `gateway.access`), written at response commit so the status is final (also for edge refusals and errors written by the error handler); a request cancelled before any response is logged as `cancelled`
+- [x] No server/version headers that leak the stack (`Server`, `X-Powered-By`) — Netty sends none; services' `Server`, `X-Powered-By`, `X-Application-Context` are dropped (`routing.ProxiedResponseHeaders`)
+- [x] Stateless: no session and the gateway sets no cookies of its own; identity's refresh-token cookie (`Cookie` / `Set-Cookie`) passes through unchanged. CSRF protection for that cookie is identity's Origin check (decision 0001), so the gateway's CSRF stays off — `theGatewaySetsNoCookiesOfItsOwn`, `identitysRefreshCookiePassesThroughBothWays`
 
 ## 9. Docker and compose
 
-- [ ] `./up.sh` builds and starts the gateway; it waits for discovery-service to be healthy and registers with Eureka
-- [ ] In compose the JWKS URL and Eureka URL point to service names, not localhost
-- [ ] The team's dev image (`mvn spring-boot:run`, `src` mounted read-only) starts the gateway and a compose health check on `/actuator/health` passes. *A release image (non-root, built jar) is out of scope for now (system-architecture §2.5).*
-- [ ] `DEVELOPMENT.md` documents the gateway URL, the base URL to give the FE, and how to run the gateway on the host against services in Docker
+- [x] `./up.sh` builds and starts the gateway; it waits for discovery-service to be healthy and registers with Eureka — image built with `up.sh`'s `docker build`, stack started with compose (2026-11-20): `GATEWAY-SERVICE` in Eureka's registry
+- [x] In compose the JWKS URL and Eureka URL point to service names, not localhost — `http://identity-service:8083/.well-known/jwks.json`, `http://discovery-service:8761/eureka/`
+- [x] The team's dev image (`mvn spring-boot:run`, `src` mounted read-only) starts the gateway and a compose health check on `/actuator/health` passes — `docker inspect` shows `healthy`. *A release image (non-root, built jar) is out of scope for now (system-architecture §2.5).*
+- [x] `DEVELOPMENT.md` documents the gateway URL, the base URL to give the FE, and how to run the gateway on the host against services in Docker — gateway section (routing, tokens, CORS, limits, request id, headers); running services on the host is the guide's "service on host" mode, which says not to mix modes for services that call each other
 
 ## 10. End-to-end through the gateway (API §10.5)
 
 All of these go through `http://localhost:8081/api/v1` with the stack in Docker.
 
-- [x] register → login → `GET /api/v1/identity/users/me` → refresh → logout; after logout the old access token is refused (by Identity, through the gateway) — manual check 2026-11-02 (201, 200, 200, 200, 204, then 401 `UNAUTHENTICATED`)
-- [ ] A request with a forged `X-User-Id` for another user still acts as the token's `sub`
-- [ ] `POST /internal/v1/identity/auth/authorization-context` from outside is blocked, even with a valid `X-Service-Token`
-- [ ] A token issued before a role change gets 401 `TOKEN_STALE` from the service; the gateway passes it through unchanged
-- [ ] Identity stopped: public identity routes → 503 `SERVICE_UNAVAILABLE`; protected routes on other services → 503 (from the service, not allowed through)
-- [ ] One request's `X-Request-Id` can be found in the gateway log, the identity log and the error body
+- [x] register → login → `GET /api/v1/identity/users/me` → refresh → logout; after logout the old access token is refused (by Identity, through the gateway) — manual check 2026-11-02 (201, 200, 200, 200, 204, then 401 `UNAUTHENTICATED`); register → login (with `accountType`) → me again on WebFlux 2026-11-20. *Re-check refresh/logout once the refresh cookie (identity I5) lands.*
+- [x] A request with a forged `X-User-Id` for another user still acts as the token's `sub` — Docker 2026-11-20
+- [x] `POST /internal/v1/identity/auth/authorization-context` from outside is blocked, even with a valid `X-Service-Token` — 404, Docker 2026-11-20
+- [x] A token issued before a role change gets 401 `TOKEN_STALE` from the service; the gateway passes it through unchanged — Docker 2026-11-20 (`authz_version` bumped in the database)
+- [ ] Identity stopped: public identity routes → 503 `SERVICE_UNAVAILABLE`; protected routes on other services → 503 (from the service, not allowed through) — *first half checked in Docker 2026-11-20 (503 within 2 s of stopping identity); the second needs a service that asks Identity, none exists yet*
+- [x] One request's `X-Request-Id` can be found in the gateway log, the identity log and the error body — Docker 2026-11-20 (a reused refresh token: gateway access line, identity's warning, identity's error body)
 - [ ] The FE dev origin can call login and `users/me` from a browser (CORS) and read `X-Request-Id`
-- [ ] `GET /api/v1/products` and `GET /api/v1/categories` reach product-service (path without `/api/v1`). Routes for services not built yet (Cart, Order, Payment, Finance, Notification) are checked once each service has an endpoint; until then 503 is expected
+- [x] `GET /api/v1/products` and `GET /api/v1/categories` reach product-service (path without `/api/v1`) — 200 with product-service's envelope, Docker 2026-11-20. Routes for services not built yet (Cart, Order, Payment, Finance, Notification) are checked once each service has an endpoint; until then 503 is expected

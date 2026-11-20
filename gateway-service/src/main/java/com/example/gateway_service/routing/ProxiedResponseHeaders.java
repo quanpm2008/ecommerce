@@ -14,16 +14,21 @@ import org.springframework.web.server.ServerWebExchange;
  * The response headers taken from a service: its own {@code Access-Control-*} headers are dropped, because CORS is
  * answered once, by the gateway ({@code web.CorsFilter}), and two {@code Access-Control-Allow-Origin} values would make
  * the browser refuse the response. A service's {@code Vary} is merged with the gateway's ({@code Origin}, ...) instead
- * of replacing it.
+ * of replacing it. {@code Server} and {@code X-Powered-By} are dropped too (checklist §8); the gateway's own Netty server
+ * sends neither.
  */
 @Component
 class ProxiedResponseHeaders implements HttpHeadersFilter, Ordered {
+
+	/** Headers that only tell an attacker which server software runs behind the gateway. */
+	private static final Set<String> STACK_HEADERS = Set.of("server", "x-powered-by", "x-application-context");
 
 	@Override
 	public HttpHeaders filter(HttpHeaders input, ServerWebExchange exchange) {
 		HttpHeaders headers = new HttpHeaders();
 		input.forEach((name, values) -> {
-			if (!name.toLowerCase(Locale.ROOT).startsWith("access-control-")) {
+			String lower = name.toLowerCase(Locale.ROOT);
+			if (!lower.startsWith("access-control-") && !STACK_HEADERS.contains(lower)) {
 				headers.addAll(name, values);
 			}
 		});

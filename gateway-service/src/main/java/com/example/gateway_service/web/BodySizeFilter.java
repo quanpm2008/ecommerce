@@ -28,7 +28,7 @@ import reactor.core.publisher.Mono;
  * counted while it streams and the request fails as soon as it passes the limit.
  */
 @Component
-@Order(Ordered.HIGHEST_PRECEDENCE + 3)
+@Order(Ordered.HIGHEST_PRECEDENCE + 4)
 class BodySizeFilter implements WebFilter {
 
 	private final long maxBytes;

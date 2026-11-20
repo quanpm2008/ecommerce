@@ -33,7 +33,7 @@ import reactor.core.publisher.Mono;
  * </ul>
  */
 @Component
-@Order(Ordered.HIGHEST_PRECEDENCE + 1)
+@Order(Ordered.HIGHEST_PRECEDENCE + 2)
 class CorsFilter implements WebFilter {
 
 	static final List<String> ALLOWED_METHODS = List.of("GET", "POST", "PUT", "PATCH", "DELETE");

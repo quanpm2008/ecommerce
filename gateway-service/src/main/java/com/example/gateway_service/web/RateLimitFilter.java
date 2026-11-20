@@ -41,7 +41,7 @@ import reactor.core.publisher.Mono;
  * configured one (SAD C.5; no shared store, REQ-ENG-010). identity-service keeps its own per-IP limits behind this.
  */
 @Component
-@Order(Ordered.HIGHEST_PRECEDENCE + 2)
+@Order(Ordered.HIGHEST_PRECEDENCE + 3)
 class RateLimitFilter implements WebFilter {
 
 	private static final Logger log = LoggerFactory.getLogger(RateLimitFilter.class);
