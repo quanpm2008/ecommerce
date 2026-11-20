@@ -174,6 +174,16 @@ abstract class PayHttpTestSupport extends OrderPostgresTestSupport {
 		}
 	}
 
+	HttpResponse<String> adjustStock(UUID product, int quantity, long version) throws Exception {
+		var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/orders/seller/inventory/" + product))
+				.header("Authorization", "Bearer " + token(SELLER)).header("Content-Type", "application/json")
+				.PUT(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(
+						Map.of("onHandQuantity", quantity, "version", version, "note", "Kiểm kê")))).build();
+		try (var client = HttpClient.newHttpClient()) {
+			return client.send(request, HttpResponse.BodyHandlers.ofString());
+		}
+	}
+
 	void assertNoCheckout(Sample sample) {
 		assertThat(jdbc.queryForObject("select count(*) from orders.checkout_session where customer_id = ?", Integer.class,
 				sample.customer())).isZero();
@@ -220,6 +230,13 @@ abstract class PayHttpTestSupport extends OrderPostgresTestSupport {
 		try {
 			String userId = SignedJWT.parse(exchange.getRequestHeaders().getFirst("Authorization").substring(7))
 					.getJWTClaimsSet().getSubject();
+			if (SELLER.toString().equals(userId)) {
+				respond(exchange, 200, Map.of("data", Map.of("userId", userId, "accountType", "SELLER", "accountStatus",
+						"ACTIVE", "userStatus", "ACTIVE", "accessMode", "FULL", "authzVersion", 1, "roles", List.of("SELLER"),
+						"permissions", List.of("inventory:manage:own"), "sessionActive", true,
+						"sellerProfile", Map.of("approvalStatus", "APPROVED", "status", "ACTIVE"))));
+				return;
+			}
 			respond(exchange, 200, Map.of("data", Map.of("userId", userId, "accountType", "CUSTOMER", "accountStatus",
 					"ACTIVE", "userStatus", "ACTIVE", "accessMode", "FULL", "authzVersion", 1, "roles", List.of("CUSTOMER"),
 					"permissions", List.of("checkout:create:own"), "sessionActive", !UUID.fromString(userId).equals(revokedCustomer.get()),
