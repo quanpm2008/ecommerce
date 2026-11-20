@@ -48,6 +48,9 @@ public class User {
 
 	private String phoneNumber;
 
+	/** The account's avatar; for a seller it is also the shop logo (DB §3.1.1). */
+	private String avatarObjectKey;
+
 	@Enumerated(EnumType.STRING)
 	private UserStatus status;
 
@@ -83,13 +86,19 @@ public class User {
 		return email.strip().toLowerCase(Locale.ROOT);
 	}
 
+	/** For a seller account this is the shop name (DB §3.1.3); callers check it may change. */
 	public void rename(String fullName) {
 		this.fullName = Objects.requireNonNull(fullName);
 	}
 
-	/** {@code phoneNumber} must already be normalized. */
+	/** {@code phoneNumber} must already be normalized. For a seller it is also the shop's contact phone. */
 	public void changePhoneNumber(String phoneNumber) {
 		this.phoneNumber = Objects.requireNonNull(phoneNumber);
+	}
+
+	/** {@code avatarObjectKey} must already be verified as this account's upload; null removes the avatar. */
+	public void changeAvatar(String avatarObjectKey) {
+		this.avatarObjectKey = avatarObjectKey;
 	}
 
 	/** {@code passwordHash} is already encoded. Callers revoke the user's sessions. */

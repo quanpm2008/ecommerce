@@ -14,7 +14,7 @@ import java.util.UUID;
  * screens; the backend checks them again on every call. Never contains credentials.
  */
 public record UserSelfProfile(UUID userId, AccountType accountType, String email, AuthMethod authMethod,
-		String fullName, String phoneNumber,
+		String fullName, String phoneNumber, String avatarObjectKey, String avatarUrl,
 		UserStatus userStatus, List<String> roles, List<String> permissions, long authzVersion,
 		CustomerProfile customerProfile, SellerSelfProfile sellerProfile, Instant createdAt) {
 }

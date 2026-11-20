@@ -13,8 +13,11 @@ import com.example.identity_service.outbox.OutboxWriter;
 import com.example.identity_service.rbac.RoleAssignments;
 import com.example.identity_service.rbac.RoleCode;
 import com.example.identity_service.seller.Seller;
+import com.example.identity_service.seller.SellerApplication;
+import com.example.identity_service.seller.SellerApplicationRepository;
 import com.example.identity_service.seller.SellerApprovalStatus;
 import com.example.identity_service.seller.SellerRepository;
+import com.example.identity_service.seller.ShopNames;
 import com.example.identity_service.session.IssuedTokens;
 import com.example.identity_service.session.SessionService;
 import com.example.identity_service.user.AccountType;
@@ -29,6 +32,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -59,6 +64,12 @@ public class AuthService {
 
 	private final SignInPolicy signIn;
 
+	private final SellerApplicationRepository applications;
+
+	private final ShopNames shopNames;
+
+	private final Clock clock;
+
 	/** Compared against when the email is unknown, so a miss costs as much time as a wrong password. */
 	private final String unknownUserHash = "{bcrypt}" + new BCryptPasswordEncoder().encode(OpaqueTokens.generate());
 
@@ -83,37 +94,33 @@ public class AuthService {
 	}
 
 	/**
-	 * User LOCAL + Seller PENDING in one transaction, with no SELLER role and no wallet until an admin approves.
-	 * The user's own phone stays empty; {@code contactPhone} belongs to the shop.
+	 * A SELLER account (LOCAL) + Seller PENDING + its first SellerApplication, in one transaction, with no SELLER role,
+	 * session or wallet until an admin approves (API §6.1). {@code fullName} is the shop name, unique among PENDING and
+	 * APPROVED sellers; {@code phoneNumber} is the account's (and the shop's) phone, unique across all accounts.
 	 */
 	@Transactional
-	public UserSelfProfile registerSeller(AuthRequests.RegisterSeller request) {
+	public SellerRegistration registerSeller(AuthRequests.RegisterSeller request) {
 		NewPasswords.check(request.password(), request.confirmPassword(), "password");
 		String email = User.normalizeEmail(request.email());
-		String sellerName = request.sellerName().strip();
-		String contactPhone = PhoneNumbers.normalize(request.contactPhone())
-				.orElseThrow(() -> ApiException.forField(ErrorCode.VALIDATION_ERROR, "contactPhone", "INVALID_PHONE"));
+		String shopName = request.fullName().strip();
+		String phone = PhoneNumbers.normalize(request.phoneNumber())
+				.orElseThrow(() -> ApiException.forField(ErrorCode.VALIDATION_ERROR, "phoneNumber", "INVALID_PHONE"));
 		if (users.existsByEmail(email)) {
 			throw ApiException.forField(ErrorCode.EMAIL_ALREADY_USED, "email", "DUPLICATE");
 		}
-		if (sellers.existsActiveSellerName(sellerName)) {
-			throw ApiException.forField(ErrorCode.SELLER_NAME_ALREADY_USED, "sellerName", "DUPLICATE");
-		}
-		if (sellers.existsActiveContactPhone(contactPhone)) {
-			throw ApiException.forField(ErrorCode.PHONE_ALREADY_USED, "contactPhone", "DUPLICATE");
+		if (users.existsByPhoneNumber(phone)) {
+			throw ApiException.forField(ErrorCode.PHONE_ALREADY_USED, "phoneNumber", "DUPLICATE");
 		}
 		User user = saveNewUser(User.local(AccountType.SELLER, email, passwordEncoder.encode(request.password()),
-				request.fullName().strip(), null));
-		try {
-			sellers.saveAndFlush(new Seller(user, sellerName, contactPhone, null));
-		}
-		catch (DataIntegrityViolationException ex) {
-			throw UniqueConflicts.translate(ex);
-		}
+				shopName, phone));
+		shopNames.reserve(shopName, user.getUserId());
+		Instant now = clock.instant();
+		sellers.save(new Seller(user, null, now));
+		SellerApplication application = applications.save(new SellerApplication(user, 1, null, now));
 		outbox.write("seller.registered", user.getUserId(), EventActor.user(user.getUserId(), EventActor.Context.SELLER),
 				Map.of("userId", user.getUserId(), "sellerId", user.getUserId(),
 						"approvalStatus", SellerApprovalStatus.PENDING, "authzVersion", user.getAuthzVersion()));
-		return profiles.of(user.getUserId());
+		return SellerRegistration.of(user.getUserId(), application.getApplicationId());
 	}
 
 	/**

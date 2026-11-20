@@ -8,7 +8,7 @@ import java.time.Duration;
  * {@code identity.rate-limit.*}: requests allowed per client IP and window (N-04 gives no numbers).
  */
 @ConfigurationProperties("identity.rate-limit")
-public record RateLimitProperties(Limit register, Limit forgotPassword) {
+public record RateLimitProperties(Limit register, Limit forgotPassword, Limit sellerReapplication) {
 
 	public record Limit(int limit, Duration window) {
 	}

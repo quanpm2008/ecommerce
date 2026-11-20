@@ -97,25 +97,35 @@ class AuthEndpointsTests extends EndpointTestSupport {
 	// --- register-seller ---
 
 	@Test
-	void registerSellerCreatesAPendingSellerWithoutAnyRole() throws Exception {
+	void registerSellerCreatesASellerAccountWithAPendingApplicationAndNoRole() throws Exception {
 		String email = uniqueEmail();
-		String contactPhone = uniquePhone();
+		String phone = uniquePhone();
+		String shopName = "Shop " + UUID.randomUUID();
 
-		String body = registerSeller(email, "Shop " + UUID.randomUUID(), "+84" + contactPhone.substring(1))
+		String body = registerSeller(email, "  " + shopName + " ", "+84" + phone.substring(1))
 				.andExpect(status().isCreated())
 				.andExpect(jsonPath("$.data.accountType").value("SELLER"))
-				.andExpect(jsonPath("$.data.roles", empty()))
-				.andExpect(jsonPath("$.data.permissions", containsInAnyOrder("account:read:own", "account:update:own")))
-				.andExpect(jsonPath("$.data.phoneNumber").isEmpty())
-				.andExpect(jsonPath("$.data.customerProfile").isEmpty())
 				.andExpect(jsonPath("$.data.sellerProfile.approvalStatus").value("PENDING"))
-				.andExpect(jsonPath("$.data.sellerProfile.status").value("ACTIVE"))
-				.andExpect(jsonPath("$.data.sellerProfile.contactPhone").value(contactPhone))
+				.andExpect(jsonPath("$.data.applicationId").isNotEmpty())
+				.andExpect(jsonPath("$.data.accessToken").doesNotExist())
 				.andReturn().getResponse().getContentAsString();
 
 		UUID userId = UUID.fromString(read(body, "$.data.userId"));
 		assertThat(read(body, "$.data.sellerProfile.sellerId")).isEqualTo(userId.toString());
+		assertThat(read(body, "$.data.sellerProfile.latestApplicationId"))
+				.isEqualTo(read(body, "$.data.applicationId"));
+		assertThat(jdbc.queryForMap("select account_type, full_name, phone_number from users where user_id = ?",
+				userId)).containsEntry("account_type", "SELLER").containsEntry("full_name", shopName)
+				.containsEntry("phone_number", phone);
+		assertThat(jdbc.queryForMap("""
+				select application_id::text as id, submission_no, status, snapshot_full_name, snapshot_phone
+				from seller_applications where seller_id = ?""", userId))
+				.containsEntry("id", read(body, "$.data.applicationId")).containsEntry("submission_no", 1)
+				.containsEntry("status", "PENDING").containsEntry("snapshot_full_name", shopName)
+				.containsEntry("snapshot_phone", phone);
 		assertThat(jdbc.queryForObject("select count(*) from user_roles where user_id = ?", Integer.class, userId))
+				.isZero();
+		assertThat(jdbc.queryForObject("select count(*) from customers where customer_id = ?", Integer.class, userId))
 				.isZero();
 		Map<String, Object> event = jdbc.queryForMap("""
 				select payload -> 'payload' ->> 'approvalStatus' as approval_status,
@@ -127,7 +137,7 @@ class AuthEndpointsTests extends EndpointTestSupport {
 	}
 
 	@Test
-	void registerSellerRejectsATakenShopNameOrContactPhone() throws Exception {
+	void registerSellerRejectsATakenShopNameOrPhone() throws Exception {
 		String name = "Shop Ao Xinh " + UUID.randomUUID();
 		String phone = uniquePhone();
 		registerSeller(uniqueEmail(), name, phone).andExpect(status().isCreated());
@@ -135,10 +145,43 @@ class AuthEndpointsTests extends EndpointTestSupport {
 		registerSeller(uniqueEmail(), "  " + name.toUpperCase().replace(" ", "   ") + " ", uniquePhone())
 				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.error.code").value("SELLER_NAME_ALREADY_USED"))
-				.andExpect(jsonPath("$.error.details[0].field").value("sellerName"));
+				.andExpect(jsonPath("$.error.details[0].field").value("fullName"));
 		registerSeller(uniqueEmail(), "Shop " + UUID.randomUUID(), phone).andExpect(status().isConflict())
 				.andExpect(jsonPath("$.error.code").value("PHONE_ALREADY_USED"))
-				.andExpect(jsonPath("$.error.details[0].field").value("contactPhone"));
+				.andExpect(jsonPath("$.error.details[0].field").value("phoneNumber"));
+	}
+
+	@Test
+	void aRejectedSellerFreesItsShopNameAndCustomersMayShareNames() throws Exception {
+		String name = "Shop Freed " + UUID.randomUUID();
+		UUID rejected = UUID.fromString(read(body(registerSeller(uniqueEmail(), name, uniquePhone())
+				.andExpect(status().isCreated())), "$.data.userId"));
+		rejectSeller(rejected);
+
+		registerSeller(uniqueEmail(), name, uniquePhone()).andExpect(status().isCreated());
+		register(uniqueEmail(), uniquePhone(), PASSWORD).andExpect(status().isCreated());
+		register(uniqueEmail(), uniquePhone(), PASSWORD).andExpect(status().isCreated());
+	}
+
+	@Test
+	void twoRegistrationsOfOneShopNameAtOnceLeaveOne() throws Exception {
+		String name = "Shop Race " + UUID.randomUUID();
+		var pool = java.util.concurrent.Executors.newFixedThreadPool(4);
+		try {
+			var results = new java.util.ArrayList<java.util.concurrent.Future<Integer>>();
+			for (int i = 0; i < 4; i++) {
+				results.add(pool.submit(() -> registerSeller(uniqueEmail(), name, uniquePhone()).andReturn()
+						.getResponse().getStatus()));
+			}
+			var statuses = new java.util.ArrayList<Integer>();
+			for (var result : results) {
+				statuses.add(result.get());
+			}
+			assertThat(statuses).containsOnly(201, 409).filteredOn(code -> code == 201).hasSize(1);
+		}
+		finally {
+			pool.shutdown();
+		}
 	}
 
 	// --- login ---

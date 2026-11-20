@@ -10,14 +10,15 @@ import java.util.UUID;
 import java.util.stream.IntStream;
 
 /**
- * Rules for {@code SELLER_LOGO} media (API §3.9, P-08): JPG, PNG or WebP up to {@code sellerLogoMaxBytes}, stored
- * under {@code seller-logos/<sellerId>/}. The prefix proves ownership; the leading bytes prove the real type.
+ * Rules for {@code AVATAR} media (API §3.9, §6.1 #13, P-08): JPG, PNG or WebP up to {@code avatarMaxBytes}, stored
+ * under {@code avatars/<userId>/}. One avatar per account, in {@code users.avatar_object_key}; a seller's avatar is
+ * also its shop logo. The prefix proves ownership; the leading bytes prove the real type.
  */
 @Component
 @RequiredArgsConstructor
-public class SellerLogos {
+public class Avatars {
 
-	public static final String PURPOSE = "SELLER_LOGO";
+	public static final String PURPOSE = "AVATAR";
 
 	private static final Map<String, String> EXTENSION_BY_MIME = Map.of("image/jpeg", "jpg", "image/png", "png",
 			"image/webp", "webp");
@@ -29,7 +30,7 @@ public class SellerLogos {
 	private final MediaProperties properties;
 
 	/** Checks a declared upload and returns the object key to sign for. */
-	public String newObjectKey(UUID sellerId, String purpose, String mimeType, long sizeBytes) {
+	public String newObjectKey(UUID userId, String purpose, String mimeType, long sizeBytes) {
 		if (!PURPOSE.equals(purpose)) {
 			throw ApiException.forField(ErrorCode.MEDIA_INVALID, "files[0].purpose", "UNSUPPORTED_PURPOSE");
 		}
@@ -37,29 +38,31 @@ public class SellerLogos {
 		if (extension == null) {
 			throw ApiException.forField(ErrorCode.MEDIA_INVALID, "files[0].mimeType", "UNSUPPORTED_TYPE");
 		}
-		if (sizeBytes <= 0 || sizeBytes > properties.sellerLogoMaxBytes()) {
+		if (sizeBytes <= 0 || sizeBytes > properties.avatarMaxBytes()) {
 			throw ApiException.forField(ErrorCode.MEDIA_INVALID, "files[0].sizeBytes", "TOO_LARGE");
 		}
-		return prefix(sellerId) + UUID.randomUUID() + "." + extension;
+		return prefix(userId) + UUID.randomUUID() + "." + extension;
 	}
 
-	/** Verifies that {@code objectKey} was uploaded by this seller and really is an allowed image. */
-	public void requireUploadedLogo(UUID sellerId, String objectKey) {
-		if (!objectKey.startsWith(prefix(sellerId)) || objectKey.contains("..")) {
-			throw ApiException.forField(ErrorCode.MEDIA_INVALID, "logoObjectKey", "NOT_OWNED");
+	/** Verifies that {@code objectKey} was uploaded by this account and really is an allowed image. */
+	public void requireUploadedAvatar(UUID userId, String objectKey) {
+		if (!objectKey.startsWith(prefix(userId)) || objectKey.contains("..")) {
+			throw ApiException.forField(ErrorCode.MEDIA_INVALID, FIELD, "NOT_OWNED");
 		}
 		MediaStorage.StoredObject object = storage.inspect(objectKey, HEADER_BYTES)
-				.orElseThrow(() -> ApiException.forField(ErrorCode.MEDIA_INVALID, "logoObjectKey", "NOT_FOUND"));
-		if (object.sizeBytes() > properties.sellerLogoMaxBytes()) {
-			throw ApiException.forField(ErrorCode.MEDIA_INVALID, "logoObjectKey", "TOO_LARGE");
+				.orElseThrow(() -> ApiException.forField(ErrorCode.MEDIA_INVALID, FIELD, "NOT_FOUND"));
+		if (object.sizeBytes() > properties.avatarMaxBytes()) {
+			throw ApiException.forField(ErrorCode.MEDIA_INVALID, FIELD, "TOO_LARGE");
 		}
 		if (!isAllowedImage(object.header())) {
-			throw ApiException.forField(ErrorCode.MEDIA_INVALID, "logoObjectKey", "NOT_AN_IMAGE");
+			throw ApiException.forField(ErrorCode.MEDIA_INVALID, FIELD, "NOT_AN_IMAGE");
 		}
 	}
 
-	private static String prefix(UUID sellerId) {
-		return "seller-logos/" + sellerId + "/";
+	private static final String FIELD = "avatarObjectKey";
+
+	private static String prefix(UUID userId) {
+		return "avatars/" + userId + "/";
 	}
 
 	/** Magic bytes: JPEG FF D8 FF, PNG 89 50 4E 47 0D 0A 1A 0A, WebP "RIFF" .... "WEBP". */

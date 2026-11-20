@@ -94,7 +94,8 @@ class AdminReadEndpointsTests extends EndpointTestSupport {
 				admin.accessToken()).andExpect(status().isOk())
 				.andExpect(jsonPath("$.data[*].user.userId", contains(first.toString(), second.toString())))
 				.andExpect(jsonPath("$.data[0].sellerProfile.approvalStatus").value("PENDING"))
-				.andExpect(jsonPath("$.data[0].sellerProfile.contactPhone").isNotEmpty());
+				.andExpect(jsonPath("$.data[0].user.phoneNumber").isNotEmpty())
+				.andExpect(jsonPath("$.data[0].user.accountType").value("SELLER"));
 		call(HttpMethod.GET, "/admin/sellers?q=" + tag + "&approvalStatus=APPROVED", null, admin.accessToken())
 				.andExpect(jsonPath("$.data[*].user.userId", contains(approved.toString())))
 				.andExpect(jsonPath("$.data[0].reviewedByUserId").isNotEmpty());

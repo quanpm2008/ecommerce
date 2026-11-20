@@ -21,8 +21,11 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Shop profile and application review (DB §3.1.3); {@code sellerId} is the owning {@code User.userId}. A profile
- * alone grants nothing: the SELLER role is granted only on approval.
+ * The shop profile of a SELLER account (DB §3.1.3); {@code sellerId} is the account's {@code User.userId}. The shop
+ * name, contact phone and logo are the account's own {@code fullName}, {@code phoneNumber} and
+ * {@code avatarObjectKey}. {@code approvalStatus}, {@code registeredAt} and the review fields mirror the latest
+ * {@link SellerApplication}; every submission keeps its own row. A profile alone grants nothing: the SELLER role is
+ * granted only on approval.
  */
 @Entity
 @Getter
@@ -38,13 +41,7 @@ public class Seller {
 	@JoinColumn(name = "seller_id")
 	private User user;
 
-	private String sellerName;
-
 	private String description;
-
-	private String logoObjectKey;
-
-	private String contactPhone;
 
 	@Enumerated(EnumType.STRING)
 	private SellerStatus status;
@@ -68,43 +65,41 @@ public class Seller {
 	@UpdateTimestamp
 	private Instant updatedAt;
 
-	/** A new PENDING application. {@code contactPhone} must already be normalized. */
-	public Seller(User user, String sellerName, String contactPhone, String description) {
+	/** The profile of a new seller account, with its first application PENDING. */
+	public Seller(User user, String description, Instant submittedAt) {
 		this.user = user;
-		this.sellerName = sellerName.strip();
-		this.contactPhone = contactPhone;
 		this.description = description;
 		this.status = SellerStatus.ACTIVE;
 		this.approvalStatus = SellerApprovalStatus.PENDING;
-		this.registeredAt = Instant.now();
+		this.registeredAt = submittedAt;
 	}
-
 
 	/** Only APPROVED and ACTIVE sellers may run their shop (DB §3.1.3). */
 	public boolean canOperate() {
 		return approvalStatus == SellerApprovalStatus.APPROVED && status == SellerStatus.ACTIVE;
 	}
 
-	/** A REJECTED application submitted again: same seller id, back to PENDING, review fields cleared. */
-	public void resubmit(String sellerName, String contactPhone, String description) {
+	/**
+	 * A new application after REJECTED (UC-A02.ALT-04): the profile follows it back to PENDING. The rejected
+	 * application keeps its own row and reason.
+	 */
+	public void reapply(String description, Instant submittedAt) {
 		if (approvalStatus != SellerApprovalStatus.REJECTED) {
-			throw new IllegalStateException("Only a REJECTED application can be resubmitted");
+			throw new IllegalStateException("Only a REJECTED seller applies again");
 		}
-		this.sellerName = sellerName.strip();
-		this.contactPhone = contactPhone;
 		this.description = description;
 		this.approvalStatus = SellerApprovalStatus.PENDING;
 		this.rejectionReason = null;
 		this.reviewedAt = null;
 		this.reviewedByUserId = null;
-		this.registeredAt = Instant.now();
+		this.registeredAt = submittedAt;
 	}
 
 	public boolean isPending() {
 		return approvalStatus == SellerApprovalStatus.PENDING;
 	}
 
-	/** PENDING → APPROVED; the SELLER role is granted by the caller in the same transaction. */
+	/** PENDING → APPROVED; the caller approves the application and grants SELLER in the same transaction. */
 	public void approve(UUID reviewerId, Instant now) {
 		requirePending();
 		this.approvalStatus = SellerApprovalStatus.APPROVED;
@@ -112,7 +107,7 @@ public class Seller {
 		this.reviewedByUserId = reviewerId;
 	}
 
-	/** PENDING → REJECTED; the partial unique indexes then free the shop name and contact phone. */
+	/** PENDING → REJECTED; the shop name is then free for another seller. */
 	public void reject(UUID reviewerId, String reason, Instant now) {
 		requirePending();
 		this.approvalStatus = SellerApprovalStatus.REJECTED;
@@ -140,16 +135,6 @@ public class Seller {
 
 	public void changeDescription(String description) {
 		this.description = description;
-	}
-
-	/** {@code logoObjectKey} must already be verified; null removes the logo. */
-	public void changeLogo(String logoObjectKey) {
-		this.logoObjectKey = logoObjectKey;
-	}
-
-	/** {@code contactPhone} must already be normalized. */
-	public void changeContactPhone(String contactPhone) {
-		this.contactPhone = contactPhone;
 	}
 
 }

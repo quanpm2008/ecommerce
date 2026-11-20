@@ -6,6 +6,7 @@ import com.example.identity_service.common.security.Caller;
 import com.example.identity_service.common.web.ApiResponse;
 import com.example.identity_service.common.web.RateLimitProperties;
 import com.example.identity_service.common.web.RateLimiter;
+import com.example.identity_service.user.User;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -27,6 +28,7 @@ import static com.example.identity_service.common.error.ErrorCode.ACCOUNT_DISABL
 import static com.example.identity_service.common.error.ErrorCode.EMAIL_ALREADY_USED;
 import static com.example.identity_service.common.error.ErrorCode.INVALID_CREDENTIALS;
 import static com.example.identity_service.common.error.ErrorCode.INVALID_REFRESH_TOKEN;
+import static com.example.identity_service.common.error.ErrorCode.INVALID_STATE_TRANSITION;
 import static com.example.identity_service.common.error.ErrorCode.PASSWORD_POLICY_VIOLATION;
 import static com.example.identity_service.common.error.ErrorCode.PHONE_ALREADY_USED;
 import static com.example.identity_service.common.error.ErrorCode.RATE_LIMITED;
@@ -50,9 +52,14 @@ public class AuthController {
 
 	static final String FORGOT_PASSWORD_MESSAGE = "If the email is valid, password reset instructions have been sent.";
 
+	static final String REAPPLICATION_MESSAGE = "If the email belongs to a rejected seller, a link to apply again has "
+			+ "been sent.";
+
 	private final AuthService auth;
 
 	private final PasswordService passwords;
+
+	private final SellerReapplicationService reapplications;
 
 	private final RateLimiter rateLimiter;
 
@@ -68,16 +75,46 @@ public class AuthController {
 		return ApiResponse.of(auth.register(body));
 	}
 
-	@Operation(summary = "Register a seller", description = "Creates the user and a PENDING seller application, with "
-			+ "no role until an admin approves it. Rate-limited per IP.")
+	@Operation(summary = "Register a seller", description = "Creates a SELLER account (its own email), a PENDING seller "
+			+ "profile and the first application. `fullName` is the shop name (unique among pending and approved "
+			+ "sellers) and `phoneNumber` its contact phone. No role, session or wallet until an admin approves; the "
+			+ "seller cannot sign in before. Rate-limited per IP.")
 	@ErrorCodes({ EMAIL_ALREADY_USED, PHONE_ALREADY_USED, SELLER_NAME_ALREADY_USED, PASSWORD_POLICY_VIOLATION,
 			RATE_LIMITED })
 	@PostMapping("/register-seller")
 	@ResponseStatus(HttpStatus.CREATED)
-	ApiResponse<UserSelfProfile> registerSeller(@Valid @RequestBody AuthRequests.RegisterSeller body,
+	ApiResponse<SellerRegistration> registerSeller(@Valid @RequestBody AuthRequests.RegisterSeller body,
 			HttpServletRequest request) {
 		rateLimiter.check("register", request.getRemoteAddr(), limits.register());
 		return ApiResponse.of(auth.registerSeller(body));
+	}
+
+	@Operation(summary = "Ask to apply again as a seller", description = "For a REJECTED seller: emails a single-use "
+			+ "link (30 minutes) to the account's address. Always the same 202, whatever the email. Rate-limited per IP "
+			+ "and per email.")
+	@ErrorCodes(RATE_LIMITED)
+	@PostMapping("/seller-reapplication/challenge")
+	@ResponseStatus(HttpStatus.ACCEPTED)
+	ApiResponse<Map<String, String>> sellerReapplicationChallenge(
+			@Valid @RequestBody AuthRequests.SellerReapplicationChallenge body, HttpServletRequest request) {
+		rateLimiter.check("seller-reapplication", request.getRemoteAddr(), limits.sellerReapplication());
+		rateLimiter.check("seller-reapplication-email", User.normalizeEmail(body.email()),
+				limits.sellerReapplication());
+		reapplications.challenge(body.email());
+		return ApiResponse.of(Map.of("message", REAPPLICATION_MESSAGE));
+	}
+
+	@Operation(summary = "Apply again as a seller", description = "With the emailed `verificationToken` (single use): "
+			+ "a new PENDING application on the same seller, with the new shop name and phone. The rejected application "
+			+ "stays as it was. No session: the seller signs in once approved. A seller that is not REJECTED → 409. "
+			+ "Rate-limited per IP.")
+	@ErrorCodes({ INVALID_STATE_TRANSITION, PHONE_ALREADY_USED, SELLER_NAME_ALREADY_USED, RATE_LIMITED })
+	@PostMapping("/seller-reapplication")
+	@ResponseStatus(HttpStatus.CREATED)
+	ApiResponse<SellerReapplicationService.Result> sellerReapplication(
+			@Valid @RequestBody AuthRequests.SellerReapplication body, HttpServletRequest request) {
+		rateLimiter.check("seller-reapplication", request.getRemoteAddr(), limits.sellerReapplication());
+		return ApiResponse.of(reapplications.submit(body));
 	}
 
 	@Operation(summary = "Sign in", description = "Signs in to one account: `accountType` is the web app's channel "

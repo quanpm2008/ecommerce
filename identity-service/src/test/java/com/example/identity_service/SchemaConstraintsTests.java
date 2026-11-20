@@ -181,8 +181,7 @@ class SchemaConstraintsTests {
 		UUID userId = insertSellerUser("banned-seller@example.test");
 
 		assertViolation("ck_sellers_ban_reason", () -> jdbc.update(
-				"insert into sellers (seller_id, seller_name, contact_phone, status) values (?, 'Shop', '0900000001', 'BANNED')",
-				userId));
+				"insert into sellers (seller_id, status) values (?, 'BANNED')", userId));
 	}
 
 	@Test
@@ -191,7 +190,7 @@ class SchemaConstraintsTests {
 		UUID userId = insertSellerUser("rejected@example.test");
 
 		assertViolation("ck_sellers_rejection_reason",
-				() -> insertSeller(userId, "Shop", "0900000001", "REJECTED", null, adminId));
+				() -> insertSeller(userId, "REJECTED", null, adminId));
 	}
 
 	@Test
@@ -199,36 +198,76 @@ class SchemaConstraintsTests {
 		UUID userId = insertSellerUser("self-review@example.test");
 
 		assertViolation("ck_sellers_no_self_review",
-				() -> insertSeller(userId, "Shop", "0900000001", "APPROVED", null, userId));
+				() -> insertSeller(userId, "APPROVED", null, userId));
+	}
+
+	// --- seller applications (V7): one row per submission, immutable once reviewed ---
+
+	@Test
+	void aSellerHasAtMostOnePendingApplication() {
+		UUID sellerId = insertSellerUser("apps@example.test");
+		insertSeller(sellerId, "PENDING", null, null);
+		insertApplication(sellerId, 1, "PENDING", null, null);
+
+		assertViolation("uq_seller_applications_one_pending", () -> insertApplication(sellerId, 2, "PENDING", null, null));
 	}
 
 	@Test
-	void sellerNameIsUniqueAfterNormalizationAmongPendingAndApproved() {
-		insertSeller(insertSellerUser("shop-1@example.test"), "Shop Áo Xinh", "0900000001", "PENDING", null, null);
-
-		assertViolation("uq_sellers_seller_name_active", () -> insertSeller(insertSellerUser("shop-2@example.test"),
-				"  shop   áo XINH ", "0900000002", "PENDING", null, null));
-	}
-
-	@Test
-	void contactPhoneIsUniqueAmongPendingAndApproved() {
+	void submissionNumbersAreUniquePerSeller() {
 		UUID adminId = insertAdmin("reviewer@example.test");
-		insertSeller(insertSellerUser("shop-1@example.test"), "Shop One", "0900000001", "APPROVED", null, adminId);
+		UUID sellerId = insertSellerUser("numbers@example.test");
+		insertSeller(sellerId, "PENDING", null, null);
+		insertApplication(sellerId, 1, "REJECTED", "Khác: x", adminId);
 
-		assertViolation("uq_sellers_contact_phone_active", () -> insertSeller(
-				insertSellerUser("shop-2@example.test"), "Shop Two", "0900000001", "PENDING", null, null));
+		assertViolation("uq_seller_applications_submission",
+				() -> insertApplication(sellerId, 1, "PENDING", null, null));
+	}
+
+	@ParameterizedTest
+	@CsvSource(nullValues = "null", value = { "REJECTED, null", "PENDING, Khác: x" })
+	void anApplicationHasItsRejectionReasonExactlyWhenRejected(String status, String reason) {
+		UUID adminId = insertAdmin("reviewer@example.test");
+		UUID sellerId = insertSellerUser("reason@example.test");
+		insertSeller(sellerId, "PENDING", null, null);
+
+		assertViolation("ck_seller_applications_", () -> insertApplication(sellerId, 1, status, reason,
+				status.equals("PENDING") ? null : adminId));
 	}
 
 	@Test
-	void rejectedSellerFreesNameAndContactPhone() {
+	void anApplicationCannotBeReviewedByItsSeller() {
+		UUID sellerId = insertSellerUser("self@example.test");
+		insertSeller(sellerId, "PENDING", null, null);
+
+		assertViolation("ck_seller_applications_no_self_review",
+				() -> insertApplication(sellerId, 1, "APPROVED", null, sellerId));
+	}
+
+	@Test
+	void aPendingApplicationIsReviewedOnceThenNeverChanges() {
 		UUID adminId = insertAdmin("reviewer@example.test");
-		insertSeller(insertSellerUser("shop-1@example.test"), "Shop Áo Xinh", "0900000001", "REJECTED",
-				"Incomplete documents", adminId);
+		UUID sellerId = insertSellerUser("once@example.test");
+		insertSeller(sellerId, "PENDING", null, null);
+		UUID applicationId = insertApplication(sellerId, 1, "PENDING", null, null);
 
-		insertSeller(insertSellerUser("shop-2@example.test"), "Shop Áo Xinh", "0900000001", "PENDING", null, null);
+		jdbc.update("""
+				update seller_applications set status = 'REJECTED', rejection_reason = 'Khác: x', reviewed_at = now(),
+				reviewed_by_user_id = ? where application_id = ?""", adminId, applicationId);
 
-		assertThat(jdbc.queryForObject("select count(*) from sellers where seller_name = 'Shop Áo Xinh'", Integer.class))
-				.isEqualTo(2);
+		assertViolation("is immutable", () -> jdbc.update("""
+				update seller_applications set status = 'PENDING', rejection_reason = null, reviewed_at = null,
+				reviewed_by_user_id = null where application_id = ?""", applicationId));
+	}
+
+	@Test
+	void aPendingApplicationKeepsWhatWasSubmitted() {
+		UUID sellerId = insertSellerUser("snapshot@example.test");
+		insertSeller(sellerId, "PENDING", null, null);
+		UUID applicationId = insertApplication(sellerId, 1, "PENDING", null, null);
+
+		assertViolation("is immutable", () -> jdbc.update(
+				"update seller_applications set snapshot_full_name = 'Other Shop' where application_id = ?",
+				applicationId));
 	}
 
 	// --- addresses ---
@@ -280,18 +319,27 @@ class SchemaConstraintsTests {
 			jdbc.update("insert into customers (customer_id) values (?)", userId);
 		}
 		else {
-			insertSeller(userId, "Shop " + userId, "0900000009", "PENDING", null, null);
+			insertSeller(userId, "PENDING", null, null);
 		}
 	}
 
 	/** {@code reviewedBy} doubles as the reviewed flag: non-null sets {@code reviewed_at} too. */
-	private void insertSeller(UUID sellerId, String name, String phone, String approvalStatus, String rejectionReason,
-			UUID reviewedBy) {
+	private void insertSeller(UUID sellerId, String approvalStatus, String rejectionReason, UUID reviewedBy) {
 		jdbc.update("""
-				insert into sellers (seller_id, seller_name, contact_phone, approval_status, rejection_reason,
-				                     reviewed_at, reviewed_by_user_id)
-				values (?, ?, ?, ?, ?, case when ?::uuid is null then null else now() end, ?)""", sellerId, name, phone,
-				approvalStatus, rejectionReason, reviewedBy, reviewedBy);
+				insert into sellers (seller_id, approval_status, rejection_reason, reviewed_at, reviewed_by_user_id)
+				values (?, ?, ?, case when ?::uuid is null then null else now() end, ?)""", sellerId, approvalStatus,
+				rejectionReason, reviewedBy, reviewedBy);
+	}
+
+	/** Same convention as {@link #insertSeller}; the snapshot is a fixed shop name and phone. */
+	private UUID insertApplication(UUID sellerId, int submissionNo, String status, String rejectionReason,
+			UUID reviewedBy) {
+		return jdbc.queryForObject("""
+				insert into seller_applications (seller_id, submission_no, status, snapshot_full_name, snapshot_phone,
+				                                 rejection_reason, reviewed_at, reviewed_by_user_id)
+				values (?, ?, ?, 'Shop', '0900000001', ?, case when ?::uuid is null then null else now() end, ?)
+				returning application_id""", UUID.class, sellerId, submissionNo, status, rejectionReason, reviewedBy,
+				reviewedBy);
 	}
 
 	private static void assertViolation(String constraint, Runnable statement) {

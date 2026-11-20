@@ -36,7 +36,7 @@ class EventPayloadTests extends EndpointTestSupport {
 				.containsEntry("context", "ADMIN").containsEntry("userId", admin.userId().toString());
 
 		Session rejected = pendingSeller();
-		call(HttpMethod.POST, "/admin/sellers/" + rejected.userId() + "/reject", json("reason", "Incomplete"),
+		call(HttpMethod.POST, "/admin/sellers/" + rejected.userId() + "/reject", json("reason", "Khác: Incomplete"),
 				admin.accessToken()).andExpect(status().isOk());
 		assertEvent("seller.rejected", rejected.userId(), "userId", "sellerId", "approvalStatus", "authzVersion",
 				"reason");

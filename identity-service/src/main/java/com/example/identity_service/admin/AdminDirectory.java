@@ -6,6 +6,7 @@ import com.example.identity_service.common.persistence.LikePattern;
 import com.example.identity_service.customer.CustomerRepository;
 import com.example.identity_service.customer.CustomerStatus;
 import com.example.identity_service.seller.SellerApprovalStatus;
+import com.example.identity_service.seller.SellerApplicationRepository;
 import com.example.identity_service.seller.SellerRepository;
 import com.example.identity_service.seller.SellerStatus;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +17,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -34,14 +36,16 @@ public class AdminDirectory {
 	private static final Sort CUSTOMER_DEFAULT = Sort.by(Sort.Direction.DESC, "createdAt");
 
 	/** The pending queue uses {@code registeredAt,asc}; newest first by default. */
-	private static final Map<String, String> SELLER_SORTS = Map.of("registeredAt", "registeredAt", "sellerName",
-			"sellerName");
+	private static final Map<String, String> SELLER_SORTS = Map.of("registeredAt", "registeredAt", "fullName",
+			"user.fullName");
 
 	private static final Sort SELLER_DEFAULT = Sort.by(Sort.Direction.DESC, "registeredAt");
 
 	private final CustomerRepository customers;
 
 	private final SellerRepository sellers;
+
+	private final SellerApplicationRepository applicationHistory;
 
 	private final AdminViews views;
 
@@ -68,6 +72,16 @@ public class AdminDirectory {
 	public AdminViews.SellerAdminView seller(UUID sellerId) {
 		return sellers.findById(sellerId).map(views::seller)
 				.orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Seller not found"));
+	}
+
+	/** Every application of the seller, newest first (API §6.1 #32). */
+	@Transactional(readOnly = true)
+	public List<AdminViews.SellerApplicationView> applications(UUID sellerId) {
+		if (!sellers.existsById(sellerId)) {
+			throw new ApiException(ErrorCode.NOT_FOUND, "Seller not found");
+		}
+		return applicationHistory.findBySellerIdOrderBySubmissionNoDesc(sellerId).stream()
+				.map(AdminViews.SellerApplicationView::of).toList();
 	}
 
 	/** Maps API sort keys to entity paths and adds the id as a tie-breaker so pages are stable. */

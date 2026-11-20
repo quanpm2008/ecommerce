@@ -106,6 +106,35 @@ class AccountEndpointsTests extends EndpointTestSupport {
 	}
 
 	@Test
+	void aSellersFullNameIsItsShopNameAndIsLocked() throws Exception {
+		Session seller = approvedSeller();
+		String shopName = users.findById(seller.userId()).orElseThrow().getFullName();
+		String phone = uniquePhone();
+
+		call(HttpMethod.PATCH, "/users/me", json("fullName", "Another Shop"), seller.accessToken())
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.error.code").value("SELLER_NAME_LOCKED"));
+		call(HttpMethod.PATCH, "/users/me", json("fullName", shopName, "phoneNumber", phone), seller.accessToken())
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.fullName").value(shopName))
+				.andExpect(jsonPath("$.data.phoneNumber").value(phone));
+		call(HttpMethod.GET, "/sellers/" + seller.userId(), null, null)
+				.andExpect(jsonPath("$.data.sellerName").value(shopName));
+	}
+
+	@Test
+	void aBannedAccountCannotEditItsProfile() throws Exception {
+		Session customer = customer();
+		jdbc.update("""
+				update customers set status = 'BANNED', ban_reason = 'Khác: Fraud', ban_mode = 'CUSTOMER_SCOPE',
+				has_paid_order_before_ban = false where customer_id = ?""", customer.userId());
+
+		call(HttpMethod.PATCH, "/users/me", json("fullName", "New Name"), customer.accessToken())
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.error.code").value("ACCOUNT_BANNED"));
+	}
+
+	@Test
 	void meNamesTheAccountType() throws Exception {
 		Session customer = customer();
 		Session seller = approvedSeller();

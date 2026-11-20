@@ -82,7 +82,7 @@ public class AdminController {
 	@Parameter(name = "size", in = ParameterIn.QUERY, schema = @Schema(type = "integer", defaultValue = "20",
 			minimum = "1", maximum = "100"))
 	@Parameter(name = "sort", in = ParameterIn.QUERY, description = "`registeredAt` (default, newest first) or "
-			+ "`sellerName`, optionally `,asc` / `,desc`", schema = @Schema(type = "string",
+			+ "`fullName` (the shop name), optionally `,asc` / `,desc`", schema = @Schema(type = "string",
 					example = "registeredAt,asc"))
 	@GetMapping("/sellers")
 	@PreAuthorize("hasAuthority('operations:read:any')")
@@ -100,9 +100,19 @@ public class AdminController {
 		return ApiResponse.of(directory.seller(sellerId));
 	}
 
-	@Operation(summary = "Approve a seller application", description = "PENDING only. Grants SELLER, bumps "
-			+ "`authzVersion`, writes the audit row and `seller.approved` (Finance creates the wallet) in one "
-			+ "transaction.")
+	@Operation(summary = "A seller's applications", description = "Every submission, newest first: each one keeps the "
+			+ "shop name and phone it was sent with, its decision and reason. A REJECTED seller applies again with a new "
+			+ "one, never by changing the old.")
+	@ErrorCodes(NOT_FOUND)
+	@GetMapping("/sellers/{sellerId}/applications")
+	@PreAuthorize("hasAuthority('operations:read:any')")
+	ApiResponse<List<AdminViews.SellerApplicationView>> applications(@PathVariable UUID sellerId) {
+		return ApiResponse.of(directory.applications(sellerId));
+	}
+
+	@Operation(summary = "Approve a seller application", description = "The latest application, PENDING only. Grants "
+			+ "SELLER, bumps `authzVersion`, writes the audit row and `seller.approved` (Finance creates the wallet) in "
+			+ "one transaction.")
 	@ErrorCodes({ NOT_FOUND, ALREADY_PROCESSED, SELF_APPROVAL_FORBIDDEN })
 	@PostMapping("/sellers/{sellerId}/approve")
 	@PreAuthorize("hasAuthority('seller:approve')")
@@ -110,8 +120,11 @@ public class AdminController {
 		return ApiResponse.of(reviews.approve(Caller.of(jwt).userId(), sellerId));
 	}
 
-	@Operation(summary = "Reject a seller application", description = "PENDING only. The account (and customer "
-			+ "profile) stays; the shop name and phone become free; the user may apply again.")
+	@Operation(summary = "Reject a seller application", description = "The latest application, PENDING only. `reason` "
+			+ "is one of the P-21d labels (`Thông tin đăng ký không chính xác/không nhất quán`, `Thông tin gian hàng "
+			+ "không phù hợp`, `Khác`), optionally followed by `: description` (required for `Khác`), 1–1000 "
+			+ "characters. The seller cannot sign in; the account and the application stay, the shop name becomes "
+			+ "free, and the seller may apply again through the public reapplication endpoints.")
 	@ErrorCodes({ NOT_FOUND, ALREADY_PROCESSED, SELF_APPROVAL_FORBIDDEN })
 	@PostMapping("/sellers/{sellerId}/reject")
 	@PreAuthorize("hasAuthority('seller:approve')")

@@ -10,5 +10,5 @@ import java.time.Duration;
  */
 @ConfigurationProperties("identity.media")
 public record MediaProperties(String endpoint, String publicEndpoint, String region, String accessKey,
-		String secretKey, String bucket, Duration uploadUrlTtl, Duration readUrlTtl, long sellerLogoMaxBytes) {
+		String secretKey, String bucket, Duration uploadUrlTtl, Duration readUrlTtl, long avatarMaxBytes) {
 }

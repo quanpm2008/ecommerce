@@ -14,25 +14,27 @@ import java.util.UUID;
 
 public interface SellerRepository extends JpaRepository<Seller, UUID> {
 
-	/** Same normalization and scope as the {@code uq_sellers_seller_name_active} index. */
+	/**
+	 * Holds a transaction-scoped lock on a normalized shop name (trimmed, whitespace collapsed, lowercase), so two
+	 * transactions checking the same name with {@link #existsActiveShopName} run one after the other.
+	 */
 	@Query(value = """
-			select exists (select 1 from sellers
-			where lower(regexp_replace(btrim(seller_name), '\\s+', ' ', 'g'))
-			      = lower(regexp_replace(btrim(:sellerName), '\\s+', ' ', 'g'))
-			  and approval_status in ('PENDING', 'APPROVED'))""", nativeQuery = true)
-	boolean existsActiveSellerName(String sellerName);
+			select 1 from (select pg_advisory_xact_lock(hashtext('identity.shop-name:'
+			    || lower(regexp_replace(btrim(:name), '\\s+', ' ', 'g'))))) locked""", nativeQuery = true)
+	Integer lockShopName(String name);
 
-	/** {@code contactPhone} must already be normalized; same scope as {@code uq_sellers_contact_phone_active}. */
+	/**
+	 * Whether another seller account (not {@code exceptSellerId}) whose application is PENDING or APPROVED already has
+	 * this shop name (G-01, REQ-IDN-002: {@code users.full_name}, same normalization as {@link #lockShopName}). A
+	 * REJECTED seller does not hold its name.
+	 */
 	@Query(value = """
-			select exists (select 1 from sellers
-			where contact_phone = :contactPhone and approval_status in ('PENDING', 'APPROVED'))""", nativeQuery = true)
-	boolean existsActiveContactPhone(String contactPhone);
-
-	@Query(value = """
-			select exists (select 1 from sellers
-			where contact_phone = :contactPhone and seller_id <> :sellerId
-			  and approval_status in ('PENDING', 'APPROVED'))""", nativeQuery = true)
-	boolean existsActiveContactPhoneOfAnotherSeller(String contactPhone, UUID sellerId);
+			select exists (select 1 from sellers s join users u on u.user_id = s.seller_id
+			where lower(regexp_replace(btrim(u.full_name), '\\s+', ' ', 'g'))
+			      = lower(regexp_replace(btrim(:name), '\\s+', ' ', 'g'))
+			  and s.approval_status in ('PENDING', 'APPROVED')
+			  and s.seller_id <> :exceptSellerId)""", nativeQuery = true)
+	boolean existsActiveShopName(String name, UUID exceptSellerId);
 
 	/**
 	 * Sellers a buyer may see (G-06): User ACTIVE, Seller APPROVED + ACTIVE and an unrevoked SELLER role, whose name
@@ -55,7 +57,7 @@ public interface SellerRepository extends JpaRepository<Seller, UUID> {
 			  and u.status = :userStatus and s.approvalStatus = :approvalStatus and s.status = :sellerStatus
 			  and exists (select 1 from UserRole ur where ur.id.userId = s.sellerId and ur.role.code = :role
 			              and ur.revokedAt is null)
-			  and lower(s.sellerName) like lower(:namePattern) escape '\\'""")
+			  and lower(u.fullName) like lower(:namePattern) escape '\\'""")
 	Page<Seller> findVisible(UUID sellerId, String namePattern, UserStatus userStatus,
 			SellerApprovalStatus approvalStatus, SellerStatus sellerStatus, RoleCode role, Pageable pageable);
 
@@ -65,14 +67,14 @@ public interface SellerRepository extends JpaRepository<Seller, UUID> {
 
 	/**
 	 * Admin list, including pending applications: optional approval status and status, and {@code pattern}
-	 * ({@code like}, {@code \} escape, already lower-case) on the shop name, email or contact phone.
+	 * ({@code like}, {@code \} escape, already lower-case) on the shop name ({@code fullName}), email or phone.
 	 */
 	@Query("""
 			select s from Seller s join s.user u
 			where (:approvalStatus is null or s.approvalStatus = :approvalStatus)
 			  and (:status is null or s.status = :status)
-			  and (lower(s.sellerName) like :pattern escape '\\' or u.email like :pattern escape '\\'
-			       or s.contactPhone like :pattern escape '\\')""")
+			  and (lower(u.fullName) like :pattern escape '\\' or u.email like :pattern escape '\\'
+			       or u.phoneNumber like :pattern escape '\\')""")
 	Page<Seller> findForAdmin(SellerApprovalStatus approvalStatus, SellerStatus status, String pattern,
 			Pageable pageable);
 

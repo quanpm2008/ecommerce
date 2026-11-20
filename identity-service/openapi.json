@@ -34,7 +34,7 @@
     "description" : "Service-to-service API (API §7.1). Never routed by the gateway; each endpoint accepts only the services listed under Callers.",
     "name" : "Internal"
   }, {
-    "description" : "Presigned uploads for the shop logo",
+    "description" : "Presigned uploads for the account's avatar (a seller's shop logo)",
     "name" : "Media"
   }, {
     "description" : "Register, sign in, refresh, sign out and reset passwords (UC-A01–A05, A07)",
@@ -376,7 +376,7 @@
             "minimum" : 1
           }
         }, {
-          "description" : "`registeredAt` (default, newest first) or `sellerName`, optionally `,asc` / `,desc`",
+          "description" : "`registeredAt` (default, newest first) or `fullName` (the shop name), optionally `,asc` / `,desc`",
           "in" : "query",
           "name" : "sort",
           "schema" : {
@@ -505,9 +505,81 @@
         "tags" : [ "Admin" ]
       }
     },
+    "/api/v1/identity/admin/sellers/{sellerId}/applications" : {
+      "get" : {
+        "description" : "Every submission, newest first: each one keeps the shop name and phone it was sent with, its decision and reason. A REJECTED seller applies again with a new one, never by changing the old.\n\n**Permission:** `operations:read:any`",
+        "operationId" : "applications",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "sellerId",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseListSellerApplicationView"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description" : "- `VALIDATION_ERROR`: Invalid request data"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description" : "- `UNAUTHENTICATED`: Not logged in or token is invalid\n- `TOKEN_EXPIRED`: Access token has expired\n- `TOKEN_STALE`: Access token permissions are out of date; refresh the token"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description" : "- `FORBIDDEN`: You do not have permission to perform this action"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description" : "- `NOT_FOUND`: Resource not found"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "A seller's applications",
+        "tags" : [ "Admin" ]
+      }
+    },
     "/api/v1/identity/admin/sellers/{sellerId}/approve" : {
       "post" : {
-        "description" : "PENDING only. Grants SELLER, bumps `authzVersion`, writes the audit row and `seller.approved` (Finance creates the wallet) in one transaction.\n\n**Permission:** `seller:approve`",
+        "description" : "The latest application, PENDING only. Grants SELLER, bumps `authzVersion`, writes the audit row and `seller.approved` (Finance creates the wallet) in one transaction.\n\n**Permission:** `seller:approve`",
         "operationId" : "approve",
         "parameters" : [ {
           "in" : "path",
@@ -589,7 +661,7 @@
     },
     "/api/v1/identity/admin/sellers/{sellerId}/reject" : {
       "post" : {
-        "description" : "PENDING only. The account (and customer profile) stays; the shop name and phone become free; the user may apply again.\n\n**Permission:** `seller:approve`",
+        "description" : "The latest application, PENDING only. `reason` is one of the P-21d labels (`Thông tin đăng ký không chính xác/không nhất quán`, `Thông tin gian hàng không phù hợp`, `Khác`), optionally followed by `: description` (required for `Khác`), 1–1000 characters. The seller cannot sign in; the account and the application stay, the shop name becomes free, and the seller may apply again through the public reapplication endpoints.\n\n**Permission:** `seller:approve`",
         "operationId" : "reject",
         "parameters" : [ {
           "in" : "path",
@@ -1097,7 +1169,7 @@
     },
     "/api/v1/identity/auth/register-seller" : {
       "post" : {
-        "description" : "Creates the user and a PENDING seller application, with no role until an admin approves it. Rate-limited per IP.",
+        "description" : "Creates a SELLER account (its own email), a PENDING seller profile and the first application. `fullName` is the shop name (unique among pending and approved sellers) and `phoneNumber` its contact phone. No role, session or wallet until an admin approves; the seller cannot sign in before. Rate-limited per IP.",
         "operationId" : "registerSeller",
         "requestBody" : {
           "content" : {
@@ -1114,7 +1186,7 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/ApiResponseUserSelfProfile"
+                  "$ref" : "#/components/schemas/ApiResponseSellerRegistration"
                 }
               }
             },
@@ -1153,6 +1225,118 @@
         },
         "security" : [ ],
         "summary" : "Register a seller",
+        "tags" : [ "Auth" ]
+      }
+    },
+    "/api/v1/identity/auth/seller-reapplication" : {
+      "post" : {
+        "description" : "With the emailed `verificationToken` (single use): a new PENDING application on the same seller, with the new shop name and phone. The rejected application stays as it was. No session: the seller signs in once approved. A seller that is not REJECTED → 409. Rate-limited per IP.",
+        "operationId" : "sellerReapplication",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/SellerReapplication"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseResult"
+                }
+              }
+            },
+            "description" : "Created"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description" : "- `VALIDATION_ERROR`: Invalid request data"
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description" : "- `INVALID_STATE_TRANSITION`: The current state does not allow this action\n- `PHONE_ALREADY_USED`: Phone number is already used\n- `SELLER_NAME_ALREADY_USED`: Seller name is already used"
+          },
+          "429" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description" : "- `RATE_LIMITED`: Too many requests"
+          }
+        },
+        "security" : [ ],
+        "summary" : "Apply again as a seller",
+        "tags" : [ "Auth" ]
+      }
+    },
+    "/api/v1/identity/auth/seller-reapplication/challenge" : {
+      "post" : {
+        "description" : "For a REJECTED seller: emails a single-use link (30 minutes) to the account's address. Always the same 202, whatever the email. Rate-limited per IP and per email.",
+        "operationId" : "sellerReapplicationChallenge",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/SellerReapplicationChallenge"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "202" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseMapStringString"
+                }
+              }
+            },
+            "description" : "Accepted"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description" : "- `VALIDATION_ERROR`: Invalid request data"
+          },
+          "429" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description" : "- `RATE_LIMITED`: Too many requests"
+          }
+        },
+        "security" : [ ],
+        "summary" : "Ask to apply again as a seller",
         "tags" : [ "Auth" ]
       }
     },
@@ -1447,7 +1631,7 @@
     },
     "/api/v1/identity/media/upload-urls" : {
       "post" : {
-        "description" : "One `SELLER_LOGO` file: JPG, PNG or WebP up to 2 MB. PUT the file to `uploadUrl` within 10 minutes with the same Content-Type and size, then send `objectKey` to PATCH /sellers/me. APPROVED and ACTIVE sellers only.\n\n**Permission:** `seller:profile:own`",
+        "description" : "One `AVATAR` file: JPG, PNG or WebP up to 2 MB. PUT the file to `uploadUrl` within 10 minutes with the same Content-Type and size, then send `objectKey` to PATCH /users/me. A banned account cannot upload.\n\n**Permission:** `account:update:own`",
         "operationId" : "uploadUrls",
         "requestBody" : {
           "content" : {
@@ -1498,7 +1682,7 @@
                 }
               }
             },
-            "description" : "- `FORBIDDEN`: You do not have permission to perform this action"
+            "description" : "- `FORBIDDEN`: You do not have permission to perform this action\n- `ACCOUNT_BANNED`: This account is banned; only its open obligations are available"
           },
           "422" : {
             "content" : {
@@ -1524,7 +1708,7 @@
         "security" : [ {
           "bearerAuth" : [ ]
         } ],
-        "summary" : "Get a logo upload URL",
+        "summary" : "Get an avatar upload URL",
         "tags" : [ "Media" ]
       }
     },
@@ -1677,7 +1861,7 @@
     },
     "/api/v1/identity/sellers/me" : {
       "patch" : {
-        "description" : "APPROVED and ACTIVE sellers only (403 otherwise). The shop name and email never change here. For a logo, get an upload URL from POST /media/upload-urls, upload the file, then send its objectKey.\n\n**Permission:** `seller:profile:own`",
+        "description" : "APPROVED and ACTIVE sellers only (403 otherwise). Only the description: the shop name, phone and logo are the account's fullName, phoneNumber and avatar (PATCH /users/me).\n\n**Permission:** `seller:profile:own`",
         "operationId" : "update_2",
         "requestBody" : {
           "content" : {
@@ -1729,26 +1913,6 @@
               }
             },
             "description" : "- `FORBIDDEN`: You do not have permission to perform this action"
-          },
-          "409" : {
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description" : "- `PHONE_ALREADY_USED`: Phone number is already used"
-          },
-          "422" : {
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description" : "- `MEDIA_INVALID`: The file has a wrong type or size, does not exist or does not belong to you"
           }
         },
         "security" : [ {
@@ -1851,7 +2015,7 @@
         "tags" : [ "Account" ]
       },
       "patch" : {
-        "description" : "Only the listed fields; any other field is a 400 with issue UNKNOWN_FIELD and nothing changes.\n\n**Permission:** `account:update:own`",
+        "description" : "Only the listed fields; any other field is a 400 with issue UNKNOWN_FIELD and nothing changes. For a seller, fullName is the shop name and cannot change once applied (SELLER_NAME_LOCKED), and the avatar is the shop logo. For an avatar, get an upload URL from POST /media/upload-urls, upload the file, then send its objectKey. A banned account cannot edit its profile.\n\n**Permission:** `account:update:own`",
         "operationId" : "update_1",
         "requestBody" : {
           "content" : {
@@ -1902,7 +2066,7 @@
                 }
               }
             },
-            "description" : "- `FORBIDDEN`: You do not have permission to perform this action"
+            "description" : "- `FORBIDDEN`: You do not have permission to perform this action\n- `ACCOUNT_BANNED`: This account is banned; only its open obligations are available"
           },
           "409" : {
             "content" : {
@@ -1912,13 +2076,23 @@
                 }
               }
             },
-            "description" : "- `PHONE_ALREADY_USED`: Phone number is already used"
+            "description" : "- `PHONE_ALREADY_USED`: Phone number is already used\n- `SELLER_NAME_LOCKED`: The shop name of a pending or approved seller cannot change"
+          },
+          "422" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description" : "- `MEDIA_INVALID`: The file has a wrong type or size, does not exist or does not belong to you"
           }
         },
         "security" : [ {
           "bearerAuth" : [ ]
         } ],
-        "summary" : "Update my name or phone",
+        "summary" : "Update my name, phone or avatar",
         "tags" : [ "Account" ]
       }
     },
@@ -2714,6 +2888,20 @@
           }
         }
       },
+      "ApiResponseListSellerApplicationView" : {
+        "type" : "object",
+        "properties" : {
+          "data" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/SellerApplicationView"
+            }
+          },
+          "meta" : {
+            "description" : "Lists: { page, size, totalItems, totalPages }; some endpoints add their own, e.g. { maxAddresses } or { sourceVersion, fetchedAt }. Absent otherwise."
+          }
+        }
+      },
       "ApiResponseListSellerPublic" : {
         "type" : "object",
         "properties" : {
@@ -2770,6 +2958,17 @@
           }
         }
       },
+      "ApiResponseResult" : {
+        "type" : "object",
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/Result"
+          },
+          "meta" : {
+            "description" : "Lists: { page, size, totalItems, totalPages }; some endpoints add their own, e.g. { maxAddresses } or { sourceVersion, fetchedAt }. Absent otherwise."
+          }
+        }
+      },
       "ApiResponseSellerAdminView" : {
         "type" : "object",
         "properties" : {
@@ -2786,6 +2985,17 @@
         "properties" : {
           "data" : {
             "$ref" : "#/components/schemas/SellerPublic"
+          },
+          "meta" : {
+            "description" : "Lists: { page, size, totalItems, totalPages }; some endpoints add their own, e.g. { maxAddresses } or { sourceVersion, fetchedAt }. Absent otherwise."
+          }
+        }
+      },
+      "ApiResponseSellerRegistration" : {
+        "type" : "object",
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/SellerRegistration"
           },
           "meta" : {
             "description" : "Lists: { page, size, totalItems, totalPages }; some endpoints add their own, e.g. { maxAddresses } or { sourceVersion, fetchedAt }. Absent otherwise."
@@ -3225,10 +3435,6 @@
             "type" : "string",
             "minLength" : 1
           },
-          "contactPhone" : {
-            "type" : "string",
-            "minLength" : 1
-          },
           "email" : {
             "type" : "string",
             "format" : "email",
@@ -3244,13 +3450,12 @@
             "type" : "string",
             "minLength" : 1
           },
-          "sellerName" : {
+          "phoneNumber" : {
             "type" : "string",
-            "maxLength" : 160,
-            "minLength" : 0
+            "minLength" : 1
           }
         },
-        "required" : [ "confirmPassword", "contactPhone", "email", "fullName", "password", "sellerName" ]
+        "required" : [ "confirmPassword", "email", "fullName", "password", "phoneNumber" ]
       },
       "RejectRequest" : {
         "type" : "object",
@@ -3280,6 +3485,23 @@
           }
         },
         "required" : [ "confirmPassword", "newPassword", "token" ]
+      },
+      "Result" : {
+        "type" : "object",
+        "properties" : {
+          "applicationId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "approvalStatus" : {
+            "type" : "string",
+            "enum" : [ "PENDING", "APPROVED", "REJECTED" ]
+          },
+          "sellerId" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }
       },
       "SellerAccess" : {
         "type" : "object",
@@ -3312,6 +3534,64 @@
           }
         }
       },
+      "SellerApplicationView" : {
+        "type" : "object",
+        "properties" : {
+          "applicationId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "fullName" : {
+            "type" : "string"
+          },
+          "phoneNumber" : {
+            "type" : "string"
+          },
+          "rejectionReason" : {
+            "type" : "string"
+          },
+          "reviewedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "reviewedByUserId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "status" : {
+            "type" : "string",
+            "enum" : [ "PENDING", "APPROVED", "REJECTED" ]
+          },
+          "submissionNo" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "submittedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }
+      },
+      "SellerProfile" : {
+        "type" : "object",
+        "properties" : {
+          "approvalStatus" : {
+            "type" : "string",
+            "enum" : [ "PENDING", "APPROVED", "REJECTED" ]
+          },
+          "latestApplicationId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "sellerId" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }
+      },
       "SellerPublic" : {
         "type" : "object",
         "properties" : {
@@ -3330,6 +3610,60 @@
           }
         }
       },
+      "SellerReapplication" : {
+        "type" : "object",
+        "properties" : {
+          "description" : {
+            "type" : "string",
+            "maxLength" : 2000,
+            "minLength" : 0
+          },
+          "fullName" : {
+            "type" : "string",
+            "maxLength" : 150,
+            "minLength" : 0
+          },
+          "phoneNumber" : {
+            "type" : "string",
+            "minLength" : 1
+          },
+          "verificationToken" : {
+            "type" : "string",
+            "minLength" : 1
+          }
+        },
+        "required" : [ "fullName", "phoneNumber", "verificationToken" ]
+      },
+      "SellerReapplicationChallenge" : {
+        "type" : "object",
+        "properties" : {
+          "email" : {
+            "type" : "string",
+            "minLength" : 1
+          }
+        },
+        "required" : [ "email" ]
+      },
+      "SellerRegistration" : {
+        "type" : "object",
+        "properties" : {
+          "accountType" : {
+            "type" : "string",
+            "enum" : [ "CUSTOMER", "SELLER", "ADMIN" ]
+          },
+          "applicationId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "sellerProfile" : {
+            "$ref" : "#/components/schemas/SellerProfile"
+          },
+          "userId" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }
+      },
       "SellerSelfProfile" : {
         "type" : "object",
         "properties" : {
@@ -3337,14 +3671,18 @@
             "type" : "string",
             "enum" : [ "PENDING", "APPROVED", "REJECTED" ]
           },
-          "banReason" : {
+          "avatarUrl" : {
             "type" : "string"
           },
-          "contactPhone" : {
+          "banReason" : {
             "type" : "string"
           },
           "description" : {
             "type" : "string"
+          },
+          "latestApplicationId" : {
+            "type" : "string",
+            "format" : "uuid"
           },
           "logoUrl" : {
             "type" : "string"
@@ -3363,9 +3701,6 @@
           "sellerId" : {
             "type" : "string",
             "format" : "uuid"
-          },
-          "sellerName" : {
-            "type" : "string"
           },
           "status" : {
             "type" : "string",
@@ -3463,6 +3798,11 @@
         "type" : "object",
         "description" : "Send only the fields to change; any other field is rejected.",
         "properties" : {
+          "avatarObjectKey" : {
+            "type" : [ "string", "null" ],
+            "description" : "Key returned by POST /media/upload-urls, after the upload; null removes the avatar",
+            "example" : "avatars/5d2a.../7f3a.png"
+          },
           "fullName" : {
             "type" : "string",
             "example" : "Le Thi C",
@@ -3477,20 +3817,11 @@
       },
       "UpdateShopRequest" : {
         "type" : "object",
-        "description" : "Send only the fields to change; any other field is rejected. null clears description or logo.",
+        "description" : "Only description; any other field is rejected. null clears it.",
         "properties" : {
-          "contactPhone" : {
-            "type" : "string",
-            "example" : "0912345678"
-          },
           "description" : {
             "type" : [ "string", "null" ],
             "maxLength" : 2000
-          },
-          "logoObjectKey" : {
-            "type" : [ "string", "null" ],
-            "description" : "Key returned by POST /media/upload-urls, after the upload",
-            "example" : "seller-logos/5d2a.../7f3a.png"
           }
         }
       },
@@ -3522,6 +3853,12 @@
           "authzVersion" : {
             "type" : "integer",
             "format" : "int64"
+          },
+          "avatarObjectKey" : {
+            "type" : "string"
+          },
+          "avatarUrl" : {
+            "type" : "string"
           },
           "createdAt" : {
             "type" : "string",
@@ -3567,6 +3904,14 @@
       "UserSummary" : {
         "type" : "object",
         "properties" : {
+          "accountType" : {
+            "type" : "string",
+            "enum" : [ "CUSTOMER", "SELLER", "ADMIN" ]
+          },
+          "authzVersion" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
           "email" : {
             "type" : "string"
           },

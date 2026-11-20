@@ -178,9 +178,10 @@ public abstract class EndpointTestSupport {
 		return JsonPath.read(body, "$.data.userId");
 	}
 
-	protected ResultActions registerSeller(String email, String sellerName, String contactPhone) throws Exception {
-		return postJson("/register-seller", json("email", email, "sellerName", sellerName, "fullName", "Tran Thi B",
-				"contactPhone", contactPhone, "password", PASSWORD, "confirmPassword", PASSWORD));
+	/** A seller account: {@code shopName} is its {@code fullName}, {@code phone} its (and the shop's) phone. */
+	protected ResultActions registerSeller(String email, String shopName, String phone) throws Exception {
+		return postJson("/register-seller", json("email", email, "fullName", shopName, "phoneNumber", phone,
+				"password", PASSWORD, "confirmPassword", PASSWORD));
 	}
 
 	/** Logs in to the account's own channel (its account type, or CUSTOMER for an unknown email). */
@@ -247,6 +248,20 @@ public abstract class EndpointTestSupport {
 		return new Session(adminId, email, read(loginBody(email), "$.data.accessToken"));
 	}
 
+	/** Marks the seller's latest application and profile REJECTED with a P-21d reason, like an admin rejection. */
+	protected void rejectSeller(UUID sellerId) {
+		UUID reviewer = jdbc.queryForObject("""
+				insert into users (email, account_type, auth_method, password_hash, full_name)
+				values (?, 'ADMIN', 'LOCAL', 'x', 'Reviewer') returning user_id""", UUID.class, uniqueEmail());
+		jdbc.update("""
+				update seller_applications set status = 'REJECTED', rejection_reason = 'Khác: Blurry photos',
+				reviewed_at = now(), reviewed_by_user_id = ? where seller_id = ? and status = 'PENDING'""", reviewer,
+				sellerId);
+		jdbc.update("""
+				update sellers set approval_status = 'REJECTED', rejection_reason = 'Khác: Blurry photos',
+				reviewed_at = now(), reviewed_by_user_id = ? where seller_id = ?""", reviewer, sellerId);
+	}
+
 	/** Number of outbox rows of {@code eventType} for the aggregate. */
 	protected int events(String eventType, UUID aggregateId) {
 		return jdbc.queryForObject("select count(*) from outbox_events where event_type = ? and aggregate_id = ?",
@@ -259,11 +274,14 @@ public abstract class EndpointTestSupport {
 				Integer.class, action, targetId);
 	}
 
-	/** Marks the user's Seller profile APPROVED and grants SELLER, like an admin approval. */
+	/** Marks the seller's latest application and profile APPROVED and grants SELLER, like an admin approval. */
 	protected void approveSeller(UUID sellerId) {
 		UUID reviewer = jdbc.queryForObject("""
 				insert into users (email, account_type, auth_method, password_hash, full_name)
 				values (?, 'ADMIN', 'LOCAL', 'x', 'Reviewer') returning user_id""", UUID.class, uniqueEmail());
+		jdbc.update("""
+				update seller_applications set status = 'APPROVED', reviewed_at = now(), reviewed_by_user_id = ?
+				where seller_id = ? and status = 'PENDING'""", reviewer, sellerId);
 		jdbc.update("""
 				update sellers set approval_status = 'APPROVED', reviewed_at = now(), reviewed_by_user_id = ?
 				where seller_id = ?""", reviewer, sellerId);

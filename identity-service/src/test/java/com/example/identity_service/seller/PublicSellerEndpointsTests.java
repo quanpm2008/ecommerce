@@ -90,12 +90,12 @@ class PublicSellerEndpointsTests extends EndpointTestSupport {
 	@Test
 	void sellerPublicHasOnlyPublicFields() throws Exception {
 		UUID id = seller("Public " + tag(), true);
-		jdbc.update("update sellers set description = 'Handmade', logo_object_key = ? where seller_id = ?",
-				"seller-logos/" + id + "/logo.png", id);
+		jdbc.update("update sellers set description = 'Handmade' where seller_id = ?", id);
+		jdbc.update("update users set avatar_object_key = ? where user_id = ?", "avatars/" + id + "/logo.png", id);
 
 		String body = body(call(HttpMethod.GET, "/sellers/" + id, null, null).andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.description").value("Handmade"))
-				.andExpect(jsonPath("$.data.logoUrl", containsString("seller-logos/" + id + "/logo.png"))));
+				.andExpect(jsonPath("$.data.logoUrl", containsString("avatars/" + id + "/logo.png"))));
 		assertThat(JsonPath.<Map<String, Object>>read(body, "$.data"))
 				.containsOnlyKeys("sellerId", "sellerName", "description", "logoUrl");
 	}
