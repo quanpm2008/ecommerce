@@ -118,6 +118,7 @@ abstract class PayHttpTestSupport extends OrderPostgresTestSupport {
 	static final AtomicInteger financeStatus = new AtomicInteger(200);
 	static final AtomicInteger checkoutSourceCalls = new AtomicInteger();
 	static final AtomicInteger authCalls = new AtomicInteger();
+	static final AtomicReference<UUID> revokedCustomer = new AtomicReference<>();
 	static final FixtureClock CLOCK = new FixtureClock();
 	private static final RSAKey KEY = signingKey();
 	private static final HttpServer SERVER = startServer();
@@ -147,6 +148,7 @@ abstract class PayHttpTestSupport extends OrderPostgresTestSupport {
 		financeStatus.set(200);
 		checkoutSourceCalls.set(0);
 		authCalls.set(0);
+		revokedCustomer.set(null);
 	}
 
 	Sample sample(int stock, int quantity) {
@@ -220,7 +222,8 @@ abstract class PayHttpTestSupport extends OrderPostgresTestSupport {
 					.getJWTClaimsSet().getSubject();
 			respond(exchange, 200, Map.of("data", Map.of("userId", userId, "accountType", "CUSTOMER", "accountStatus",
 					"ACTIVE", "userStatus", "ACTIVE", "accessMode", "FULL", "authzVersion", 1, "roles", List.of("CUSTOMER"),
-					"permissions", List.of("checkout:create:own"), "sessionActive", true, "customerProfile", Map.of("status", "ACTIVE"))));
+					"permissions", List.of("checkout:create:own"), "sessionActive", !UUID.fromString(userId).equals(revokedCustomer.get()),
+					"customerProfile", Map.of("status", "ACTIVE"))));
 		} catch (java.text.ParseException failure) {
 			throw new IOException(failure);
 		}

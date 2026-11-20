@@ -44,7 +44,13 @@ class BuyNowPayController {
 		} catch (IllegalArgumentException invalid) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
 		}
-		return ResponseEntity.accepted().body(new Response(payments.pay(user, key, body.quoteToken(), body.addressId())));
+		var result = payments.pay(user, UUID.fromString(key).toString(), body.quoteToken(), body.addressId());
+		boolean waitingForLink = "AWAITING_PAYMENT".equals(result.response().status()) && result.response().paymentUrl() == null;
+		var response = ResponseEntity.status(waitingForLink ? 202 : 200);
+		if (result.replayed()) {
+			response.header("Idempotent-Replayed", "true");
+		}
+		return response.body(new Response(result.response()));
 	}
 
 	@ExceptionHandler(BuyNowPayService.Rejected.class)

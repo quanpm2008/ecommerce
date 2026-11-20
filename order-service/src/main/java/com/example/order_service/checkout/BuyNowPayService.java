@@ -20,10 +20,11 @@ class BuyNowPayService {
 	private final FinanceCommissionClient finance;
 	private final CheckoutCommitRepository commit;
 	private final PendingCheckoutReader pending;
+	private final CheckoutReplayRepository replays;
 
 	BuyNowPayService(CheckoutQuote quote, CheckoutIdentityClient identity, PayIdentityClient addresses,
 			ProductBatchClient products, FinanceCommissionClient finance, CheckoutCommitRepository commit,
-			PendingCheckoutReader pending) {
+			PendingCheckoutReader pending, CheckoutReplayRepository replays) {
 		this.quote = quote;
 		this.identity = identity;
 		this.addresses = addresses;
@@ -31,11 +32,29 @@ class BuyNowPayService {
 		this.finance = finance;
 		this.commit = commit;
 		this.pending = pending;
+		this.replays = replays;
 	}
 
-	CheckoutResponse pay(CurrentUser customer, String key, String quoteToken, UUID addressId) {
+	PayResult pay(CurrentUser customer, String key, String quoteToken, UUID addressId) {
 		var claims = quote.verify(quoteToken, customer.userId());
-		return freshPay(customer, key, claims, addressId, quote.requestHash(claims, addressId));
+		String hash = quote.requestHash(claims, addressId);
+		CheckoutResponse replay = replays.findOrRegisterAlias(customer.userId(), key, claims.checkoutIntentId(), hash);
+		if (replay != null) {
+			return new PayResult(replay, true);
+		}
+		try {
+			return new PayResult(freshPay(customer, key, claims, addressId, hash), false);
+		} catch (DuplicateKeyException | Rejected failure) {
+			// A concurrent Pay can commit after the first lookup and before an eligibility or uniqueness check.
+			replay = replays.findOrRegisterAlias(customer.userId(), key, claims.checkoutIntentId(), hash);
+			if (replay != null) {
+				return new PayResult(replay, true);
+			}
+			if (failure instanceof DuplicateKeyException && pending.pendingSession(customer.userId()).isPresent()) {
+				throw new Rejected(409, "CHECKOUT_PENDING_EXISTS");
+			}
+			throw failure;
+		}
 	}
 
 	private CheckoutResponse freshPay(CurrentUser customer, String key, CheckoutQuote.Claims claims, UUID addressId,
@@ -88,14 +107,12 @@ class BuyNowPayService {
 					key, hash, addressId, shippingAddress, commissionBps, List.of(line)));
 		} catch (CheckoutCommitRepository.StockUnavailable unavailable) {
 			throw new Rejected(409, "CHECKOUT_ITEMS_INVALID");
-		} catch (DuplicateKeyException collision) {
-			if (pending.pendingSession(customer.userId()).isPresent()) {
-				throw new Rejected(409, "CHECKOUT_PENDING_EXISTS");
-			}
-			throw collision;
 		}
 		addresses.touch(customer.userId(), addressId, response.checkoutSessionId());
 		return response;
+	}
+
+	record PayResult(CheckoutResponse response, boolean replayed) {
 	}
 
 	static final class Rejected extends RuntimeException {
