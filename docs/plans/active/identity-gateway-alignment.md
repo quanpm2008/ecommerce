@@ -56,13 +56,13 @@ cũ được sửa theo đặc tả mới, không xóa để cho qua.
 ## Tiến độ
 
 - [x] Bước 0: gateway 173 test xanh, commit bước 3 (`50f6166`), quyết định 0001/0002, coverage OQ-003/004/010/011
-- [ ] G1 WebFlux (giữ hành vi)
-- [ ] G2 Routing/Product/PUBLIC/checklist
-- [ ] G3 Header và X-Request-Id
-- [ ] G4 Envelope (429/413)
-- [ ] G5 CORS
-- [ ] G6 Rate limit
-- [ ] G7 Log/Docker
+- [x] G1 WebFlux (giữ hành vi) — `3fe409f`
+- [x] G2 Routing/Product/PUBLIC/checklist — `3e7769f`
+- [x] G3 Header và X-Request-Id — `8d5da0c`
+- [x] G4 Envelope (429/413) — `51e15cc`
+- [x] G5 CORS — `51e15cc`
+- [x] G6 Rate limit — `51e15cc`
+- [x] G7 Log/Docker — `5405244`; smoke test Docker 24/24 + TOKEN_STALE + identity dừng → 503
 - [ ] I1 accountType/RBAC
 - [ ] I2 Seller trên User + SellerApplication
 - [ ] I3 Địa chỉ + địa giới tĩnh
