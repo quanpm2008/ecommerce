@@ -60,6 +60,10 @@ services:
     build: ./cart-service
     volumes:
       - ./cart-service/src:/app/src:ro
+    environment:
+      <<: *eureka-client-env
+      # Dev-only shared secret; identity-service must list the same value as IDENTITY_INTERNAL_TOKEN_CART.
+      CART_SERVICE_TOKEN: ${IDENTITY_INTERNAL_TOKEN_CART:-cart-service-dev-token-0123456789abcdef}
     ports:
       - "8080:8080"
 
@@ -90,6 +94,7 @@ services:
       IDENTITY_MEDIA_ENDPOINT: http://object-storage:8333
       IDENTITY_MEDIA_PUBLIC_ENDPOINT: http://localhost:${S3_HOST_PORT:-8333}
       IDENTITY_ORDER_BASE_URL: http://order-service:8085
+      IDENTITY_INTERNAL_TOKEN_CART: ${IDENTITY_INTERNAL_TOKEN_CART:-cart-service-dev-token-0123456789abcdef}
     ports:
       - "8083:8083"
 
