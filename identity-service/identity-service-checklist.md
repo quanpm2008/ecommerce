@@ -1,5 +1,7 @@
 # identity-service — Verification checklist
 
+> Đặc tả [Thẻ 15](../docs/requirements/coverage.md#the-15) đã đổi; implementation và các checkbox lịch sử dưới đây chưa được kiểm chứng theo contract mới về tài khoản, ban/nghĩa vụ/J7, khôi phục 30 ngày và rút số dư nhỏ. Không tự đánh dấu hoàn thành từ việc sửa tài liệu.
+
 Use this to decide whether the Identity implementation is done. Tick an item only when an automated test or a manual check against the running service shows the stated behavior. References: `docs/api.docx` (API §), `docs/database.docx` (DB §), `docs/frd.docx` (UC-xx).
 
 Endpoint paths are shown as the public path after `/api/v1` (e.g. `/identity/auth/login`) and the internal path after `/internal/v1`.

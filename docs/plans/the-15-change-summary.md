@@ -1,0 +1,34 @@
+# Tóm tắt chỉnh sửa tài liệu theo Thẻ 15
+
+## Nội dung thay đổi
+
+| Nhóm | Trước chỉnh sửa | Sau chỉnh sửa trong đặc tả | Tài liệu chính |
+|---|---|---|---|
+| Tài khoản và phạm vi cấm | Còn mô tả một User nhiều vai trò và chọn scope USER/CUSTOMER/SELLER | Customer/Seller/Admin dùng tài khoản độc lập; ban/unban không chọn scope; không cấm Admin, chỉ cấm Seller APPROVED | FRD, Database, API, Identity, SAD, System Architecture |
+| Trạng thái cấm | BANNED/DISABLED chưa thành một vòng đời theo nghĩa vụ | Còn nghĩa vụ → BANNED giới hạn; xác minh hết nghĩa vụ → DISABLED. accountStatus suy ra từ cặp User/profile, không thêm cột trùng | FRD UC-E03; Database User/G-14/§8.2D; API ban/unban |
+| Nghĩa vụ và quyền truy cập | Có policy dựa lịch sử từng thanh toán; mô tả quyền cũ không đồng nhất | Xét Order đang dở, Payment/Refund chưa giải quyết; Seller thêm Settlement/hiệu ứng tài chính pending và số dư. Chỉ truy cập dữ liệu nghĩa vụ đúng chủ; không mua/bán mới | Identity, Checkout, Payments, Finance, API auth/authorization |
+| Tự động chuyển trạng thái | Chưa có contract đối soát vòng đời cấm | Thêm J7 do Identity sở hữu; login/refresh cùng kiểm tra nghĩa vụ. Nghĩa vụ đến muộn mở lại BANNED giới hạn, không tự unban; nguồn lỗi không coi là hết nghĩa vụ | FRD UC-G03; Database; API internal/jobs; SAD |
+| Gỡ cấm trong 30 ngày | Chưa có hạn khôi phục tài khoản; dễ nhầm với hạn khôi phục sản phẩm | BANNED gỡ bất kỳ lúc nào; DISABLED được gỡ đến hết 30 ngày từ lần DISABLED đầu đợt. Ban/job lặp không gia hạn; quá hạn trả ACCOUNT_RESTORE_WINDOW_EXPIRED, không xóa dữ liệu/tiền | FRD UC-E03; Database timestamps; API unban/errors |
+| API và cảnh báo trước ban | Body/DTO còn scope; thông tin tác động chưa đủ | Bỏ scope; bổ sung accountStatus, accessMode và mốc ban/khôi phục. Admin detail có banImpact/nghĩa vụ cho popup; POST đọc lại, không tin preview cũ | API ban/unban/Admin detail; Identity |
+| Nguồn dữ liệu liên service | Tên has-paid-order và dữ liệu chưa đủ cho nghĩa vụ Seller | Contract Order account obligations và Finance seller obligations; không join DB chéo. Lỗi nguồn trả 503 khi cần xác minh, không ghi ban một phần | API §7; Database; Identity/Finance; SAD |
+| Rút tiền Seller bị cấm | Một số hồ sơ còn chặn rút/đóng băng vì BANNED; mức tối thiểu áp dụng vô điều kiện | BANNED vẫn rút available. Nếu available dương dưới 10.000đ, chỉ được rút toàn bộ; ACTIVE giữ ngưỡng chung, pending không rút. Wallet thêm allowBelowMinimumFullWithdrawal | FRD UC-D05; Database WD; API Wallet/withdrawals; Finance |
+| Tạo sản phẩm UC-D01 | FRD thiếu bước HIDDEN/provision dù API/SAD đã có | Tạo Product HIDDEN cùng công việc bền vững; xác nhận Inventory mới áp dụng trạng thái yêu cầu. Timeout retry cùng productId; ban/REMOVED trong lúc chờ không tự bật SELLING | FRD UC-D01; Catalog; API; SAD/System Architecture |
+| Invalid sau thu tiền | DB có nhánh nhưng chưa rõ owner/trigger; có đoạn nhầm ban Seller là tự hủy | Order xác minh khi áp dụng Payment SUCCESS qua event hoặc handler đối soát chung. Chỉ invalid được chứng minh mới hủy/hoàn riêng Order đủ điều kiện; ban sau thanh toán không tự hủy | Database §8.2B; API state/events; Checkout; Payments; SAD §5.1 |
+| Lỗi và xử lý lặp sau thu | Chưa phân biệt đủ lỗi phụ thuộc với invalid giao dịch | Lỗi/thiếu bằng chứng giữ retry bền vững; Payment vẫn SUCCESS; giữ checkout.paid/order.cancelled, pending chỉ giảm sau Refund SUCCESS; không nhân đôi kho/hoàn/bút toán | Database, API, Checkout, Payments, SAD |
+| Thông báo | Còn ngữ cảnh User đa vai trò, dễ hiểu user.enabled là gỡ cấm | Recipient theo tài khoản độc lập; mở BANNED giới hạn do nghĩa vụ muộn khác unban; DISABLED nêu hạn khôi phục khi có | Notifications; API events; SAD |
+
+## Tài liệu đã cập nhật trong repository
+
+| Tệp/nhóm tệp | Nội dung đã chỉnh |
+|---|---|
+| [FRD.md](../requirements/FRD.md) | Luồng nghiệp vụ và ngoại lệ liên quan; thêm 16 ca nghiệm thu B1–B11, P1–P2, O1–O3 |
+| [database.md](../requirements/database.md) | Mapping trạng thái, timestamps, nghĩa vụ/G-14, Withdrawal/WD, state machine và trigger sau thu |
+| [api_specs.md](../requirements/api_specs.md) | Auth/DTO, ban/unban/errors, banImpact, internal obligations, J7/events, Wallet và state table |
+| [identity.md](../requirements/identity.md), [finance.md](../requirements/finance.md) | Đồng bộ clause/REQ/AC, dependencies và ngoại lệ quyền/rút tiền; giữ mã clause |
+| [checkout-orders.md](../requirements/checkout-orders.md), [catalog.md](../requirements/catalog.md), [payments.md](../requirements/payments.md) | Quyền theo nghĩa vụ, HIDDEN/provision, postcapture/retry và hoàn tiền đúng điều kiện |
+| [notifications.md](../requirements/notifications.md) | Recipient và nội dung sự kiện trạng thái cấm; bổ sung AC phân biệt mở quyền giới hạn với unban |
+| [software-architecture.md](../requirements/software-architecture.md), [system-architecture.md](../requirements/system-architecture.md) | Loại policy kiến trúc cũ trái quyết định mới; đồng bộ ownership, J7 và các luồng liên service |
+| [README nghiệp vụ](../requirements/README.md), [bản đồ tài liệu](../README.md), [engineering.md](../engineering.md) | Thuật ngữ, ma trận quyền, dependency và authority hiệu lực |
+| [coverage.md](../requirements/coverage.md#the-15) | Quyết định Thẻ 15, mapping nguồn/AC/trạng thái, manifest 5 nguồn hiện hành và giới hạn kiểm chứng |
+| Bốn tài liệu Identity: progress, checklist, dependency graph, session flowgraph | Chỉ thêm cảnh báo implementation chưa được kiểm chứng theo contract mới; không đổi checkbox hoặc mô tả code thành tính năng đã triển khai |
+

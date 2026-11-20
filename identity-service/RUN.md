@@ -128,4 +128,4 @@ docker buildx build --platform linux/amd64,linux/arm64 \
   -t hnan756/identity-service:latest -t hnan756/identity-service:$(date +%Y%m%d) --push .
 ```
 
-The Dockerfile builds the jar once on the build machine's platform and only the small runtime stage per platform, so no emulation is needed. This needs a builder that can export multi-platform images (Docker Desktop, or Docker Engine with the containerd image store). On the dev machine (rootless Docker), add `--network=host`.
+The Dockerfile is the team's dev image: a single Maven stage that runs `mvn spring-boot:run`, so the whole image, Maven included, is built per platform and the non-native one (usually `linux/arm64`) goes through QEMU emulation and is slow. This needs a builder that can export multi-platform images (Docker Desktop, or Docker Engine with the containerd image store) and has QEMU registered (`docker run --privileged --rm tonistiigi/binfmt --install arm64` if not). On the dev machine (rootless Docker), add `--network=host`.
