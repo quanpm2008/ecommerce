@@ -29,6 +29,7 @@ import java.util.UUID;
 public class OrderAuthorization {
 
 	static final String CHECKOUT = "checkout:create:own";
+	static final String CHECKOUT_READ = "order:read:own";
 	static final String INVENTORY = "inventory:manage:own";
 	private static final String UNAUTHENTICATED = "UNAUTHENTICATED";
 	private static final String TOKEN_EXPIRED = "TOKEN_EXPIRED";
@@ -103,7 +104,8 @@ public class OrderAuthorization {
 	}
 
 	private static boolean profileAllows(IdentityContext current, String permission) {
-		if (CHECKOUT.equals(permission) && "CUSTOMER".equals(current.accountType()) && current.roles().contains("CUSTOMER")) {
+		if ((CHECKOUT.equals(permission) || CHECKOUT_READ.equals(permission))
+				&& "CUSTOMER".equals(current.accountType()) && current.roles().contains("CUSTOMER")) {
 			if (current.customerProfile() == null || current.customerProfile().status() == null) {
 				throw unavailable();
 			}
