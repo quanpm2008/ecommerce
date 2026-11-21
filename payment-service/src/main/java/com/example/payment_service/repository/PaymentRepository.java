@@ -18,6 +18,11 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
 
     Optional<Payment> findByIdempotencyKey(String idempotencyKey);
 
+    boolean existsByProviderTransactionIdAndPaymentIdNot(String providerTransactionId, UUID paymentId);
+
+    @Query("SELECT p.checkoutSessionId FROM Payment p WHERE p.paymentId = :paymentId")
+    Optional<UUID> findCheckoutIdByPaymentId(@Param("paymentId") UUID paymentId);
+
     //Khóa Payment (SELECT FOR UPDATE) để đảm bảo an toàn đồng thời khi tạo Refund
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT p FROM Payment p WHERE p.paymentId = :paymentId")

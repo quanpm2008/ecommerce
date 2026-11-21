@@ -49,6 +49,7 @@ import com.example.payment_service.repository.PaymentCollectionWorkRepository;
 import com.example.payment_service.repository.PaymentRepository;
 import com.example.payment_service.service.PaymentCollectionJob;
 import com.example.payment_service.service.PaymentCollectionService;
+import com.example.payment_service.service.PaymentOutcomeService;
 import com.sun.net.httpserver.HttpServer;
 
 import tools.jackson.databind.JsonNode;
@@ -128,11 +129,14 @@ class PaymentCollectionPostgresTests {
     @Autowired OrderCheckoutPayableClient feign;
     @Autowired ObjectProvider<PaymentGateway> gateway;
     @Autowired PlatformTransactionManager transactions;
+    @Autowired PaymentOutcomeService outcomes;
 
     @BeforeEach
     void resetTestState() {
         String database = jdbc.sql("SELECT current_database()").query(String.class).single();
         assertThat(database).contains("test");
+        jdbc.sql("DELETE FROM payment_refund_work").update();
+        jdbc.sql("DELETE FROM refunds").update();
         jdbc.sql("DELETE FROM payment_collection_observation").update();
         jdbc.sql("DELETE FROM payment_collection_work").update();
         payments.deleteAll();
@@ -225,7 +229,7 @@ class PaymentCollectionPostgresTests {
         assertThat(work.find(paymentId).orElseThrow().nextRun()).isEqualTo(START.plusSeconds(5));
         assertThat(send(create(checkout, "test-order")).statusCode()).isEqualTo(200);
         assertThat(work.find(paymentId).orElseThrow().nextRun()).isEqualTo(START.plusSeconds(5));
-        var restartedJob = new PaymentCollectionJob(new PaymentCollectionService(payments, work, feign,
+        var restartedJob = new PaymentCollectionJob(new PaymentCollectionService(payments, work, outcomes, feign,
                 gateway, transactions, CLOCK, "test-payment", "DEV", Duration.ofSeconds(2)));
         CLOCK.set(START.plusSeconds(4));
         restartedJob.runOnce();

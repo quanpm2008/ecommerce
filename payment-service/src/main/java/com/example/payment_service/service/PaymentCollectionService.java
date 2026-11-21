@@ -35,6 +35,7 @@ public class PaymentCollectionService {
 
     private final PaymentRepository payments;
     private final PaymentCollectionWorkRepository work;
+    private final PaymentOutcomeService outcomes;
     private final OrderCheckoutPayableClient order;
     private final ObjectProvider<PaymentGateway> gateway;
     private final TransactionTemplate transactions;
@@ -44,6 +45,7 @@ public class PaymentCollectionService {
     private final Duration leaseLength;
 
     public PaymentCollectionService(PaymentRepository payments, PaymentCollectionWorkRepository work,
+            PaymentOutcomeService outcomes,
             OrderCheckoutPayableClient order, ObjectProvider<PaymentGateway> gateway,
             PlatformTransactionManager transactionManager, Clock clock,
             @Value("${payment.order.credential:}") String orderCredential,
@@ -51,6 +53,7 @@ public class PaymentCollectionService {
             @Value("${payment.provider.timeout:2s}") Duration providerTimeout) {
         this.payments = payments;
         this.work = work;
+        this.outcomes = outcomes;
         this.order = order;
         this.gateway = gateway;
         this.transactions = new TransactionTemplate(transactionManager);
@@ -103,15 +106,12 @@ public class PaymentCollectionService {
     }
 
     public List<UUID> dueCheckouts() {
-        return gateway.getIfAvailable() == null ? List.of() : work.dueCheckouts(clock.instant());
+        return work.dueCheckouts(clock.instant(), gateway.getIfAvailable() != null);
     }
 
     public void process(UUID checkoutId) {
         PaymentGateway provider = gateway.getIfAvailable();
-        if (provider == null) {
-            return;
-        }
-        Dispatch dispatch = transactions.execute(transaction -> claim(checkoutId));
+        Dispatch dispatch = transactions.execute(transaction -> claim(checkoutId, provider != null));
         if (dispatch == null) {
             return;
         }
@@ -136,15 +136,23 @@ public class PaymentCollectionService {
         transactions.executeWithoutResult(transaction -> finish(dispatch, createResult, queryResult));
     }
 
-    private Dispatch claim(UUID checkoutId) {
+    private Dispatch claim(UUID checkoutId, boolean gatewayAvailable) {
         var guard = work.lockCheckout(checkoutId);
         Payment payment = payments.findByCheckoutSessionId(checkoutId).orElse(null);
-        if (payment == null || guard.isClosed() || !payment.isPending()) {
+        if (payment == null) {
             return null;
         }
         UUID paymentId = payment.getPaymentId();
-        var scheduled = work.find(paymentId).orElse(null);
         Instant now = clock.instant();
+        var storedObservation = work.unappliedObservation(paymentId, payment.getExpiresAt());
+        if (storedObservation != null) {
+            outcomes.applyObservation(payment, guard.isClosed(), storedObservation, now);
+            return null;
+        }
+        if (!gatewayAvailable || guard.isClosed() || !payment.isPending()) {
+            return null;
+        }
+        var scheduled = work.find(paymentId).orElse(null);
         if (scheduled == null || !scheduled.isDue(now)) {
             return null;
         }
@@ -180,7 +188,7 @@ public class PaymentCollectionService {
         var guard = work.lockCheckout(dispatch.request().checkoutSessionId());
         UUID paymentId = dispatch.request().paymentId();
         var current = work.find(paymentId).orElseThrow();
-        if (!dispatch.lease().equals(current.leaseId())) {
+        if (guard.isClosed() || !dispatch.lease().equals(current.leaseId())) {
             return;
         }
         Payment payment = payments.findByIdForUpdate(paymentId).orElseThrow();
@@ -189,28 +197,23 @@ public class PaymentCollectionService {
             work.stop(paymentId);
             return;
         }
-        boolean terminal = applyObservation(payment, guard.isClosed(), created, queried, now);
-        if (guard.isClosed() || terminal) {
-            work.stop(paymentId);
+        if (applyObservation(payment, created, queried, now)) {
             return;
         }
         int attempt = dispatch.query() ? Math.min(dispatch.queryAttempts() + 1, RETRY_SECONDS.length - 1) : 0;
         work.retry(paymentId, dispatch.lease(), attempt, now.plusSeconds(RETRY_SECONDS[attempt]));
     }
 
-    private boolean applyObservation(Payment payment, boolean closed,
+    private boolean applyObservation(Payment payment,
             CreatePaymentResponse created, PaymentQueryResponse queried, Instant now) {
         if (queried != null && matches(payment, queried)) {
             if (queried.status() != GatewayStatus.PENDING) {
-                payment.setProviderTransactionId(queried.providerTransactionId());
-                payment.setPaymentUrl(null);
                 work.observe(payment.getPaymentId(), queried, now);
+                outcomes.applyObservation(payment, false, queried, now);
                 return true;
             }
-            if (!closed) {
-                updateLink(payment, queried.providerTransactionId(), queried.paymentUrl(), now);
-            }
-        } else if (!closed && created != null && matchesRef(payment, created.providerTransactionId())) {
+            updateLink(payment, queried.providerTransactionId(), queried.paymentUrl(), now);
+        } else if (created != null && matchesRef(payment, created.providerTransactionId())) {
             updateLink(payment, created.providerTransactionId(),
                     created.status() == GatewayStatus.PENDING ? created.paymentUrl() : null, now);
         }
@@ -222,7 +225,9 @@ public class PaymentCollectionService {
                 && payment.getAmountVnd() == queried.amountVnd()
                 && "VND".equals(queried.currency())
                 && payment.getExpiresAt().equals(queried.expiresAt())
-                && (queried.errorCode() == null || queried.errorCode().length() <= 100);
+                && (queried.errorCode() == null || queried.errorCode().length() <= 100)
+                && (queried.status() != GatewayStatus.SUCCESS
+                    || queried.completedAt().isBefore(payment.getExpiresAt()));
     }
 
     private static boolean matchesRef(Payment payment, String ref) {

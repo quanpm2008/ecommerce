@@ -12,6 +12,7 @@ import org.hibernate.type.StandardBasicTypes;
 import org.springframework.stereotype.Repository;
 
 import com.example.payment_service.client.ProviderContracts.PaymentQueryResponse;
+import com.example.payment_service.client.GatewayStatus;
 
 import jakarta.persistence.EntityManager;
 
@@ -58,14 +59,15 @@ public class PaymentCollectionWorkRepository {
     }
 
     @SuppressWarnings("unchecked")
-    public List<UUID> dueCheckouts(Instant now) {
+    public List<UUID> dueCheckouts(Instant now, boolean gatewayAvailable) {
         return entities.createNativeQuery("""
                 SELECT p.checkout_session_id FROM payment_collection_work w JOIN payments p USING (payment_id)
                 JOIN payment_checkout_guard g USING (checkout_session_id)
-                WHERE w.next_run_at <= :now AND (w.lease_until IS NULL OR w.lease_until <= :now)
-                  AND g.closed_at IS NULL AND p.status = 'PENDING'
-                ORDER BY w.next_run_at, p.payment_id LIMIT 32
-                """).setParameter("now", now).getResultList();
+                LEFT JOIN payment_collection_observation o ON o.payment_id = p.payment_id AND o.applied_at IS NULL
+                WHERE o.payment_id IS NOT NULL OR (:gatewayAvailable AND w.next_run_at <= :now
+                  AND (w.lease_until IS NULL OR w.lease_until <= :now) AND g.closed_at IS NULL AND p.status = 'PENDING')
+                ORDER BY COALESCE(o.observed_at, w.next_run_at), p.payment_id LIMIT 32
+                """).setParameter("now", now).setParameter("gatewayAvailable", gatewayAvailable).getResultList();
     }
 
     public void claim(UUID paymentId, UUID leaseId, Instant leaseUntil) {
@@ -104,6 +106,18 @@ public class PaymentCollectionWorkRepository {
                 .setParameter("status", result.status().name()).setParameter("completedAt", result.completedAt())
                 .setParameter("errorCode", new TypedParameterValue<>(StandardBasicTypes.STRING, result.errorCode()))
                 .setParameter("observedAt", observedAt).executeUpdate();
+    }
+
+    public PaymentQueryResponse unappliedObservation(UUID paymentId, Instant expiresAt) {
+        Object[] result = (Object[]) entities.createNativeQuery("""
+                SELECT provider_transaction_id, amount_vnd, currency, status, completed_at, error_code
+                FROM payment_collection_observation WHERE payment_id = :paymentId AND applied_at IS NULL
+                """).setParameter("paymentId", paymentId).getSingleResultOrNull();
+        if (result == null) {
+            return null;
+        }
+        return new PaymentQueryResponse((String) result[0], ((Number) result[1]).longValue(), (String) result[2],
+                GatewayStatus.valueOf((String) result[3]), expiresAt, null, instant(result[4]), (String) result[5]);
     }
 
     private static Instant instant(Object value) {
