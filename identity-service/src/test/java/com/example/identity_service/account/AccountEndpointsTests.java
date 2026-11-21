@@ -1,12 +1,12 @@
 package com.example.identity_service.account;
 
 import com.example.identity_service.EndpointTestSupport;
-import com.example.identity_service.rbac.RoleCode;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.http.HttpMethod;
 
 import static org.hamcrest.Matchers.contains;
-import static org.hamcrest.Matchers.empty;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -88,51 +88,69 @@ class AccountEndpointsTests extends EndpointTestSupport {
 				.andExpect(status().isOk());
 	}
 
-	@Test
-	void sellerCanAddACustomerProfileOnce() throws Exception {
-		Session seller = pendingSeller();
+	/**
+	 * One account per role (API v1.1 §3.2.1): an account never adds a Customer profile or applies to sell; sellers
+	 * register through the public endpoints. {@code GET /users/me/customer-profile} is marked removed in §6.1.
+	 */
+	@ParameterizedTest
+	@CsvSource({ "POST, /users/me/customer-profile", "GET, /users/me/customer-profile",
+			"POST, /users/me/seller-application", "GET, /users/me/seller-application" })
+	void accountsCannotAddProfilesToThemselves(String method, String path) throws Exception {
+		Session customer = customer();
 
-		call(HttpMethod.POST, "/users/me/customer-profile", null, seller.accessToken())
-				.andExpect(status().isCreated())
+		call(HttpMethod.valueOf(method), path, method.equals("POST") ? "{}" : null, customer.accessToken())
+				.andExpect(status().isNotFound());
+		call(HttpMethod.GET, "/users/me", null, customer.accessToken())
 				.andExpect(jsonPath("$.data.roles", contains("CUSTOMER")))
-				.andExpect(jsonPath("$.data.customerProfile.status").value("ACTIVE"))
-				.andExpect(jsonPath("$.data.sellerProfile.approvalStatus").value("PENDING"));
-
-		// The role grant bumped authzVersion, so the old token must be refreshed before the second call.
-		call(HttpMethod.POST, "/users/me/customer-profile", null, seller.accessToken())
-				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.error.code").value("TOKEN_STALE"));
-		String fresh = read(loginBody(seller.email()), "$.data.accessToken");
-		call(HttpMethod.POST, "/users/me/customer-profile", null, fresh).andExpect(status().isOk())
-				.andExpect(jsonPath("$.data.roles", contains("CUSTOMER")));
+				.andExpect(jsonPath("$.data.sellerProfile").isEmpty());
 	}
 
 	@Test
-	void bannedCustomerIsReturnedUnchanged() throws Exception {
+	void aSellersFullNameIsItsShopNameAndIsLocked() throws Exception {
+		Session seller = approvedSeller();
+		String shopName = users.findById(seller.userId()).orElseThrow().getFullName();
+		String phone = uniquePhone();
+
+		call(HttpMethod.PATCH, "/users/me", json("fullName", "Another Shop"), seller.accessToken())
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.error.code").value("SELLER_NAME_LOCKED"));
+		call(HttpMethod.PATCH, "/users/me", json("fullName", shopName, "phoneNumber", phone), seller.accessToken())
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.fullName").value(shopName))
+				.andExpect(jsonPath("$.data.phoneNumber").value(phone));
+		call(HttpMethod.GET, "/sellers/" + seller.userId(), null, null)
+				.andExpect(jsonPath("$.data.sellerName").value(shopName));
+	}
+
+	@Test
+	void aBannedAccountCannotEditItsProfile() throws Exception {
 		Session customer = customer();
 		jdbc.update("""
-				update customers set status = 'BANNED', ban_reason = 'Fraud', ban_mode = 'CUSTOMER_SCOPE',
-				has_paid_order_before_ban = false where customer_id = ?""", customer.userId());
+				update customers set status = 'BANNED', ban_reason = 'Khác: Fraud' where customer_id = ?""", customer.userId());
 
-		call(HttpMethod.POST, "/users/me/customer-profile", null, customer.accessToken()).andExpect(status().isOk())
-				.andExpect(jsonPath("$.data.customerProfile.status").value("BANNED"))
-				.andExpect(jsonPath("$.data.customerProfile.banReason").value("Fraud"));
+		call(HttpMethod.PATCH, "/users/me", json("fullName", "New Name"), customer.accessToken())
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.error.code").value("ACCOUNT_BANNED"));
 	}
 
 	@Test
-	void customerRoleRevokedByAnAdminIsNotGrantedBack() throws Exception {
-		Session seller = pendingSeller();
-		tx.executeWithoutResult(status -> {
-			var user = users.findById(seller.userId()).orElseThrow();
-			roleAssignments.grant(user, RoleCode.CUSTOMER, null);
-			roleAssignments.revoke(user, RoleCode.CUSTOMER);
-		});
-		String fresh = read(loginBody(seller.email()), "$.data.accessToken");
+	void meNamesTheAccountType() throws Exception {
+		Session customer = customer();
+		Session seller = approvedSeller();
+		Session admin = admin();
 
-		call(HttpMethod.POST, "/users/me/customer-profile", null, fresh).andExpect(status().isForbidden())
-				.andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
-		call(HttpMethod.GET, "/users/me", null, fresh).andExpect(jsonPath("$.data.roles", empty()))
+		call(HttpMethod.GET, "/users/me", null, customer.accessToken())
+				.andExpect(jsonPath("$.data.accountType").value("CUSTOMER"))
+				.andExpect(jsonPath("$.data.roles", contains("CUSTOMER")));
+		call(HttpMethod.GET, "/users/me", null, seller.accessToken())
+				.andExpect(jsonPath("$.data.accountType").value("SELLER"))
+				.andExpect(jsonPath("$.data.roles", contains("SELLER")))
 				.andExpect(jsonPath("$.data.customerProfile").isEmpty());
+		call(HttpMethod.GET, "/users/me", null, admin.accessToken())
+				.andExpect(jsonPath("$.data.accountType").value("ADMIN"))
+				.andExpect(jsonPath("$.data.roles", contains("ADMIN")))
+				.andExpect(jsonPath("$.data.customerProfile").isEmpty())
+				.andExpect(jsonPath("$.data.sellerProfile").isEmpty());
 	}
 
 }

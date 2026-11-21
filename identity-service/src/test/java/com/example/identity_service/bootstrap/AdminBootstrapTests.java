@@ -10,6 +10,7 @@ import com.example.identity_service.rbac.Permissions;
 import com.example.identity_service.rbac.RoleCode;
 import com.example.identity_service.rbac.RoleAssignments;
 import com.example.identity_service.user.AuthMethod;
+import com.example.identity_service.user.AccountType;
 import com.example.identity_service.user.User;
 import com.example.identity_service.user.UserRepository;
 import com.example.identity_service.user.UserStatus;
@@ -96,7 +97,7 @@ class AdminBootstrapTests {
 
 	@Test
 	void existingUserWithTheConfiguredEmailIsNotEscalated() {
-		User existing = users.save(User.local("plain@example.test", "{noop}x", "Plain User", null));
+		User existing = users.save(User.local(AccountType.CUSTOMER, "plain@example.test", "{noop}x", "Plain User", null));
 		AdminBootstrap other = withProperties(new AdminBootstrapProperties("plain@example.test", "Admin1234", "Admin"));
 
 		tx.executeWithoutResult(status -> other.run(null));

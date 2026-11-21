@@ -10,6 +10,12 @@ public final class TokenClaims {
 
 	public static final String AUTHZ_VERSION = "authzVersion";
 
+	/** The account type ({@code CUSTOMER}, {@code SELLER}, {@code ADMIN}), for the UI only. */
+	public static final String ACCOUNT_TYPE = "accountType";
+
+	/** Snapshot of the account's one role, absent when it has none yet; for the UI only, never trusted for access. */
+	public static final String ROLE = "role";
+
 	private TokenClaims() {
 	}
 

@@ -3,6 +3,8 @@ package com.example.identity_service;
 import com.example.identity_service.auth.AuthController;
 import com.example.identity_service.rbac.RoleAssignments;
 import com.example.identity_service.rbac.RoleCode;
+import com.example.identity_service.user.AccountType;
+import com.example.identity_service.user.User;
 import com.example.identity_service.user.UserRepository;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,6 +16,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -30,18 +33,20 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Shared setup for endpoint tests: one Spring context (PostgreSQL, SeaweedFS, a fake region source, a movable
+ * Shared setup for endpoint tests: one Spring context (PostgreSQL with the seeded regions, SeaweedFS, a movable
  * clock), fresh emails and phone numbers per test, and a random client IP per test so per-IP rate limits never leak
  * between tests.
  */
-@SpringBootTest(properties = { "eureka.client.enabled=false",
+@SpringBootTest(properties = { "eureka.client.enabled=false", "identity.ban-reconciliation.enabled=false",
+		// fixtures sign in often from one test IP; AuthEndpointsTests proves the limit itself
+		"identity.rate-limit.login.limit=30",
 		"identity.internal.clients.order-service=" + EndpointTestSupport.ORDER_TOKEN,
 		"identity.internal.clients.notification-service=" + EndpointTestSupport.NOTIFICATION_TOKEN,
 		"identity.internal.clients.gateway-service=" + EndpointTestSupport.GATEWAY_TOKEN,
 		"identity.internal.clients.payment-service=too-short" })
 @AutoConfigureMockMvc
 @Import({ TestcontainersConfiguration.class, TestClockConfiguration.class, SeaweedfsTestConfiguration.class,
-		FakeRegionProvider.Configuration.class, FakeOrderClient.Configuration.class })
+		FakeObligations.Configuration.class })
 public abstract class EndpointTestSupport {
 
 	protected static final String API = "/api/v1/identity";
@@ -65,10 +70,7 @@ public abstract class EndpointTestSupport {
 	protected MutableClock clock;
 
 	@Autowired
-	protected FakeRegionProvider regions;
-
-	@Autowired
-	protected FakeOrderClient orders;
+	protected FakeObligations obligations;
 
 	@Autowired
 	protected RoleAssignments roleAssignments;
@@ -79,13 +81,15 @@ public abstract class EndpointTestSupport {
 	@Autowired
 	protected TransactionTemplate tx;
 
+	@Autowired
+	protected PasswordEncoder passwordEncoder;
+
 	protected String clientIp;
 
 	@BeforeEach
 	void freshClientAndClock() {
 		clock.reset();
-		regions.setAvailable(true);
-		orders.reset();
+		obligations.reset();
 		clientIp = randomIp();
 	}
 
@@ -172,22 +176,64 @@ public abstract class EndpointTestSupport {
 		return JsonPath.read(body, "$.data.userId");
 	}
 
-	protected ResultActions registerSeller(String email, String sellerName, String contactPhone) throws Exception {
-		return postJson("/register-seller", json("email", email, "sellerName", sellerName, "fullName", "Tran Thi B",
-				"contactPhone", contactPhone, "password", PASSWORD, "confirmPassword", PASSWORD));
+	/** A seller account: {@code shopName} is its {@code fullName}, {@code phone} its (and the shop's) phone. */
+	protected ResultActions registerSeller(String email, String shopName, String phone) throws Exception {
+		return postJson("/register-seller", json("email", email, "fullName", shopName, "phoneNumber", phone,
+				"password", PASSWORD, "confirmPassword", PASSWORD));
 	}
 
+	/** Logs in to the account's own channel (its account type, or CUSTOMER for an unknown email). */
 	protected ResultActions login(String email, String password) throws Exception {
-		return postJson("/login", json("email", email, "password", password));
+		return login(email, password, accountTypeOf(email));
+	}
+
+	protected ResultActions login(String email, String password, String accountType) throws Exception {
+		return postJson("/login", json("email", email, "password", password, "accountType", accountType));
+	}
+
+	/** The account type stored for {@code email}, or CUSTOMER when there is no such account. */
+	protected String accountTypeOf(String email) {
+		return jdbc.query("select account_type from users where email = lower(?)", rs -> rs.next() ? rs.getString(1)
+				: "CUSTOMER", email.strip());
 	}
 
 	/** Logs in and returns the response body. */
+	/** The SPA origin the tests' refresh and logout calls come from (identity.session-cookie.allowed-origins). */
+	protected static final String SPA_ORIGIN = "http://localhost:5173";
+
+	/**
+	 * Logs in and returns the response body with the {@code refresh_token} cookie's value added as a top-level
+	 * {@code refreshToken} (a test convenience: the real body never carries it).
+	 */
 	protected String loginBody(String email) throws Exception {
-		return login(email, PASSWORD).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+		return withRefreshToken(login(email, PASSWORD).andExpect(status().isOk()));
 	}
 
+	/** The response body plus its {@code refresh_token} cookie as top-level {@code refreshToken}. */
+	protected static String withRefreshToken(ResultActions result) throws Exception {
+		var response = result.andReturn().getResponse();
+		String body = response.getContentAsString();
+		jakarta.servlet.http.Cookie cookie = response.getCookie("refresh_token");
+		String token = cookie == null ? "" : cookie.getValue();
+		return "{\"refreshToken\":\"" + token + "\"," + body.substring(1);
+	}
+
+	/** {@code POST /auth/refresh} with the token as the {@code refresh_token} cookie, from the SPA's origin. */
 	protected ResultActions refresh(String refreshToken) throws Exception {
-		return postJson("/refresh", json("refreshToken", refreshToken));
+		return mvc.perform(withIp(post(AuthController.PATH + "/refresh"))
+				.cookie(new jakarta.servlet.http.Cookie("refresh_token", refreshToken)).header("Origin", SPA_ORIGIN));
+	}
+
+	/** {@code POST /auth/logout} with the access token and the refresh token cookie, from the SPA's origin. */
+	protected ResultActions logout(String refreshToken, String accessToken) throws Exception {
+		var request = withIp(post(AuthController.PATH + "/logout")).header("Origin", SPA_ORIGIN);
+		if (refreshToken != null) {
+			request.cookie(new jakarta.servlet.http.Cookie("refresh_token", refreshToken));
+		}
+		if (accessToken != null) {
+			request.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken);
+		}
+		return mvc.perform(request);
 	}
 
 	/** Registers a customer, logs in and returns the session. */
@@ -197,13 +243,15 @@ public abstract class EndpointTestSupport {
 		return new Session(userId, email, read(loginBody(email), "$.data.accessToken"));
 	}
 
-	/** Registers a seller (PENDING, no role), logs in and returns the session. */
+	/**
+	 * Registers a seller account (PENDING, no role). A pending seller cannot sign in (API §3.2), so the session has no
+	 * access token.
+	 */
 	protected Session pendingSeller() throws Exception {
 		String email = uniqueEmail();
 		String body = registerSeller(email, "Shop " + UUID.randomUUID(), uniquePhone()).andExpect(status().isCreated())
 				.andReturn().getResponse().getContentAsString();
-		return new Session(UUID.fromString(read(body, "$.data.userId")), email,
-				read(loginBody(email), "$.data.accessToken"));
+		return new Session(UUID.fromString(read(body, "$.data.userId")), email, null);
 	}
 
 	/** A seller approved as an admin would (APPROVED + SELLER role), logged in afterwards. */
@@ -214,14 +262,46 @@ public abstract class EndpointTestSupport {
 	}
 
 	/**
-	 * A registered user (who is also a customer) granted ADMIN, logged in afterwards. Admins are only made by the
-	 * bootstrap in production; this is the test shortcut.
+	 * An ADMIN account (own email, no Customer or Seller profile) with the ADMIN role, logged in. Admins are only made
+	 * by the bootstrap in production; this is the test shortcut.
 	 */
 	protected Session admin() throws Exception {
-		Session user = customer();
-		tx.executeWithoutResult(status -> roleAssignments.grant(users.findById(user.userId()).orElseThrow(),
-				RoleCode.ADMIN, null));
-		return new Session(user.userId(), user.email(), read(loginBody(user.email()), "$.data.accessToken"));
+		String email = uniqueEmail();
+		UUID adminId = tx.execute(status -> {
+			User admin = users.save(User.local(AccountType.ADMIN, email, passwordEncoder.encode(PASSWORD),
+					"Admin " + email.substring(5, 13), null));
+			roleAssignments.grant(admin, RoleCode.ADMIN, null);
+			return admin.getUserId();
+		});
+		return new Session(adminId, email, read(loginBody(email), "$.data.accessToken"));
+	}
+
+	/** Marks the seller's latest application and profile REJECTED with a P-21d reason, like an admin rejection. */
+	protected void rejectSeller(UUID sellerId) {
+		UUID reviewer = jdbc.queryForObject("""
+				insert into users (email, account_type, auth_method, password_hash, full_name)
+				values (?, 'ADMIN', 'LOCAL', 'x', 'Reviewer') returning user_id""", UUID.class, uniqueEmail());
+		jdbc.update("""
+				update seller_applications set status = 'REJECTED', rejection_reason = 'Khác: Blurry photos',
+				reviewed_at = now(), reviewed_by_user_id = ? where seller_id = ? and status = 'PENDING'""", reviewer,
+				sellerId);
+		jdbc.update("""
+				update sellers set approval_status = 'REJECTED', rejection_reason = 'Khác: Blurry photos',
+				reviewed_at = now(), reviewed_by_user_id = ? where seller_id = ?""", reviewer, sellerId);
+	}
+
+	/**
+	 * Runs {@code action} while the region seed cannot be read (its dataset table renamed away), then puts it back.
+	 * Test classes run one at a time, so no other test sees it.
+	 */
+	protected void withoutRegionSeed(org.junit.jupiter.api.function.Executable action) throws Throwable {
+		jdbc.execute("alter table region_dataset rename to region_dataset_hidden");
+		try {
+			action.execute();
+		}
+		finally {
+			jdbc.execute("alter table region_dataset_hidden rename to region_dataset");
+		}
 	}
 
 	/** Number of outbox rows of {@code eventType} for the aggregate. */
@@ -236,11 +316,14 @@ public abstract class EndpointTestSupport {
 				Integer.class, action, targetId);
 	}
 
-	/** Marks the user's Seller profile APPROVED and grants SELLER, like an admin approval. */
+	/** Marks the seller's latest application and profile APPROVED and grants SELLER, like an admin approval. */
 	protected void approveSeller(UUID sellerId) {
 		UUID reviewer = jdbc.queryForObject("""
-				insert into users (email, auth_method, password_hash, full_name) values (?, 'LOCAL', 'x', 'Reviewer')
-				returning user_id""", UUID.class, uniqueEmail());
+				insert into users (email, account_type, auth_method, password_hash, full_name)
+				values (?, 'ADMIN', 'LOCAL', 'x', 'Reviewer') returning user_id""", UUID.class, uniqueEmail());
+		jdbc.update("""
+				update seller_applications set status = 'APPROVED', reviewed_at = now(), reviewed_by_user_id = ?
+				where seller_id = ? and status = 'PENDING'""", reviewer, sellerId);
 		jdbc.update("""
 				update sellers set approval_status = 'APPROVED', reviewed_at = now(), reviewed_by_user_id = ?
 				where seller_id = ?""", reviewer, sellerId);
@@ -250,12 +333,24 @@ public abstract class EndpointTestSupport {
 
 	protected UUID insertGoogleUser(String email) {
 		return jdbc.queryForObject("""
-				insert into users (email, auth_method, google_subject, full_name)
-				values (?, 'GOOGLE', ?, 'Google User') returning user_id""", UUID.class, email, UUID.randomUUID().toString());
+				insert into users (email, account_type, auth_method, google_subject, full_name)
+				values (?, 'CUSTOMER', 'GOOGLE', ?, 'Google User') returning user_id""", UUID.class, email,
+				UUID.randomUUID().toString());
 	}
 
+	/**
+	 * Puts a customer or seller account in the DISABLED state of a ban with nothing left (G-14): profile BANNED, user
+	 * DISABLED, a 30-day restore window from now. With no obligations set, sign-in keeps it disabled.
+	 */
 	protected void disableUser(String email) {
-		jdbc.update("update users set status = 'DISABLED', disabled_reason = 'Fraud' where email = ?", email);
+		jdbc.update("update customers set status = 'BANNED', ban_reason = 'Khác: Fraud' where customer_id = "
+				+ "(select user_id from users where email = ?)", email);
+		jdbc.update("update sellers set status = 'BANNED', ban_reason = 'Khác: Fraud' where seller_id = "
+				+ "(select user_id from users where email = ?)", email);
+		jdbc.update("""
+				update users set status = 'DISABLED', disabled_reason = 'Khác: Fraud', banned_at = now(),
+				disabled_at = now(), restore_until = now() + interval '30 days', access_mode = 'LOGIN_BLOCKED',
+				authz_version = authz_version + 1 where email = ?""", email);
 	}
 
 	/** A flat JSON object from alternating keys and string values. */

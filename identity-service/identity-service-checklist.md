@@ -23,7 +23,7 @@ Endpoint paths are shown as the public path after `/api/v1` (e.g. `/identity/aut
 - [x] `customers.customer_id` and `sellers.seller_id` are PK **and** FK → `users.user_id` (`ON DELETE RESTRICT`)
 - [x] `ban_reason` required when BANNED; `rejection_reason` required when REJECTED
 - [x] Partial unique indexes on normalized `seller_name` and `contact_phone` for PENDING/APPROVED sellers only (a REJECTED seller frees them)
-- [x] `customer_addresses` FK → `customers`; supports soft delete
+- [x] `customer_addresses` FK → `customers`; deletes are hard (V9 dropped the soft delete, P-09/G-13)
 - [x] `roles`, `permissions`, `user_roles` (PK `user_id, role_id`, `revoked_at`), `role_permissions` (PK `role_id, permission_id`)
 - [x] Seed contains exactly the roles CUSTOMER, SELLER, ADMIN and the permission matrix from API §3.2.1
 - [x] Baseline policy (`account:read:own`, `account:update:own`, `seller:application:own`, create own Customer) applies to every ACTIVE user without a role
@@ -86,9 +86,9 @@ Endpoint paths are shown as the public path after `/api/v1` (e.g. `/identity/aut
 
 - [x] `GET /identity/users/me` returns `UserSelfProfile` with roles, permissions, `authzVersion` and both optional profiles
 - [x] `PATCH /identity/users/me` accepts only `fullName`, `phoneNumber`; any other field → 400 `VALIDATION_ERROR`; duplicate phone → 409
-- [x] `POST /identity/users/me/customer-profile`: 201 creates Customer + CUSTOMER and bumps `authzVersion`; 200 if it already exists; BANNED Customer is returned unchanged; CUSTOMER revoked by an admin → 403
-- [x] `POST /identity/users/me/seller-application`: 201 first time, 200 on resubmission after REJECTED, same `seller_id`; PENDING/APPROVED → 409 `INVALID_STATE_TRANSITION`; body never accepts userId/email/password/role/status
-- [x] `GET /identity/users/me/seller-application` returns own `SellerSelfProfile` or null without needing SELLER
+- [x] ~~`POST /identity/users/me/customer-profile`~~ removed 2026-11-20 (API v1.1 §3.2.1: one account per role) — 404, `accountsCannotAddProfilesToThemselves`
+- [x] ~~`POST /identity/users/me/seller-application`~~ removed 2026-11-20; sellers register publicly, REJECTED sellers reapply through `/auth/seller-reapplication` (step I2) — 404
+- [x] ~~`GET /identity/users/me/seller-application`~~ removed 2026-11-20 — 404
 - [x] `PATCH /identity/sellers/me` updates description, `logoObjectKey`, `contactPhone`; cannot change email or seller name
 - [x] `POST /identity/media/upload-urls` only purpose `SELLER_LOGO`, only for APPROVED/ACTIVE seller; 422 `MEDIA_INVALID`
 
@@ -96,12 +96,12 @@ Endpoint paths are shown as the public path after `/api/v1` (e.g. `/identity/aut
 - [x] List returns only `customer_id = sub`, ordered: default first, then `lastUsedAt` desc, `createdAt` asc; `meta.maxAddresses` present
 - [x] Create validates the ward belongs to the province; 422 `ADDRESS_LIMIT_EXCEEDED` (P-09), 422 `INVALID_REGION` *(through `RegionProvider`; tested with a fake source, and in Docker against the real provider since step 5)*
 - [x] Update / delete of another customer's address → 404
-- [x] Deleting the last address is allowed; deleting an address referenced by an order is soft (G-13) *("referenced" = already used by a checkout, i.e. `last_used_at` set)*
+- [x] Deleting the last address is allowed; every delete removes the row, used by an order or not (P-09: orders keep their snapshot), and frees one of the 3 places — `deletingRemovesTheAddressEvenOneAnOrderUsed`, `theAddressBookHoldsAtMostThreeAddressesAndADeleteFreesAPlace`
 
 ## 5. Regions (API §6.1 "Nguồn dữ liệu địa giới")
 
-- [x] `GET /identity/regions/provinces` and `/provinces/{code}/wards` proxy an external provider configured on the server (`GEO_API_BASE_URL`, timeout, dataset version) — provinces.open-api.vn v2 by default (provider choice still to be confirmed by the team); `RegionEndpointsTests`, `OpenApiVnRegionProviderTests`, manual check in Docker
-- [x] Responses include `meta { sourceVersion, fetchedAt }`; results cached (24 h proposed) — `sourceVersion` is the configured `GEO_API_DATASET_VERSION` (the provider publishes none)
+- [x] `GET /identity/regions/provinces` and `/provinces/{code}/wards` read the dataset seeded in Identity's database (P-26, V8: provinces.open-api.vn v2 snapshot of 2026-11-20); no external call — `RegionEndpointsTests`
+- [x] Responses include `meta { sourceVersion, fetchedAt }` — the seed's version and the read time; an unreadable seed is 503 `REGION_SOURCE_UNAVAILABLE`
 - [x] Not configured, or timeout with no valid cache → 503 `REGION_SOURCE_UNAVAILABLE`; never falls back to a static list
 - [x] 422 `INVALID_REGION` only when the provider confirms the code is invalid (missing from its province list, upstream 404, or a ward not in that province's list)
 
@@ -151,7 +151,7 @@ Endpoint paths are shown as the public path after `/api/v1` (e.g. `/identity/aut
 - [ ] Endpoints check specific permissions, never just a role string
 - [ ] Owner IDs always come from `sub`, never from the body, query or headers
 - [ ] Role without profile → rejected; profile with a revoked role → rejected
-- [ ] User with CUSTOMER + SELLER logs in once and can use both sets of APIs
+- [x] ~~User with CUSTOMER + SELLER logs in once and can use both sets of APIs~~ replaced by API v1.1: each role is its own account; login names the `accountType`, another type → `INVALID_CREDENTIALS` (`theRightPasswordOnAnotherChannelIsTheSameAnswerAsAWrongOne`); a seller signs in only once APPROVED (`aSellerSignsInOnlyOnceApproved`)
 - [ ] User with only ADMIN or only SELLER cannot use customer APIs
 - [ ] ADMIN does not automatically have customer or seller permissions
 - [ ] A client cannot grant itself ADMIN, change its own status, or approve its own shop

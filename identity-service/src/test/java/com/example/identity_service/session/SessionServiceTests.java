@@ -8,6 +8,7 @@ import com.example.identity_service.common.security.OpaqueTokens;
 import com.example.identity_service.common.error.ErrorCode;
 import com.example.identity_service.rbac.RoleAssignments;
 import com.example.identity_service.rbac.RoleCode;
+import com.example.identity_service.user.AccountType;
 import com.example.identity_service.user.User;
 import com.example.identity_service.user.UserRepository;
 import com.nimbusds.jose.JWSAlgorithm;
@@ -74,7 +75,8 @@ class SessionServiceTests {
 		assertThat(jwt.getHeader().getKeyID()).isNotBlank();
 		JWTClaimsSet claims = jwt.getJWTClaimsSet();
 		assertThat(claims.getClaims().keySet()).containsExactlyInAnyOrder("sub", "iss", "aud", "iat", "exp", "jti",
-				"sessionId", "authzVersion");
+				"sessionId", "authzVersion", "accountType");
+		assertThat(claims.getStringClaim("accountType")).isEqualTo("CUSTOMER");
 		assertThat(claims.getSubject()).isEqualTo(user.getUserId().toString());
 		assertThat(claims.getIssuer()).isEqualTo("ecommerce-identity");
 		assertThat(claims.getAudience()).containsExactly("ecommerce-api");
@@ -82,6 +84,19 @@ class SessionServiceTests {
 		assertThat(claims.getLongClaim("authzVersion")).isEqualTo(user.getAuthzVersion());
 		assertThat(claims.getJWTID()).isNotBlank();
 		assertThat(jwt.getPayload().toString()).doesNotContain(user.getEmail());
+	}
+
+	@Test
+	void accessTokenCarriesASnapshotOfTheOneRole() throws Exception {
+		User user = newUser();
+		tx.executeWithoutResult(status -> roleAssignments.grant(users.findById(user.getUserId()).orElseThrow(),
+				RoleCode.CUSTOMER, null));
+
+		IssuedTokens tokens = sessions.start(users.findById(user.getUserId()).orElseThrow());
+
+		JWTClaimsSet claims = SignedJWT.parse(tokens.accessToken()).getJWTClaimsSet();
+		assertThat(claims.getStringClaim("role")).isEqualTo("CUSTOMER");
+		assertThat(claims.getStringClaim("accountType")).isEqualTo("CUSTOMER");
 	}
 
 	@Test
@@ -112,8 +127,10 @@ class SessionServiceTests {
 	void refreshRotatesTheTokenWithinTheSameSession() {
 		IssuedTokens first = sessions.start(newUser());
 
-		IssuedTokens second = sessions.refresh(first.refreshToken());
-		IssuedTokens third = sessions.refresh(second.refreshToken());
+		IssuedTokens second = sessions.refresh(first.refreshToken(), account -> {
+		});
+		IssuedTokens third = sessions.refresh(second.refreshToken(), account -> {
+		});
 
 		assertThat(List.of(first.refreshToken(), second.refreshToken(), third.refreshToken())).doesNotHaveDuplicates();
 		assertThat(List.of(second.sessionId(), third.sessionId())).containsOnly(first.sessionId());
@@ -122,7 +139,8 @@ class SessionServiceTests {
 	@Test
 	void reusingARotatedTokenRevokesTheWholeSession() {
 		IssuedTokens first = sessions.start(newUser());
-		IssuedTokens second = sessions.refresh(first.refreshToken());
+		IssuedTokens second = sessions.refresh(first.refreshToken(), account -> {
+		});
 
 		assertInvalidRefresh(first.refreshToken());
 
@@ -137,7 +155,8 @@ class SessionServiceTests {
 		tx.executeWithoutResult(status -> roleAssignments.grant(users.findById(user.getUserId()).orElseThrow(),
 				RoleCode.CUSTOMER, null));
 
-		IssuedTokens after = sessions.refresh(before.refreshToken());
+		IssuedTokens after = sessions.refresh(before.refreshToken(), account -> {
+		});
 
 		assertThat(authzVersion(after)).isEqualTo(authzVersion(before) + 1);
 	}
@@ -168,7 +187,8 @@ class SessionServiceTests {
 		User user = newUser();
 		IssuedTokens tokens = sessions.start(user);
 		User stored = users.findById(user.getUserId()).orElseThrow();
-		stored.disable("Fraud");
+		stored.startBan(java.time.Instant.now(), com.example.identity_service.user.AccessMode.LOGIN_BLOCKED);
+		stored.disableForBan("Khác: Fraud", java.time.Instant.now());
 		users.save(stored);
 
 		assertInvalidRefresh(tokens.refreshToken());
@@ -189,7 +209,8 @@ class SessionServiceTests {
 	}
 
 	private void assertInvalidRefresh(String refreshToken) {
-		assertThatThrownBy(() -> sessions.refresh(refreshToken)).isInstanceOfSatisfying(ApiException.class,
+		assertThatThrownBy(() -> sessions.refresh(refreshToken, account -> {
+		})).isInstanceOfSatisfying(ApiException.class,
 				ex -> assertThat(ex.code()).isEqualTo(ErrorCode.INVALID_REFRESH_TOKEN));
 	}
 
@@ -203,7 +224,7 @@ class SessionServiceTests {
 	}
 
 	private User newUser() {
-		return users.save(User.local(UUID.randomUUID() + "@example.test", "{noop}x", "Test User", null));
+		return users.save(User.local(AccountType.CUSTOMER, UUID.randomUUID() + "@example.test", "{noop}x", "Test User", null));
 	}
 
 }

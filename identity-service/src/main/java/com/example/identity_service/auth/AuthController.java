@@ -6,12 +6,18 @@ import com.example.identity_service.common.security.Caller;
 import com.example.identity_service.common.web.ApiResponse;
 import com.example.identity_service.common.web.RateLimitProperties;
 import com.example.identity_service.common.web.RateLimiter;
+import com.example.identity_service.user.User;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import com.example.identity_service.common.error.ApiException;
+import com.example.identity_service.common.error.ErrorCode;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -27,11 +33,14 @@ import static com.example.identity_service.common.error.ErrorCode.ACCOUNT_DISABL
 import static com.example.identity_service.common.error.ErrorCode.EMAIL_ALREADY_USED;
 import static com.example.identity_service.common.error.ErrorCode.INVALID_CREDENTIALS;
 import static com.example.identity_service.common.error.ErrorCode.INVALID_REFRESH_TOKEN;
+import static com.example.identity_service.common.error.ErrorCode.INVALID_STATE_TRANSITION;
 import static com.example.identity_service.common.error.ErrorCode.PASSWORD_POLICY_VIOLATION;
 import static com.example.identity_service.common.error.ErrorCode.PHONE_ALREADY_USED;
 import static com.example.identity_service.common.error.ErrorCode.RATE_LIMITED;
 import static com.example.identity_service.common.error.ErrorCode.RESET_TOKEN_INVALID;
 import static com.example.identity_service.common.error.ErrorCode.SELLER_NAME_ALREADY_USED;
+import static com.example.identity_service.common.error.ErrorCode.SELLER_PENDING_APPROVAL;
+import static com.example.identity_service.common.error.ErrorCode.SELLER_REJECTED;
 import static com.example.identity_service.common.error.ErrorCode.WRONG_AUTH_METHOD;
 
 /**
@@ -48,9 +57,16 @@ public class AuthController {
 
 	static final String FORGOT_PASSWORD_MESSAGE = "If the email is valid, password reset instructions have been sent.";
 
+	static final String REAPPLICATION_MESSAGE = "If the email belongs to a rejected seller, a link to apply again has "
+			+ "been sent.";
+
 	private final AuthService auth;
 
 	private final PasswordService passwords;
+
+	private final SellerReapplicationService reapplications;
+
+	private final RefreshCookies cookies;
 
 	private final RateLimiter rateLimiter;
 
@@ -66,41 +82,93 @@ public class AuthController {
 		return ApiResponse.of(auth.register(body));
 	}
 
-	@Operation(summary = "Register a seller", description = "Creates the user and a PENDING seller application, with "
-			+ "no role until an admin approves it. Rate-limited per IP.")
+	@Operation(summary = "Register a seller", description = "Creates a SELLER account (its own email), a PENDING seller "
+			+ "profile and the first application. `fullName` is the shop name (unique among pending and approved "
+			+ "sellers) and `phoneNumber` its contact phone. No role, session or wallet until an admin approves; the "
+			+ "seller cannot sign in before. Rate-limited per IP.")
 	@ErrorCodes({ EMAIL_ALREADY_USED, PHONE_ALREADY_USED, SELLER_NAME_ALREADY_USED, PASSWORD_POLICY_VIOLATION,
 			RATE_LIMITED })
 	@PostMapping("/register-seller")
 	@ResponseStatus(HttpStatus.CREATED)
-	ApiResponse<UserSelfProfile> registerSeller(@Valid @RequestBody AuthRequests.RegisterSeller body,
+	ApiResponse<SellerRegistration> registerSeller(@Valid @RequestBody AuthRequests.RegisterSeller body,
 			HttpServletRequest request) {
 		rateLimiter.check("register", request.getRemoteAddr(), limits.register());
 		return ApiResponse.of(auth.registerSeller(body));
 	}
 
-	@Operation(summary = "Sign in", description = "One sign-in for every role. Returns an access token (15 min), a "
-			+ "refresh token and the current profile. Unknown email and wrong password give the same error.")
-	@ErrorCodes({ INVALID_CREDENTIALS, WRONG_AUTH_METHOD, ACCOUNT_DISABLED })
+	@Operation(summary = "Ask to apply again as a seller", description = "For a REJECTED seller: emails a single-use "
+			+ "link (30 minutes) to the account's address. Always the same 202, whatever the email. Rate-limited per IP "
+			+ "and per email.")
+	@ErrorCodes(RATE_LIMITED)
+	@PostMapping("/seller-reapplication/challenge")
+	@ResponseStatus(HttpStatus.ACCEPTED)
+	ApiResponse<Map<String, String>> sellerReapplicationChallenge(
+			@Valid @RequestBody AuthRequests.SellerReapplicationChallenge body, HttpServletRequest request) {
+		rateLimiter.check("seller-reapplication", request.getRemoteAddr(), limits.sellerReapplication());
+		rateLimiter.check("seller-reapplication-email", User.normalizeEmail(body.email()),
+				limits.sellerReapplication());
+		reapplications.challenge(body.email());
+		return ApiResponse.of(Map.of("message", REAPPLICATION_MESSAGE));
+	}
+
+	@Operation(summary = "Apply again as a seller", description = "With the emailed `verificationToken` (single use): "
+			+ "a new PENDING application on the same seller, with the new shop name and phone. The rejected application "
+			+ "stays as it was. No session: the seller signs in once approved. A seller that is not REJECTED → 409. "
+			+ "Rate-limited per IP.")
+	@ErrorCodes({ INVALID_STATE_TRANSITION, PHONE_ALREADY_USED, SELLER_NAME_ALREADY_USED, RATE_LIMITED })
+	@PostMapping("/seller-reapplication")
+	@ResponseStatus(HttpStatus.CREATED)
+	ApiResponse<SellerReapplicationService.Result> sellerReapplication(
+			@Valid @RequestBody AuthRequests.SellerReapplication body, HttpServletRequest request) {
+		rateLimiter.check("seller-reapplication", request.getRemoteAddr(), limits.sellerReapplication());
+		return ApiResponse.of(reapplications.submit(body));
+	}
+
+	@Operation(summary = "Sign in", description = "Signs in to one account: `accountType` is the web app's channel "
+			+ "(CUSTOMER, SELLER or ADMIN). Returns an access token (15 min) and the current profile; the refresh token is "
+			+ "set as the HttpOnly `refresh_token` cookie (Path /api/v1/identity/auth), never in the body. "
+			+ "Unknown email, wrong password and an account of another type all give the same error. A seller signs in "
+			+ "only once approved. Limited per client IP; failed attempts never lock the account (P-18).")
+	@ErrorCodes({ INVALID_CREDENTIALS, WRONG_AUTH_METHOD, SELLER_PENDING_APPROVAL, SELLER_REJECTED, ACCOUNT_DISABLED,
+			RATE_LIMITED })
 	@PostMapping("/login")
-	ApiResponse<AuthTokens> login(@Valid @RequestBody AuthRequests.Login body) {
-		return ApiResponse.of(auth.login(body));
+	ResponseEntity<ApiResponse<AuthTokens>> login(@Valid @RequestBody AuthRequests.Login body,
+			HttpServletRequest request) {
+		rateLimiter.check("login", request.getRemoteAddr(), limits.login());
+		return withCookie(auth.login(body));
 	}
 
-	@Operation(summary = "Refresh tokens", description = "Rotates the refresh token: use the new one next time. "
-			+ "Reusing an old refresh token revokes the whole session.")
-	@ErrorCodes(INVALID_REFRESH_TOKEN)
+	@Operation(summary = "Refresh tokens", description = "Reads only the `refresh_token` cookie (no body) and needs an "
+			+ "`Origin` the server trusts (403 otherwise). Rotates the token: the response sets the new cookie. Reusing "
+			+ "an old refresh token revokes the whole session.")
+	@ErrorCodes({ INVALID_REFRESH_TOKEN, SELLER_PENDING_APPROVAL, SELLER_REJECTED })
 	@PostMapping("/refresh")
-	ApiResponse<AuthTokens> refresh(@Valid @RequestBody AuthRequests.RefreshToken body) {
-		return ApiResponse.of(auth.refresh(body.refreshToken()));
+	ResponseEntity<ApiResponse<AuthTokens>> refresh(
+			@CookieValue(name = RefreshCookies.NAME, required = false) String refreshToken, HttpServletRequest request) {
+		cookies.requireTrustedOrigin(request);
+		if (refreshToken == null || refreshToken.isBlank()) {
+			throw new ApiException(ErrorCode.INVALID_REFRESH_TOKEN);
+		}
+		return withCookie(auth.refresh(refreshToken));
 	}
 
-	@Operation(summary = "Sign out", description = "Revokes the session of the given refresh token if it belongs to "
-			+ "the caller; anything else is a silent 204.")
+	@Operation(summary = "Sign out", description = "Revokes the session of the `refresh_token` cookie if it belongs to "
+			+ "the caller, then clears the cookie (same name and path, Max-Age 0). Needs a trusted `Origin`. Anything "
+			+ "else is a silent 204.")
 	@PreAuthorize("isAuthenticated()")
 	@PostMapping("/logout")
-	@ResponseStatus(HttpStatus.NO_CONTENT)
-	void logout(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody AuthRequests.RefreshToken body) {
-		auth.logout(Caller.of(jwt), body.refreshToken());
+	ResponseEntity<Void> logout(@AuthenticationPrincipal Jwt jwt,
+			@CookieValue(name = RefreshCookies.NAME, required = false) String refreshToken, HttpServletRequest request) {
+		cookies.requireTrustedOrigin(request);
+		if (refreshToken != null && !refreshToken.isBlank()) {
+			auth.logout(Caller.of(jwt), refreshToken);
+		}
+		return ResponseEntity.noContent().header(HttpHeaders.SET_COOKIE, cookies.clear().toString()).build();
+	}
+
+	private ResponseEntity<ApiResponse<AuthTokens>> withCookie(AuthTokens.Issued issued) {
+		return ResponseEntity.ok().header(HttpHeaders.SET_COOKIE, cookies.issue(issued.refreshToken()).toString())
+				.body(ApiResponse.of(issued.body()));
 	}
 
 	@Operation(summary = "Request a password reset email", description = "Always the same 202, whether or not the "

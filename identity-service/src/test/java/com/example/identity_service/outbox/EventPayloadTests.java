@@ -36,15 +36,15 @@ class EventPayloadTests extends EndpointTestSupport {
 				.containsEntry("context", "ADMIN").containsEntry("userId", admin.userId().toString());
 
 		Session rejected = pendingSeller();
-		call(HttpMethod.POST, "/admin/sellers/" + rejected.userId() + "/reject", json("reason", "Incomplete"),
+		call(HttpMethod.POST, "/admin/sellers/" + rejected.userId() + "/reject", json("reason", "Khác: Incomplete"),
 				admin.accessToken()).andExpect(status().isOk());
 		assertEvent("seller.rejected", rejected.userId(), "userId", "sellerId", "approvalStatus", "authzVersion",
 				"reason");
 
 		ban(admin, seller.userId(), "SELLER");
-		assertEvent("seller.banned", seller.userId(), "userId", "sellerId", "status", "authzVersion", "reason");
+		assertEvent("seller.banned", seller.userId(), "userId", "sellerId", "status", "accountStatus", "accessMode", "bannedAt", "disabledAt", "restoreUntil", "authzVersion", "reason");
 		unban(admin, seller.userId(), "SELLER");
-		assertEvent("seller.unbanned", seller.userId(), "userId", "sellerId", "status", "authzVersion", "reason");
+		assertEvent("seller.unbanned", seller.userId(), "userId", "sellerId", "status", "accountStatus", "accessMode", "bannedAt", "disabledAt", "restoreUntil", "authzVersion", "reason");
 	}
 
 	@Test
@@ -52,17 +52,12 @@ class EventPayloadTests extends EndpointTestSupport {
 		Session admin = admin();
 		Session customer = customer();
 
-		ban(admin, customer.userId(), "CUSTOMER");
-		assertEvent("customer.banned", customer.userId(), "userId", "customerId", "banMode",
-				"hasPaidOrderBeforeBan", "authzVersion");
+		ban(admin, customer.userId(), "CUSTOMER"); // nothing open: BANNED and DISABLED at once
+		assertEvent("customer.banned", customer.userId(), "userId", "customerId", "accountStatus", "accessMode", "bannedAt", "disabledAt", "restoreUntil", "authzVersion", "reason");
+		assertEvent("user.disabled", customer.userId(), "userId", "accountType", "accountStatus", "accessMode", "bannedAt", "disabledAt", "restoreUntil", "authzVersion", "reason");
 		unban(admin, customer.userId(), "CUSTOMER");
-		assertEvent("customer.unbanned", customer.userId(), "userId", "customerId", "banMode",
-				"hasPaidOrderBeforeBan", "authzVersion");
-
-		ban(admin, customer.userId(), "USER");
-		assertEvent("user.disabled", customer.userId(), "userId", "authzVersion", "reason", "hasSellerProfile");
-		unban(admin, customer.userId(), "USER");
-		assertEvent("user.enabled", customer.userId(), "userId", "authzVersion", "reason", "hasSellerProfile");
+		assertEvent("customer.unbanned", customer.userId(), "userId", "customerId", "accountStatus", "accessMode", "bannedAt", "disabledAt", "restoreUntil", "authzVersion", "reason");
+		assertEvent("user.enabled", customer.userId(), "userId", "accountType", "accountStatus", "accessMode", "bannedAt", "disabledAt", "restoreUntil", "authzVersion", "reason");
 	}
 
 	@Test
@@ -89,6 +84,7 @@ class EventPayloadTests extends EndpointTestSupport {
 		Session seller = pendingSeller();
 		call(HttpMethod.POST, "/admin/sellers/" + seller.userId() + "/approve", null, admin.accessToken())
 				.andExpect(status().isOk());
+		obligations.openOrders(seller.userId()); // stays BANNED: one event
 		ban(admin, seller.userId(), "SELLER");
 
 		List<Long> versions = jdbc.queryForList("""
@@ -126,14 +122,15 @@ class EventPayloadTests extends EndpointTestSupport {
 		return JsonPath.read(json, "$");
 	}
 
-	private void ban(Session admin, UUID userId, String scope) throws Exception {
-		call(HttpMethod.POST, "/admin/ban/" + userId, json("scope", scope, "reason", "Test"), admin.accessToken())
+	/** {@code kind} only says what is banned; the ban itself has no scope (API §6.1). */
+	private void ban(Session admin, UUID userId, String kind) throws Exception {
+		call(HttpMethod.POST, "/admin/ban/" + userId, json("reason", "Gian lận/lừa đảo"), admin.accessToken())
 				.andExpect(status().isOk());
 	}
 
-	private void unban(Session admin, UUID userId, String scope) throws Exception {
-		call(HttpMethod.POST, "/admin/unban/" + userId, json("scope", scope, "reason", "Appeal"),
-				admin.accessToken()).andExpect(status().isOk());
+	private void unban(Session admin, UUID userId, String kind) throws Exception {
+		call(HttpMethod.POST, "/admin/unban/" + userId, json("reason", "Appeal"), admin.accessToken())
+				.andExpect(status().isOk());
 	}
 
 }

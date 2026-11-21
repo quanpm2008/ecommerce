@@ -12,6 +12,9 @@ import com.example.identity_service.outbox.OutboxWriter;
 import com.example.identity_service.rbac.RoleAssignments;
 import com.example.identity_service.rbac.RoleCode;
 import com.example.identity_service.seller.Seller;
+import com.example.identity_service.seller.SellerApplication;
+import com.example.identity_service.seller.SellerApplicationRepository;
+import com.example.identity_service.seller.SellerApprovalStatus;
 import com.example.identity_service.seller.SellerRepository;
 import com.example.identity_service.user.User;
 import com.example.identity_service.user.UserRepository;
@@ -20,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -37,6 +41,8 @@ public class SellerReviewService {
 
 	private final SellerRepository sellers;
 
+	private final SellerApplicationRepository applications;
+
 	private final CustomerRepository customers;
 
 	private final RoleAssignments roleAssignments;
@@ -49,24 +55,35 @@ public class SellerReviewService {
 
 	private final Clock clock;
 
-	/** PENDING → APPROVED and the SELLER role. Finance creates the wallet from {@code seller.approved}. */
+	/**
+	 * The latest application, PENDING → APPROVED, and the SELLER role. Finance creates the wallet from
+	 * {@code seller.approved}.
+	 */
 	@Transactional
 	public AdminViews.SellerAdminView approve(UUID adminId, UUID sellerId) {
 		Review review = start(adminId, sellerId);
-		review.seller().approve(adminId, clock.instant());
+		Instant now = clock.instant();
+		review.application().approve(adminId, now);
+		review.seller().approve(adminId, now);
 		if (!roleAssignments.grant(review.user(), RoleCode.SELLER, adminId)) {
 			review.user().bumpAuthzVersion(); // the role was already active; the approval still changes access
 		}
 		return finish(adminId, review, AuditAction.APPROVE, "seller.approved", null);
 	}
 
-	/** PENDING → REJECTED. No role; User and Customer stay; the shop name and phone become free again. */
+	/**
+	 * The latest application, PENDING → REJECTED, with a P-21d reason. No role, no sign-in; the account and the
+	 * application's row stay, and the shop name becomes free again.
+	 */
 	@Transactional
 	public AdminViews.SellerAdminView reject(UUID adminId, UUID sellerId, String reason) {
+		String checked = AdminReasons.check(reason, AdminReasons.SELLER_REJECTION);
 		Review review = start(adminId, sellerId);
-		review.seller().reject(adminId, reason, clock.instant());
+		Instant now = clock.instant();
+		review.application().reject(adminId, checked, now);
+		review.seller().reject(adminId, checked, now);
 		review.user().bumpAuthzVersion();
-		return finish(adminId, review, AuditAction.REJECT, "seller.rejected", reason);
+		return finish(adminId, review, AuditAction.REJECT, "seller.rejected", checked);
 	}
 
 	private Review start(UUID adminId, UUID sellerId) {
@@ -75,10 +92,12 @@ public class SellerReviewService {
 		if (adminId.equals(sellerId)) {
 			throw new ApiException(ErrorCode.SELF_APPROVAL_FORBIDDEN);
 		}
-		if (!seller.isPending()) {
+		SellerApplication latest = applications.findFirstBySellerIdOrderBySubmissionNoDesc(sellerId)
+				.orElseThrow(SellerReviewService::notFound);
+		if (!seller.isPending() || latest.getStatus() != SellerApprovalStatus.PENDING) {
 			throw ApiException.currentStatus(ErrorCode.ALREADY_PROCESSED, seller.getApprovalStatus());
 		}
-		return new Review(user, seller, capture(user, seller));
+		return new Review(user, seller, latest, capture(user, seller));
 	}
 
 	private AdminViews.SellerAdminView finish(UUID adminId, Review review, AuditAction action, String eventType,
@@ -96,7 +115,7 @@ public class SellerReviewService {
 			payload.put("reason", reason);
 		}
 		outbox.write(eventType, seller.getSellerId(), EventActor.user(adminId, EventActor.Context.ADMIN), payload);
-		return views.seller(seller);
+		return views.seller(seller, null);
 	}
 
 	private AuditState capture(User user, Seller seller) {
@@ -107,7 +126,7 @@ public class SellerReviewService {
 		return new ApiException(ErrorCode.NOT_FOUND, "Seller not found");
 	}
 
-	private record Review(User user, Seller seller, AuditState before) {
+	private record Review(User user, Seller seller, SellerApplication application, AuditState before) {
 	}
 
 }

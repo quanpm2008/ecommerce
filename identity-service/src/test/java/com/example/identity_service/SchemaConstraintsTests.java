@@ -93,92 +93,191 @@ class SchemaConstraintsTests {
 	// --- customers and sellers share the user PK ---
 
 	@ParameterizedTest
-	@CsvSource({ "customers, customer_id", "sellers, seller_id" })
-	void profileIdMustBeAnExistingUser(String table, String idColumn) {
-		assertViolation(table + "_" + idColumn + "_fkey", () -> insertProfile(table, UUID.randomUUID()));
+	@CsvSource({ "customers, CUSTOMER", "sellers, SELLER" })
+	void profileIdMustBeAnExistingUser(String table, String accountType) {
+		assertViolation("needs a " + accountType + " account, not none", () -> insertProfile(table, UUID.randomUUID()));
 	}
 
 	@ParameterizedTest
-	@CsvSource({ "customers, customer_id", "sellers, seller_id" })
-	void userWithAProfileCannotBeDeleted(String table, String idColumn) {
-		UUID userId = insertLocalUser("restrict@example.test", null);
+	@CsvSource({ "customers, customer_id, CUSTOMER", "sellers, seller_id, SELLER" })
+	void userWithAProfileCannotBeDeleted(String table, String idColumn, String accountType) {
+		UUID userId = insertLocalUser("restrict@example.test", null, accountType);
 		insertProfile(table, userId);
 
 		assertViolation(table + "_" + idColumn + "_fkey", () -> jdbc.update("delete from users where user_id = ?", userId));
 	}
 
-	@Test
-	void oneUserCanHaveBothProfiles() {
-		UUID userId = insertLocalUser("both@example.test", null);
-		insertProfile("customers", userId);
-		insertProfile("sellers", userId);
+	// --- one account per role (V6) ---
 
-		assertThat(jdbc.queryForObject("""
-				select count(*) from customers c join sellers s on s.seller_id = c.customer_id
-				where c.customer_id = ?""", Integer.class, userId)).isEqualTo(1);
+	@ParameterizedTest
+	@CsvSource({ "customers, SELLER, CUSTOMER", "customers, ADMIN, CUSTOMER", "sellers, CUSTOMER, SELLER",
+			"sellers, ADMIN, SELLER" })
+	void aProfileNeedsAnAccountOfItsOwnType(String table, String accountType, String needed) {
+		UUID userId = insertLocalUser("wrong-type@example.test", null, accountType);
+
+		assertViolation("needs a " + needed + " account, not " + accountType, () -> insertProfile(table, userId));
 	}
 
 	@Test
-	void bannedCustomerNeedsReasonAndBanPolicySnapshot() {
+	void accountTypeIsOneOfTheThree() {
+		assertViolation("ck_users_account_type", () -> insertLocalUser("bad-type@example.test", null, "STAFF"));
+	}
+
+	@Test
+	void accountTypeIsRequired() {
+		assertThatThrownBy(() -> jdbc.update("""
+				insert into users (email, auth_method, password_hash, full_name) values ('no-type@example.test', 'LOCAL',
+				'hash', 'Test User')""")).isInstanceOf(DataIntegrityViolationException.class)
+				.hasMessageContaining("account_type");
+	}
+
+	@Test
+	void accountTypeNeverChanges() {
+		UUID userId = insertLocalUser("fixed@example.test", null);
+
+		assertViolation("account_type cannot change",
+				() -> jdbc.update("update users set account_type = 'SELLER' where user_id = ?", userId));
+	}
+
+	@Test
+	void googleSignInIsForCustomersOnly() {
+		assertViolation("ck_users_google_customer", () -> jdbc.update("""
+				insert into users (email, account_type, auth_method, google_subject, full_name)
+				values ('g-seller@example.test', 'SELLER', 'GOOGLE', 'sub-1', 'Shop')"""));
+	}
+
+	@ParameterizedTest
+	@CsvSource({ "CUSTOMER, SELLER", "SELLER, ADMIN", "ADMIN, CUSTOMER" })
+	void theActiveRoleMustBeTheAccountsOwn(String accountType, String role) {
+		UUID userId = insertLocalUser("role-type@example.test", null, accountType);
+
+		assertViolation("does not match account type", () -> grantRole(userId, role));
+	}
+
+	@Test
+	void anAccountHasAtMostOneActiveRole() {
+		UUID userId = insertLocalUser("one-role@example.test", null, "CUSTOMER");
+		grantRole(userId, "CUSTOMER");
+		jdbc.update("update user_roles set revoked_at = now() where user_id = ?", userId);
+		jdbc.update("update user_roles set revoked_at = null where user_id = ?", userId);
+
+		assertThat(jdbc.queryForObject("select count(*) from user_roles where user_id = ? and revoked_at is null",
+				Integer.class, userId)).isEqualTo(1);
+		assertThat(jdbc.queryForList("select indexdef from pg_indexes where indexname = 'uq_user_roles_one_active'",
+				String.class)).singleElement().asString().contains("UNIQUE").contains("(user_id)")
+				.contains("revoked_at IS NULL");
+	}
+
+	@Test
+	void bannedCustomerNeedsAReason() {
 		UUID userId = insertLocalUser("banned-customer@example.test", null);
 
-		assertViolation("ck_customers_ban_fields", () -> jdbc.update(
-				"insert into customers (customer_id, status, ban_reason) values (?, 'BANNED', 'Fraud')", userId));
+		assertViolation("ck_customers_ban_reason", () -> jdbc.update(
+				"insert into customers (customer_id, status) values (?, 'BANNED')", userId));
+	}
+
+	@ParameterizedTest
+	@CsvSource(nullValues = "null", value = { "now(), null", "null, now() + interval '30 days'",
+			"now(), now() + interval '29 days'" })
+	void theRestoreWindowIsExactly30DaysFromTheFirstDisable(String disabledAt, String restoreUntil) {
+		UUID userId = insertLocalUser("window@example.test", null);
+
+		assertViolation("ck_users_ban_timestamps", () -> jdbc.update("update users set banned_at = now(), disabled_at = "
+				+ disabledAt + ", restore_until = " + restoreUntil + " where user_id = ?", userId));
 	}
 
 	@Test
 	void bannedSellerNeedsReason() {
-		UUID userId = insertLocalUser("banned-seller@example.test", null);
+		UUID userId = insertSellerUser("banned-seller@example.test");
 
 		assertViolation("ck_sellers_ban_reason", () -> jdbc.update(
-				"insert into sellers (seller_id, seller_name, contact_phone, status) values (?, 'Shop', '0900000001', 'BANNED')",
-				userId));
+				"insert into sellers (seller_id, status) values (?, 'BANNED')", userId));
 	}
 
 	@Test
 	void rejectedSellerNeedsReason() {
-		UUID adminId = insertLocalUser("reviewer@example.test", null);
-		UUID userId = insertLocalUser("rejected@example.test", null);
+		UUID adminId = insertAdmin("reviewer@example.test");
+		UUID userId = insertSellerUser("rejected@example.test");
 
 		assertViolation("ck_sellers_rejection_reason",
-				() -> insertSeller(userId, "Shop", "0900000001", "REJECTED", null, adminId));
+				() -> insertSeller(userId, "REJECTED", null, adminId));
 	}
 
 	@Test
 	void sellerCannotReviewOwnApplication() {
-		UUID userId = insertLocalUser("self-review@example.test", null);
+		UUID userId = insertSellerUser("self-review@example.test");
 
 		assertViolation("ck_sellers_no_self_review",
-				() -> insertSeller(userId, "Shop", "0900000001", "APPROVED", null, userId));
+				() -> insertSeller(userId, "APPROVED", null, userId));
+	}
+
+	// --- seller applications (V7): one row per submission, immutable once reviewed ---
+
+	@Test
+	void aSellerHasAtMostOnePendingApplication() {
+		UUID sellerId = insertSellerUser("apps@example.test");
+		insertSeller(sellerId, "PENDING", null, null);
+		insertApplication(sellerId, 1, "PENDING", null, null);
+
+		assertViolation("uq_seller_applications_one_pending", () -> insertApplication(sellerId, 2, "PENDING", null, null));
 	}
 
 	@Test
-	void sellerNameIsUniqueAfterNormalizationAmongPendingAndApproved() {
-		insertSeller(insertLocalUser("shop-1@example.test", null), "Shop Áo Xinh", "0900000001", "PENDING", null, null);
+	void submissionNumbersAreUniquePerSeller() {
+		UUID adminId = insertAdmin("reviewer@example.test");
+		UUID sellerId = insertSellerUser("numbers@example.test");
+		insertSeller(sellerId, "PENDING", null, null);
+		insertApplication(sellerId, 1, "REJECTED", "Khác: x", adminId);
 
-		assertViolation("uq_sellers_seller_name_active", () -> insertSeller(insertLocalUser("shop-2@example.test", null),
-				"  shop   áo XINH ", "0900000002", "PENDING", null, null));
+		assertViolation("uq_seller_applications_submission",
+				() -> insertApplication(sellerId, 1, "PENDING", null, null));
+	}
+
+	@ParameterizedTest
+	@CsvSource(nullValues = "null", value = { "REJECTED, null", "PENDING, Khác: x" })
+	void anApplicationHasItsRejectionReasonExactlyWhenRejected(String status, String reason) {
+		UUID adminId = insertAdmin("reviewer@example.test");
+		UUID sellerId = insertSellerUser("reason@example.test");
+		insertSeller(sellerId, "PENDING", null, null);
+
+		assertViolation("ck_seller_applications_", () -> insertApplication(sellerId, 1, status, reason,
+				status.equals("PENDING") ? null : adminId));
 	}
 
 	@Test
-	void contactPhoneIsUniqueAmongPendingAndApproved() {
-		UUID adminId = insertLocalUser("reviewer@example.test", null);
-		insertSeller(insertLocalUser("shop-1@example.test", null), "Shop One", "0900000001", "APPROVED", null, adminId);
+	void anApplicationCannotBeReviewedByItsSeller() {
+		UUID sellerId = insertSellerUser("self@example.test");
+		insertSeller(sellerId, "PENDING", null, null);
 
-		assertViolation("uq_sellers_contact_phone_active", () -> insertSeller(
-				insertLocalUser("shop-2@example.test", null), "Shop Two", "0900000001", "PENDING", null, null));
+		assertViolation("ck_seller_applications_no_self_review",
+				() -> insertApplication(sellerId, 1, "APPROVED", null, sellerId));
 	}
 
 	@Test
-	void rejectedSellerFreesNameAndContactPhone() {
-		UUID adminId = insertLocalUser("reviewer@example.test", null);
-		insertSeller(insertLocalUser("shop-1@example.test", null), "Shop Áo Xinh", "0900000001", "REJECTED",
-				"Incomplete documents", adminId);
+	void aPendingApplicationIsReviewedOnceThenNeverChanges() {
+		UUID adminId = insertAdmin("reviewer@example.test");
+		UUID sellerId = insertSellerUser("once@example.test");
+		insertSeller(sellerId, "PENDING", null, null);
+		UUID applicationId = insertApplication(sellerId, 1, "PENDING", null, null);
 
-		insertSeller(insertLocalUser("shop-2@example.test", null), "Shop Áo Xinh", "0900000001", "PENDING", null, null);
+		jdbc.update("""
+				update seller_applications set status = 'REJECTED', rejection_reason = 'Khác: x', reviewed_at = now(),
+				reviewed_by_user_id = ? where application_id = ?""", adminId, applicationId);
 
-		assertThat(jdbc.queryForObject("select count(*) from sellers where seller_name = 'Shop Áo Xinh'", Integer.class))
-				.isEqualTo(2);
+		assertViolation("is immutable", () -> jdbc.update("""
+				update seller_applications set status = 'PENDING', rejection_reason = null, reviewed_at = null,
+				reviewed_by_user_id = null where application_id = ?""", applicationId));
+	}
+
+	@Test
+	void aPendingApplicationKeepsWhatWasSubmitted() {
+		UUID sellerId = insertSellerUser("snapshot@example.test");
+		insertSeller(sellerId, "PENDING", null, null);
+		UUID applicationId = insertApplication(sellerId, 1, "PENDING", null, null);
+
+		assertViolation("is immutable", () -> jdbc.update(
+				"update seller_applications set snapshot_full_name = 'Other Shop' where application_id = ?",
+				applicationId));
 	}
 
 	// --- addresses ---
@@ -193,17 +292,38 @@ class SchemaConstraintsTests {
 	}
 
 	private UUID insertLocalUser(String email, String phoneNumber) {
+		return insertLocalUser(email, phoneNumber, "CUSTOMER");
+	}
+
+	private UUID insertLocalUser(String email, String phoneNumber, String accountType) {
 		return jdbc.queryForObject("""
-				insert into users (email, auth_method, password_hash, full_name, phone_number)
-				values (?, 'LOCAL', 'hash', 'Test User', ?) returning user_id""", UUID.class, email, phoneNumber);
+				insert into users (email, account_type, auth_method, password_hash, full_name, phone_number)
+				values (?, ?, 'LOCAL', 'hash', 'Test User', ?) returning user_id""", UUID.class, email, accountType,
+				phoneNumber);
+	}
+
+	private UUID insertSellerUser(String email) {
+		return insertLocalUser(email, null, "SELLER");
+	}
+
+	private UUID insertAdmin(String email) {
+		return insertLocalUser(email, null, "ADMIN");
 	}
 
 	private UUID insertUser(String email, String authMethod, String passwordHash, String googleSubject, String status,
 			String disabledReason) {
 		return jdbc.queryForObject("""
-				insert into users (email, auth_method, password_hash, google_subject, full_name, status, disabled_reason)
-				values (?, ?, ?, ?, 'Test User', ?, ?) returning user_id""", UUID.class, email, authMethod, passwordHash,
-				googleSubject, status, disabledReason);
+				insert into users (email, account_type, auth_method, password_hash, google_subject, full_name, status,
+				                   disabled_reason, banned_at, disabled_at, restore_until)
+				values (?, 'CUSTOMER', ?, ?, ?, 'Test User', ?, ?, case when ? = 'DISABLED' then now() end,
+				        case when ? = 'DISABLED' then now() end, case when ? = 'DISABLED' then now() + interval '30 days' end)
+				returning user_id""", UUID.class, email, authMethod, passwordHash, googleSubject, status, disabledReason,
+				status, status, status);
+	}
+
+	private void grantRole(UUID userId, String role) {
+		jdbc.update("insert into user_roles (user_id, role_id) select ?, role_id from roles where code = ?", userId,
+				role);
 	}
 
 	private void insertProfile(String table, UUID userId) {
@@ -211,18 +331,27 @@ class SchemaConstraintsTests {
 			jdbc.update("insert into customers (customer_id) values (?)", userId);
 		}
 		else {
-			insertSeller(userId, "Shop " + userId, "0900000009", "PENDING", null, null);
+			insertSeller(userId, "PENDING", null, null);
 		}
 	}
 
 	/** {@code reviewedBy} doubles as the reviewed flag: non-null sets {@code reviewed_at} too. */
-	private void insertSeller(UUID sellerId, String name, String phone, String approvalStatus, String rejectionReason,
-			UUID reviewedBy) {
+	private void insertSeller(UUID sellerId, String approvalStatus, String rejectionReason, UUID reviewedBy) {
 		jdbc.update("""
-				insert into sellers (seller_id, seller_name, contact_phone, approval_status, rejection_reason,
-				                     reviewed_at, reviewed_by_user_id)
-				values (?, ?, ?, ?, ?, case when ?::uuid is null then null else now() end, ?)""", sellerId, name, phone,
-				approvalStatus, rejectionReason, reviewedBy, reviewedBy);
+				insert into sellers (seller_id, approval_status, rejection_reason, reviewed_at, reviewed_by_user_id)
+				values (?, ?, ?, case when ?::uuid is null then null else now() end, ?)""", sellerId, approvalStatus,
+				rejectionReason, reviewedBy, reviewedBy);
+	}
+
+	/** Same convention as {@link #insertSeller}; the snapshot is a fixed shop name and phone. */
+	private UUID insertApplication(UUID sellerId, int submissionNo, String status, String rejectionReason,
+			UUID reviewedBy) {
+		return jdbc.queryForObject("""
+				insert into seller_applications (seller_id, submission_no, status, snapshot_full_name, snapshot_phone,
+				                                 rejection_reason, reviewed_at, reviewed_by_user_id)
+				values (?, ?, ?, 'Shop', '0900000001', ?, case when ?::uuid is null then null else now() end, ?)
+				returning application_id""", UUID.class, sellerId, submissionNo, status, rejectionReason, reviewedBy,
+				reviewedBy);
 	}
 
 	private static void assertViolation(String constraint, Runnable statement) {

@@ -4,6 +4,8 @@ import com.example.identity_service.EndpointTestSupport;
 import com.example.identity_service.rbac.RoleCode;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.ParameterizedTest;
 import org.springframework.http.HttpMethod;
 
 import java.util.Map;
@@ -35,7 +37,10 @@ class PublicSellerEndpointsTests extends EndpointTestSupport {
 		UUID banned = seller("Banned " + tag, true);
 		jdbc.update("update sellers set status = 'BANNED', ban_reason = 'Fraud' where seller_id = ?", banned);
 		UUID disabled = seller("Disabled " + tag, true);
-		jdbc.update("update users set status = 'DISABLED', disabled_reason = 'Fraud' where user_id = ?", disabled);
+		jdbc.update("update sellers set status = 'BANNED', ban_reason = 'Khác: Fraud' where seller_id = ?", disabled);
+		jdbc.update("""
+				update users set status = 'DISABLED', disabled_reason = 'Khác: Fraud', banned_at = now(), disabled_at = now(),
+				restore_until = now() + interval '30 days' where user_id = ?""", disabled);
 		UUID roleRevoked = seller("Revoked " + tag, true);
 		tx.executeWithoutResult(status -> roleAssignments.revoke(users.findById(roleRevoked).orElseThrow(),
 				RoleCode.SELLER));
@@ -60,6 +65,18 @@ class PublicSellerEndpointsTests extends EndpointTestSupport {
 				.andExpect(jsonPath("$.data[*].sellerId", contains(alpha.toString(), beta.toString())));
 		call(HttpMethod.GET, "/sellers?q=BETA SHOP " + tag, null, null)
 				.andExpect(jsonPath("$.data[*].sellerId", contains(beta.toString())));
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = { "dien thoai", "Điện Thoại", "ĐIỆN THOẠI", "điện thoại" })
+	void searchIgnoresVietnameseDiacriticsAndCase(String query) throws Exception {
+		String tag = tag();
+		UUID shop = seller("Điện Thoại Hà Nội " + tag, true);
+		seller("Dien Tu " + tag, true);
+
+		call(HttpMethod.GET, "/sellers?q=" + query + " ha noi " + tag, null, null).andExpect(status().isOk())
+				.andExpect(jsonPath("$.data[*].sellerId", contains(shop.toString())))
+				.andExpect(jsonPath("$.data[0].sellerName").value("Điện Thoại Hà Nội " + tag));
 	}
 
 	@Test
@@ -90,12 +107,12 @@ class PublicSellerEndpointsTests extends EndpointTestSupport {
 	@Test
 	void sellerPublicHasOnlyPublicFields() throws Exception {
 		UUID id = seller("Public " + tag(), true);
-		jdbc.update("update sellers set description = 'Handmade', logo_object_key = ? where seller_id = ?",
-				"seller-logos/" + id + "/logo.png", id);
+		jdbc.update("update sellers set description = 'Handmade' where seller_id = ?", id);
+		jdbc.update("update users set avatar_object_key = ? where user_id = ?", "avatars/" + id + "/logo.png", id);
 
 		String body = body(call(HttpMethod.GET, "/sellers/" + id, null, null).andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.description").value("Handmade"))
-				.andExpect(jsonPath("$.data.logoUrl", containsString("seller-logos/" + id + "/logo.png"))));
+				.andExpect(jsonPath("$.data.logoUrl", containsString("avatars/" + id + "/logo.png"))));
 		assertThat(JsonPath.<Map<String, Object>>read(body, "$.data"))
 				.containsOnlyKeys("sellerId", "sellerName", "description", "logoUrl");
 	}

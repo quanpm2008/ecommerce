@@ -5,7 +5,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
+import com.example.identity_service.rbac.PermissionResolver;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -17,6 +21,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Turns every exception raised in Spring MVC into the API §3.3 error envelope.
@@ -30,11 +35,31 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 		return respond(ex.code(), ex.getMessage(), ex.details(), new HttpHeaders(), ex.code().status(), request);
 	}
 
-	/** {@code @PreAuthorize} denials happen inside MVC, after the security filters. */
+	@Autowired(required = false)
+	private PermissionResolver permissions;
+
+	/**
+	 * {@code @PreAuthorize} denials happen inside MVC, after the security filters. A banned account asking for
+	 * something outside its obligations' allowlist gets {@code ACCOUNT_BANNED} (API §4.1), anyone else
+	 * {@code FORBIDDEN}.
+	 */
 	@ExceptionHandler(AccessDeniedException.class)
 	ResponseEntity<Object> handleAccessDenied(AccessDeniedException ex, WebRequest request) {
-		ErrorCode code = ErrorCode.FORBIDDEN;
+		ErrorCode code = callerIsBanned() ? ErrorCode.ACCOUNT_BANNED : ErrorCode.FORBIDDEN;
 		return respond(code, code.defaultMessage(), List.of(), new HttpHeaders(), code.status(), request);
+	}
+
+	private boolean callerIsBanned() {
+		if (permissions == null
+				|| !(SecurityContextHolder.getContext().getAuthentication() instanceof JwtAuthenticationToken token)) {
+			return false;
+		}
+		try {
+			return permissions.isBanned(UUID.fromString(token.getToken().getSubject()));
+		}
+		catch (IllegalArgumentException ex) {
+			return false;
+		}
 	}
 
 	@ExceptionHandler(Exception.class)

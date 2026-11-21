@@ -15,7 +15,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Address book entry (DB §3.1.4). Orders keep their own snapshot; {@code deletedAt} marks a soft delete (G-13).
+ * Address book entry (DB §3.1.4). Orders keep their own snapshot, so deleting an entry removes it (P-09, G-13).
  */
 @Entity
 @Getter
@@ -47,8 +47,6 @@ public class CustomerAddress {
 	@UpdateTimestamp
 	private Instant updatedAt;
 
-	private Instant deletedAt;
-
 	/** {@code recipientPhone} must already be normalized. */
 	public CustomerAddress(UUID customerId, String recipientName, String recipientPhone, String provinceCode,
 			String wardCode, String addressDetail) {
@@ -71,16 +69,7 @@ public class CustomerAddress {
 		this.addressDetail = addressDetail;
 	}
 
-	/** An address used by a checkout may be referenced by orders, so it is only hidden (G-13). */
-	public boolean mustBeKept() {
-		return lastUsedAt != null;
-	}
-
-	public void markDeleted(Instant now) {
-		this.deletedAt = now;
-	}
-
-	/** A committed checkout used this address; it becomes the default and is kept on delete. */
+	/** A committed checkout used this address; it becomes the default. */
 	public void markUsed(Instant now) {
 		this.lastUsedAt = now;
 	}

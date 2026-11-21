@@ -14,22 +14,21 @@ import java.util.Map;
  * The access-relevant state of one account, recorded before and after an admin action. Only statuses and the
  * authorization version: by construction no token, password or reset URL can reach the audit log (DB §6).
  */
-public record AuditState(String userStatus, String customerStatus, String banMode, Boolean hasPaidOrderBeforeBan,
-		String sellerStatus, String approvalStatus, List<String> roles, long authzVersion) {
+public record AuditState(String userStatus, String customerStatus, String sellerStatus, String approvalStatus,
+		String accessMode, List<String> roles, long authzVersion) {
 
 	/** {@code customer} and {@code seller} may be null when the user has no such profile. */
 	public static AuditState capture(User user, Customer customer, Seller seller) {
 		return new AuditState(user.getStatus().name(),
 				customer == null ? null : customer.getStatus().name(),
-				customer == null || customer.getBanMode() == null ? null : customer.getBanMode().name(),
-				customer == null ? null : customer.getHasPaidOrderBeforeBan(),
 				seller == null ? null : seller.getStatus().name(),
-				seller == null ? null : seller.getApprovalStatus().name(), null, user.getAuthzVersion());
+				seller == null ? null : seller.getApprovalStatus().name(),
+				user.getAccessMode() == null ? null : user.getAccessMode().name(), null, user.getAuthzVersion());
 	}
 
 	/** For role grants and revokes: the user's active roles. */
 	public static AuditState roles(User user, Collection<RoleCode> roles) {
-		return new AuditState(user.getStatus().name(), null, null, null, null, null,
+		return new AuditState(user.getStatus().name(), null, null, null, null,
 				roles.stream().map(Enum::name).sorted().toList(), user.getAuthzVersion());
 	}
 
@@ -37,10 +36,9 @@ public record AuditState(String userStatus, String customerStatus, String banMod
 		Map<String, Object> map = new LinkedHashMap<>();
 		map.put("userStatus", userStatus);
 		putIfPresent(map, "customerStatus", customerStatus);
-		putIfPresent(map, "banMode", banMode);
-		putIfPresent(map, "hasPaidOrderBeforeBan", hasPaidOrderBeforeBan);
 		putIfPresent(map, "sellerStatus", sellerStatus);
 		putIfPresent(map, "approvalStatus", approvalStatus);
+		putIfPresent(map, "accessMode", accessMode);
 		putIfPresent(map, "roles", roles);
 		map.put("authzVersion", authzVersion);
 		return map;

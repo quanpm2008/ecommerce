@@ -42,11 +42,6 @@ public class Customer {
 
 	private String banReason;
 
-	@Enumerated(EnumType.STRING)
-	private CustomerBanMode banMode;
-
-	private Boolean hasPaidOrderBeforeBan;
-
 	@CreationTimestamp
 	private Instant createdAt;
 
@@ -63,21 +58,15 @@ public class Customer {
 		return status == CustomerStatus.BANNED;
 	}
 
-	/**
-	 * G-14: the mode is fixed from Order's answer at ban time ({@code hasPaidOrder}) and never re-evaluated later.
-	 */
-	public void ban(String reason, boolean hasPaidOrder) {
+	/** G-14: the account's own obligations decide what it may still do, never a snapshot taken here. */
+	public void ban(String reason) {
 		this.status = CustomerStatus.BANNED;
 		this.banReason = Objects.requireNonNull(reason);
-		this.hasPaidOrderBeforeBan = hasPaidOrder;
-		this.banMode = hasPaidOrder ? CustomerBanMode.PAYMENT_ONLY : CustomerBanMode.CUSTOMER_SCOPE;
 	}
 
 	public void unban() {
 		this.status = CustomerStatus.ACTIVE;
 		this.banReason = null;
-		this.hasPaidOrderBeforeBan = null;
-		this.banMode = null;
 	}
 
 }

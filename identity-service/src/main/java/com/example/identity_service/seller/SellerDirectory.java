@@ -23,7 +23,7 @@ import java.util.UUID;
 public class SellerDirectory {
 
 	/** The API defines no {@code sort} here; name order (then id, for stable pages) is our choice. */
-	private static final Sort ORDER = Sort.by(Sort.Order.asc("sellerName").ignoreCase(), Sort.Order.asc("sellerId"));
+	private static final Sort ORDER = Sort.by(Sort.Order.asc("user.fullName").ignoreCase(), Sort.Order.asc("sellerId"));
 
 	private final SellerRepository sellers;
 
@@ -42,7 +42,7 @@ public class SellerDirectory {
 	}
 
 	private SellerPublic view(Seller seller) {
-		String key = seller.getLogoObjectKey();
+		String key = seller.getUser().getAvatarObjectKey();
 		return SellerPublic.of(seller, key == null ? null : media.readUrl(key));
 	}
 
