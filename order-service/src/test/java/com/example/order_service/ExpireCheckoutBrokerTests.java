@@ -1,5 +1,7 @@
 package com.example.order_service;
 
+import com.example.order_service.messaging.ExpireCheckoutListener;
+import com.example.order_service.messaging.OrderCheckoutEventRelay;
 import com.example.order_service.service.CheckoutCommandRelay;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
@@ -20,6 +22,7 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -32,20 +35,27 @@ import static org.assertj.core.api.Assertions.assertThat;
 })
 class ExpireCheckoutBrokerTests extends PayHttpTestSupport {
 	private static final String ENDPOINT = localEndpoint();
+	private static final String KAFKA_SCOPE = "order-sqs-test-" + UUID.randomUUID();
 	private static final SqsClient BROKER = SqsClient.builder().endpointOverride(URI.create(ENDPOINT))
 			.region(Region.US_EAST_1).credentialsProvider(StaticCredentialsProvider.create(
 					AwsBasicCredentials.create("elasticmq-test", "elasticmq-test")))
 			.overrideConfiguration(config -> config.apiCallTimeout(Duration.ofSeconds(15))).build();
-	private static final String QUEUE = BROKER.createQueue(request ->
-			request.queueName("order-p2-delivery-test-" + UUID.randomUUID())).queueUrl();
+	private static final String QUEUE = BROKER.createQueue(request -> request
+			.queueName("order-p2-delivery-test-" + UUID.randomUUID())
+			.attributes(Map.of(QueueAttributeName.VISIBILITY_TIMEOUT, "2"))).queueUrl();
 
 	@Autowired
 	CheckoutCommandRelay relay;
+	@Autowired
+	ExpireCheckoutListener listener;
+	@Autowired
+	OrderCheckoutEventRelay closureRelay;
 
 	@DynamicPropertySource
-	static void delivery(DynamicPropertyRegistry config) {
+	static void delivery(DynamicPropertyRegistry config) throws Exception {
 		config.add("order.checkout.delivery.endpoint", () -> ENDPOINT);
 		config.add("order.checkout.delivery.queue-url", () -> QUEUE);
+		CheckoutOutcomePostgresTests.configureKafka(config, KAFKA_SCOPE + "-payment", KAFKA_SCOPE + "-closure", KAFKA_SCOPE);
 	}
 
 	@AfterAll
@@ -124,13 +134,112 @@ class ExpireCheckoutBrokerTests extends PayHttpTestSupport {
 		var recovered = receive(2).getFirst();
 		assertThat(recovered.messageId()).isNotEqualTo(delayed.messageId());
 		assertThat(recovered.body()).isEqualTo(delayed.body());
+		delete(delayed);
+		delete(recovered);
 		assertThat(commandId(id, "CreateProviderSession")).isEqualTo(create);
 		assertThat(commandId(id, "ExpireCheckout")).isEqualTo(expire);
 	}
 
-	private java.util.List<Message> receive(int waitSeconds) {
+	@Test
+	void retainsEarlyOrInvalidCommandsAndDeletesDueMessagesOnlyAfterCommittedRelease() throws Exception {
+		var sample = sample(8, 2);
+		var paid = pay(sample.customer(), UUID.randomUUID(), quote(sample), sample.address());
+		assertThat(paid.statusCode()).as(paid.body()).isEqualTo(202);
+		UUID id = UUID.fromString(body(paid).path("data").path("checkoutSessionId").asString());
+		UUID command = commandId(id, "ExpireCheckout");
+		var deadline = jdbc.queryForObject("""
+				update orders.checkout_session set created_at = statement_timestamp() - interval '15 minutes' + interval '5 seconds',
+					expires_at = statement_timestamp() + interval '5 seconds'
+				where checkout_session_id = ? returning expires_at
+				""", (row, index) -> row.getTimestamp(1).toInstant(), id);
+		jdbc.update("update orders.checkout_outbox set expires_at = ? where command_id = ?",
+				java.sql.Timestamp.from(deadline), command);
+
+		String valid = payload(command, id, deadline);
+		send(valid);
+		listener.receiveOnce();
+		assertThat(checkoutStatus(id)).isEqualTo("AWAITING_PAYMENT");
+		assertThat(reserved(sample)).isEqualTo(2);
+		assertThat(receive(0)).isEmpty();
+
+		// A malformed command must not close a checkout even after its deadline.
+		String invalid = payload(UUID.randomUUID(), id, deadline);
+		send(invalid);
+		listener.receiveOnce();
+		assertThat(checkoutStatus(id)).isEqualTo("AWAITING_PAYMENT");
+		var retained = receive(4).getFirst();
+		assertThat(retained.body()).isEqualTo(invalid);
+		delete(retained);
+
+		jdbc.update("update orders.inventory set reserved_quantity = 0 where product_id = ?", sample.product());
+		awaitDeadline(id);
+		listener.receiveOnce();
+		assertThat(checkoutStatus(id)).isEqualTo("AWAITING_PAYMENT");
+		assertThat(closureCount(id)).isZero();
+		jdbc.update("update orders.inventory set reserved_quantity = 2 where product_id = ?", sample.product());
+		Thread.sleep(Duration.ofSeconds(2));
+		listener.receiveOnce();
+		assertThat(checkoutStatus(id)).isEqualTo("CLOSED");
+		assertThat(reserved(sample)).isZero();
+		assertThat(closureCount(id)).isOne();
+		assertThat(receive(2)).isEmpty();
+
+		send(valid);
+		listener.receiveOnce();
+		assertThat(reserved(sample)).isZero();
+		assertThat(closureCount(id)).isOne();
+		assertThat(receive(2)).isEmpty();
+
+		jdbc.update("""
+				update orders.checkout_event_outbox set next_attempt_at = '2000-01-01T00:00:00Z' where checkout_session_id = ?
+				""", id);
+		assertThat(closureRelay.deliverNext()).isTrue();
+		try (var subscriber = CheckoutOutcomePostgresTests.subscribe(KAFKA_SCOPE + "-closure", KAFKA_SCOPE)) {
+			var closed = JSON.readTree(CheckoutOutcomePostgresTests.readClosure(subscriber, id));
+			assertThat(closed.path("eventType").asString()).isEqualTo("checkout.closed");
+			assertThat(closed.path("payload").path("closeReason").asString()).isEqualTo("EXPIRED");
+		}
+	}
+
+	private static void delete(Message message) {
+		BROKER.deleteMessage(request -> request.queueUrl(QUEUE).receiptHandle(message.receiptHandle()));
+	}
+
+	private static String payload(UUID command, UUID id, Instant deadline) {
+		return JSON.writeValueAsString(Map.of("commandId", command, "checkoutSessionId", id, "expiresAt", deadline.toString()));
+	}
+
+	private static void send(String payload) {
+		BROKER.sendMessage(request -> request.queueUrl(QUEUE).messageBody(payload).delaySeconds(0));
+	}
+
+	private List<Message> receive(int waitSeconds) {
 		return BROKER.receiveMessage(request -> request.queueUrl(QUEUE).waitTimeSeconds(waitSeconds)
 				.maxNumberOfMessages(1).visibilityTimeout(30)).messages();
+	}
+
+	private void awaitDeadline(UUID id) throws InterruptedException {
+		for (int i = 0; i < 70; i++) {
+			if (Boolean.TRUE.equals(jdbc.queryForObject("""
+					select statement_timestamp() >= expires_at from orders.checkout_session where checkout_session_id = ?
+					""", Boolean.class, id))) {
+				return;
+			}
+			Thread.sleep(100);
+		}
+		throw new AssertionError("Checkout did not reach its deadline");
+	}
+
+	private String checkoutStatus(UUID checkoutId) {
+		return jdbc.queryForObject("select status from orders.checkout_session where checkout_session_id = ?", String.class, checkoutId);
+	}
+
+	private int closureCount(UUID checkoutId) {
+		return jdbc.queryForObject("select count(*) from orders.checkout_event_outbox where checkout_session_id = ?", Integer.class, checkoutId);
+	}
+
+	private int reserved(Sample sample) {
+		return jdbc.queryForObject("select reserved_quantity from orders.inventory where product_id = ?", Integer.class, sample.product());
 	}
 
 	private UUID commandId(UUID checkout, String type) {
