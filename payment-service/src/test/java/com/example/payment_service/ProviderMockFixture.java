@@ -61,6 +61,11 @@ final class ProviderMockFixture implements AutoCloseable {
     private final Map<UUID, Integer> refundPosts = new HashMap<>();
     private final Map<UUID, Integer> refundQueries = new HashMap<>();
     private final AtomicReference<CountDownLatch> nextRefundQueryGate = new AtomicReference<>();
+    private final AtomicReference<Runnable> nextPaymentQueryGate = new AtomicReference<>();
+
+    void gateNextPaymentQuery(Runnable gate) {
+        nextPaymentQueryGate.set(gate);
+    }
     private boolean closedByRunner;
 
     ProviderMockFixture(Clock clock) throws IOException {
@@ -179,7 +184,12 @@ final class ProviderMockFixture implements AutoCloseable {
                     finishReply(exchange, reply);
                 } else if ("GET".equals(method) && parts.length == 4 && "payments".equals(parts[2])
                         && "v1".equals(parts[1])) {
-                    write(exchange, 200, queryPayment(UUID.fromString(parts[3])));
+                    var response = queryPayment(UUID.fromString(parts[3]));
+                    var gate = nextPaymentQueryGate.getAndSet(null);
+                    if (gate != null) {
+                        gate.run();
+                    }
+                    write(exchange, 200, response);
                 } else if ("POST".equals(method) && "/v1/refunds".equals(path)) {
                     var reply = createRefund(read(exchange, CreateRefundRequest.class));
                     finishReply(exchange, reply);

@@ -188,7 +188,20 @@ public class PaymentCollectionService {
         var guard = work.lockCheckout(dispatch.request().checkoutSessionId());
         UUID paymentId = dispatch.request().paymentId();
         var current = work.find(paymentId).orElseThrow();
-        if (guard.isClosed() || !dispatch.lease().equals(current.leaseId())) {
+        if (guard.isClosed()) {
+            // A query dispatched before close can still confirm an already captured payment.
+            // This records the result without scheduling further collection work or restoring the link.
+            if (queried != null && queried.status() == GatewayStatus.SUCCESS) {
+                Payment payment = payments.findByIdForUpdate(paymentId).orElseThrow();
+                if (payment.isPending() && matches(payment, queried)) {
+                    Instant now = clock.instant();
+                    work.observe(paymentId, queried, now);
+                    outcomes.applyObservation(payment, true, queried, now);
+                }
+            }
+            return;
+        }
+        if (!dispatch.lease().equals(current.leaseId())) {
             return;
         }
         Payment payment = payments.findByIdForUpdate(paymentId).orElseThrow();

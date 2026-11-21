@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 public class PaymentCheckoutGuardRepository {
@@ -12,6 +13,18 @@ public class PaymentCheckoutGuardRepository {
 
     public PaymentCheckoutGuardRepository(EntityManager entities) {
         this.entities = entities;
+    }
+
+    @Transactional
+    public void retainForReview(String topic, int partition, long offset, String key, String value, String reason) {
+        entities.createNativeQuery("""
+                INSERT INTO payment_checkout_event_review
+                    (topic, kafka_partition, kafka_offset, message_key, raw_envelope, reason)
+                VALUES (:topic, :partition, :offset, :key, :value, :reason)
+                ON CONFLICT (topic, kafka_partition, kafka_offset) DO NOTHING
+                """).setParameter("topic", topic).setParameter("partition", partition)
+                .setParameter("offset", offset).setParameter("key", key).setParameter("value", value)
+                .setParameter("reason", reason).executeUpdate();
     }
 
     public boolean acceptClose(UUID eventId, UUID checkoutId, long version, Instant closedAt, Instant now) {

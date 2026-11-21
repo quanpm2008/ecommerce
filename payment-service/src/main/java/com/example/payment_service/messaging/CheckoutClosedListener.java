@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import com.example.payment_service.service.PaymentOutcomeService;
 import com.example.payment_service.service.PaymentOutcomeService.OutcomeConflict;
+import com.example.payment_service.repository.PaymentCheckoutGuardRepository;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -31,13 +32,16 @@ import tools.jackson.databind.json.JsonMapper;
 public class CheckoutClosedListener {
     private static final Logger logger = LoggerFactory.getLogger(CheckoutClosedListener.class);
     private final PaymentOutcomeService outcomes;
+    private final PaymentCheckoutGuardRepository review;
     private final KafkaMessageListenerContainer<String, String> container;
     private final JsonMapper json = JsonMapper.builder().build();
 
-    public CheckoutClosedListener(PaymentOutcomeService outcomes, @Value("${payment.kafka.bootstrap-servers}") String bootstrap,
+    public CheckoutClosedListener(PaymentOutcomeService outcomes, PaymentCheckoutGuardRepository review,
+            @Value("${payment.kafka.bootstrap-servers}") String bootstrap,
             @Value("${payment.kafka.checkout-events-topic:ecommerce.order.events.v1}") String topic,
             @Value("${payment.kafka.checkout-group:payment-service-checkout}") String group) {
         this.outcomes = outcomes;
+        this.review = review;
         var factory = new DefaultKafkaConsumerFactory<String, String>(Map.of(
                 ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrap,
                 ConsumerConfig.GROUP_ID_CONFIG, group,
@@ -63,43 +67,53 @@ public class CheckoutClosedListener {
     }
 
     void receive(ConsumerRecord<String, String> record, Acknowledgment ack) {
-        Close close = read(record);
+        Close close;
+        try {
+            close = read(record);
+        } catch (RuntimeException invalid) {
+            retain(record, "INVALID_CLOSURE");
+            ack.acknowledge();
+            return;
+        }
         if (close != null) {
             try {
                 outcomes.checkoutClosed(close.eventId(), close.checkoutId(), close.customerId(), close.version(), close.closedAt());
             } catch (OutcomeConflict invalid) {
-                logger.warn("Checkout closure did not match stored checkout at partition {} offset {}",
-                        record.partition(), record.offset());
+                retain(record, "CHECKOUT_MISMATCH");
             }
         }
         ack.acknowledge();
     }
 
+    private void retain(ConsumerRecord<String, String> record, String reason) {
+        review.retainForReview(record.topic(), record.partition(), record.offset(), record.key(), record.value(), reason);
+        logger.warn("Checkout event retained for review at partition {} offset {} ({})",
+                record.partition(), record.offset(), reason);
+    }
+
     private Close read(ConsumerRecord<String, String> record) {
-        try {
-            JsonNode envelope = json.readTree(record.value());
-            if (!"checkout.closed".equals(envelope.path("eventType").asString())) {
-                return null;
-            }
-            JsonNode payload = envelope.path("payload");
-            JsonNode version = envelope.path("version");
-            UUID checkoutId = UUID.fromString(payload.path("checkoutSessionId").asString());
-            String reason = payload.path("closeReason").asString();
-            if (!"order-service".equals(envelope.path("producer").asString())
-                    || !checkoutId.toString().equals(envelope.path("aggregateId").asString())
-                    || !checkoutId.toString().equals(record.key())
-                    || !version.isIntegralNumber() || !version.canConvertToLong() || version.asLong() < 1
-                    || !("PAYMENT_FAILED".equals(reason) || "EXPIRED".equals(reason))) {
-                throw new IllegalArgumentException("Invalid closure envelope");
-            }
-            Instant.parse(envelope.path("occurredAt").asString());
-            return new Close(UUID.fromString(envelope.path("eventId").asString()), checkoutId,
-                    UUID.fromString(payload.path("customerId").asString()), version.asLong(),
-                    Instant.parse(payload.path("closedAt").asString()));
-        } catch (RuntimeException invalid) {
-            logger.warn("Invalid checkout closure at partition {} offset {}", record.partition(), record.offset());
+        JsonNode envelope = json.readTree(record.value());
+        if (envelope == null || !envelope.isObject() || !envelope.path("eventType").isString()) {
+            throw new IllegalArgumentException("Invalid event envelope");
+        }
+        if (!"checkout.closed".equals(envelope.path("eventType").asString())) {
             return null;
         }
+        JsonNode payload = envelope.path("payload");
+        JsonNode version = envelope.path("version");
+        UUID checkoutId = UUID.fromString(payload.path("checkoutSessionId").asString());
+        String reason = payload.path("closeReason").asString();
+        if (!"order-service".equals(envelope.path("producer").asString())
+                || !checkoutId.toString().equals(envelope.path("aggregateId").asString())
+                || !checkoutId.toString().equals(record.key())
+                || !version.isIntegralNumber() || !version.canConvertToLong() || version.asLong() < 1
+                || !("PAYMENT_FAILED".equals(reason) || "EXPIRED".equals(reason))) {
+            throw new IllegalArgumentException("Invalid closure envelope");
+        }
+        Instant.parse(envelope.path("occurredAt").asString());
+        return new Close(UUID.fromString(envelope.path("eventId").asString()), checkoutId,
+                UUID.fromString(payload.path("customerId").asString()), version.asLong(),
+                Instant.parse(payload.path("closedAt").asString()));
     }
 
     private record Close(UUID eventId, UUID checkoutId, UUID customerId, long version, Instant closedAt) { }

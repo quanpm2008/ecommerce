@@ -3,6 +3,7 @@ package com.example.payment_service.messaging;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import com.example.payment_service.entity.OutboxEvent;
@@ -44,6 +45,8 @@ public class PaymentCheckoutEventRelay {
                 ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrap,
                 ProducerConfig.ACKS_CONFIG, "all",
                 ProducerConfig.MAX_BLOCK_MS_CONFIG, 3000,
+                ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, 3000,
+                ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, 5000,
                 ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
                 ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class));
     }
@@ -51,14 +54,18 @@ public class PaymentCheckoutEventRelay {
     @Scheduled(initialDelayString = "${payment.kafka.relay-initial-delay:1000}",
             fixedDelayString = "${payment.kafka.relay-interval:1000}")
     public void runOnce() {
-        transactions.executeWithoutResult(transaction -> {
-            for (OutboxEvent event : outbox.lockPending(16)) {
-                if (!publish(event)) {
-                    return;
-                }
-                event.markPublished(clock.instant());
+        for (int i = 0; i < 16; i++) {
+            UUID lease = UUID.randomUUID();
+            var claimed = transactions.execute(transaction -> outbox.claim(lease));
+            if (claimed == null || claimed.isEmpty()) {
+                return;
             }
-        });
+            var event = claimed.orElseThrow();
+            if (!publish(event)) {
+                return;
+            }
+            transactions.executeWithoutResult(transaction -> outbox.acknowledge(event.getEventId(), lease, clock.instant()));
+        }
     }
 
     private boolean publish(OutboxEvent event) {

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import com.example.payment_service.entity.Payment;
@@ -14,15 +15,18 @@ class PaymentClosurePostgresTests extends PaymentOutcomePostgresFixture {
     void kafkaClosureBeforePaymentPersistsMarkerAndPreventsCreation() throws Exception {
         UUID checkout = UUID.randomUUID();
         UUID customer = UUID.randomUUID();
+        UUID invalidEvent = UUID.randomUUID();
         publishClose(UUID.randomUUID(), checkout, customer, UUID.randomUUID(), "EXPIRED", "order-service", 1);
         publishClose(checkout, checkout, customer, UUID.randomUUID(), "EXPIRED", "untrusted", 1);
         publishClose(checkout, checkout, customer, UUID.randomUUID(), "EXPIRED", "order-service", 0);
-        publishClose(checkout, checkout, customer, UUID.randomUUID(), "FAILED", "order-service", 1);
+        publishClose(checkout, checkout, customer, invalidEvent, "FAILED", "order-service", 1);
         UUID barrier = UUID.randomUUID();
         publishClose(barrier, barrier, customer, UUID.randomUUID(), "EXPIRED", "order-service", 1);
-        // The invalid events must never close the target; their Inbox also remains empty.
+        // Invalid events are retained separately without changing the collection state.
         await(() -> work.closedAt(barrier) != null);
         assertThat(work.closedAt(checkout)).isNull();
+        await(() -> jdbc.sql("SELECT count(*) FROM payment_checkout_event_review WHERE raw_envelope LIKE ?")
+                .param("%" + invalidEvent + "%").query(Long.class).single() == 1);
         publishClose(checkout, checkout, customer, UUID.randomUUID(), "EXPIRED", "order-service", 1);
         await(() -> work.closedAt(checkout) != null);
         assertThat(collection.createOrGet(checkout)).isNull();
@@ -65,6 +69,37 @@ class PaymentClosurePostgresTests extends PaymentOutcomePostgresFixture {
         assertThat(closed.getProviderTransactionId()).isNull();
         assertThat(closed.getPaymentUrl()).isNull();
         assertThat(work.find(payment.getPaymentId()).orElseThrow().nextRun()).isNull();
+    }
+
+    @Test
+    void authorizedQueryAlreadyInFlightRecordsCaptureAfterCloseWithoutReopeningCollection() throws Exception {
+        var payment = preparePayment().payment();
+        openAtProvider(payment);
+        provider.completePayment(payment.getPaymentId());
+        var reached = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        provider.gateNextPaymentQuery(() -> {
+            reached.countDown();
+            try {
+                release.await(2, TimeUnit.SECONDS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        clock.set(START.plusSeconds(15));
+        var dispatch = CompletableFuture.runAsync(() -> collection.process(payment.getCheckoutSessionId()));
+        try {
+            assertThat(reached.await(5, TimeUnit.SECONDS)).isTrue();
+            close(payment, UUID.randomUUID(), "EXPIRED");
+            await(() -> work.closedAt(payment.getCheckoutSessionId()) != null);
+        } finally {
+            release.countDown();
+        }
+        dispatch.get(5, TimeUnit.SECONDS);
+        verifyRefund(payment);
+        assertThat(collection.read(payment.getCheckoutSessionId()).paymentUrl()).isNull();
+        assertThat(work.find(payment.getPaymentId()).orElseThrow().nextRun()).isNull();
+        assertThat(outboxCount(payment)).isZero();
     }
 
     @Test
