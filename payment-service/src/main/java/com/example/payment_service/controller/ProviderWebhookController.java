@@ -54,6 +54,7 @@ public class ProviderWebhookController {
         }
         JsonNode event;
         ProviderResult result;
+        RefundReferences refundReferences;
         String type;
         try {
             event = json.readTree(body);
@@ -62,6 +63,10 @@ public class ProviderWebhookController {
                 return ResponseEntity.badRequest().build();
             }
             result = parse(event);
+            refundReferences = "refund.result".equals(type) ? new RefundReferences(
+                    UUID.fromString(requiredText(event, "refundId", 36)),
+                    UUID.fromString(requiredText(event, "attemptId", 36)),
+                    requiredText(event, "providerRefundId", 255)) : null;
         } catch (RuntimeException malformed) {
             return ResponseEntity.badRequest().build();
         }
@@ -74,7 +79,7 @@ public class ProviderWebhookController {
                 if (handler == null) {
                     return ResponseEntity.status(503).build();
                 }
-                handler.apply(result, event, digest);
+                handler.apply(result, refundReferences, digest);
             }
             return ResponseEntity.noContent().build();
         } catch (OutcomeConflict conflict) {
@@ -90,7 +95,9 @@ public class ProviderWebhookController {
     private static boolean isProviderReferenceConflict(Exception failure) {
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
             if (cause instanceof ConstraintViolationException conflict
-                    && "uq_payments_provider_transaction_id".equals(conflict.getConstraintName())) {
+                    && ("uq_payments_provider_transaction_id".equals(conflict.getConstraintName())
+                        || "uq_refund_attempt_provider_ref".equals(conflict.getConstraintName())
+                        || "uq_refunds_provider_refund_id".equals(conflict.getConstraintName()))) {
                 return true;
             }
         }
@@ -145,6 +152,8 @@ public class ProviderWebhookController {
     }
 
     public interface RefundWebhookHandler {
-        void apply(ProviderResult common, JsonNode refundEvent, byte[] digest);
+        void apply(ProviderResult common, RefundReferences references, byte[] digest);
     }
+
+    public record RefundReferences(UUID refundId, UUID attemptId, String providerRefundId) { }
 }

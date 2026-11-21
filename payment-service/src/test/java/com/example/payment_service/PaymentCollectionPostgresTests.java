@@ -57,7 +57,8 @@ import tools.jackson.databind.json.JsonMapper;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "eureka.client.enabled=false", "payment.internal.order-token=test-order",
-        "payment.order.credential=test-payment", "payment.collection.initial-delay=3600000"
+        "payment.order.credential=test-payment", "payment.collection.initial-delay=3600000",
+        "payment.refund.initial-delay=3600000"
 })
 class PaymentCollectionPostgresTests {
     private static final Instant START = Instant.parse("2026-11-21T10:00:00Z");
@@ -136,6 +137,8 @@ class PaymentCollectionPostgresTests {
         String database = jdbc.sql("SELECT current_database()").query(String.class).single();
         assertThat(database).contains("test");
         jdbc.sql("DELETE FROM payment_refund_work").update();
+        jdbc.sql("DELETE FROM payment_refund_attempt_queries").update();
+        jdbc.sql("DELETE FROM payment_refund_attempts").update();
         jdbc.sql("DELETE FROM refunds").update();
         jdbc.sql("DELETE FROM payment_collection_observation").update();
         jdbc.sql("DELETE FROM payment_collection_work").update();

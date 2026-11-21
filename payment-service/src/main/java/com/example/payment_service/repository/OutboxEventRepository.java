@@ -17,11 +17,15 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEvent, UUID> 
      * Dùng native query với "FOR UPDATE SKIP LOCKED" để tránh tranh chấp giữa các worker/pod.
      */
     @Query(value = """
-            SELECT * FROM payment_service.outbox_events 
-            WHERE status = 'PENDING' 
-            ORDER BY created_at ASC 
+            SELECT event.* FROM payment_service.outbox_events event
+            WHERE event.status = 'PENDING' AND NOT EXISTS (
+                SELECT 1 FROM payment_service.outbox_events earlier
+                WHERE earlier.aggregate_id = event.aggregate_id AND earlier.status = 'PENDING'
+                  AND earlier.version < event.version
+            )
+            ORDER BY event.created_at ASC, event.event_id ASC
             LIMIT :limit 
-            FOR UPDATE SKIP LOCKED
+            FOR UPDATE OF event SKIP LOCKED
             """, nativeQuery = true)
     List<OutboxEvent> lockPending(@Param("limit") int limit);
 }

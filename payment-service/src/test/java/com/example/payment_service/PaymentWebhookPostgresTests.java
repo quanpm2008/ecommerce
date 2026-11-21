@@ -160,7 +160,7 @@ class PaymentWebhookPostgresTests extends PaymentOutcomePostgresFixture {
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "eureka.client.enabled=false", "payment.collection.initial-delay=3600000", "payment.kafka.relay-interval=120",
-        "payment.provider.timeout=6s"
+        "payment.provider.timeout=6s", "payment.refund.initial-delay=3600000"
 })
 @Import(PaymentOutcomePostgresFixture.ControlledTime.class)
 abstract class PaymentOutcomePostgresFixture {
@@ -310,7 +310,11 @@ abstract class PaymentOutcomePostgresFixture {
     }
 
     JsonNode awaitEvent(KafkaConsumer<String, String> reader, Payment payment, String type) throws Exception {
-        String key = payment.getPaymentId().toString();
+        return awaitEvent(reader, payment.getPaymentId(), type, 1);
+    }
+
+    JsonNode awaitEvent(KafkaConsumer<String, String> reader, UUID aggregateId, String type, long version) {
+        String key = aggregateId.toString();
         long end = System.nanoTime() + Duration.ofSeconds(18).toNanos();
         do {
             for (var message : reader.poll(Duration.ofMillis(200))) {
@@ -319,12 +323,13 @@ abstract class PaymentOutcomePostgresFixture {
                 seen.add(event);
             }
             for (var event : seen) {
-                if (key.equals(event.path("aggregateId").asString()) && type.equals(event.path("eventType").asString())) {
+                if (key.equals(event.path("aggregateId").asString()) && type.equals(event.path("eventType").asString())
+                        && version == event.path("version").asLong()) {
                     return event;
                 }
             }
         } while (System.nanoTime() < end);
-        throw new AssertionError("Kafka did not deliver " + type + " for " + key);
+        throw new AssertionError("Kafka did not deliver " + type + " version " + version + " for " + key);
     }
 
     void publishClose(UUID key, UUID aggregate, UUID customer, UUID event, String reason, String source, long version)

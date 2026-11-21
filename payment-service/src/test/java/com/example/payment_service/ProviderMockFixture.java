@@ -20,6 +20,8 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -53,9 +55,12 @@ final class ProviderMockFixture implements AutoCloseable {
     private final Map<UUID, Map<UUID, Attempt>> refunds = new HashMap<>();
     private final Map<UUID, byte[]> events = new HashMap<>();
     private final URI origin;
-    private final URI instantCallback;
+    private volatile URI instantCallback;
     private Fault paymentFault = Fault.NONE;
     private Fault refundFault = Fault.NONE;
+    private final Map<UUID, Integer> refundPosts = new HashMap<>();
+    private final Map<UUID, Integer> refundQueries = new HashMap<>();
+    private final AtomicReference<CountDownLatch> nextRefundQueryGate = new AtomicReference<>();
     private boolean closedByRunner;
 
     ProviderMockFixture(Clock clock) throws IOException {
@@ -87,6 +92,13 @@ final class ProviderMockFixture implements AutoCloseable {
         refundFault = fault;
     }
 
+    void useInstantCallback(URI callback) {
+        if (callback != null) {
+            requireLoopback(callback);
+        }
+        instantCallback = callback;
+    }
+
     synchronized int paymentCount() {
         return payments.size();
     }
@@ -94,6 +106,18 @@ final class ProviderMockFixture implements AutoCloseable {
     synchronized int refundSuccessCount(UUID refundId) {
         return (int) refunds.getOrDefault(refundId, Map.of()).values().stream()
                 .filter(attempt -> attempt.response().status() == SUCCESS).count();
+    }
+
+    synchronized int refundPostCount(UUID refundId) {
+        return refundPosts.getOrDefault(refundId, 0);
+    }
+
+    synchronized int refundQueryCount(UUID refundId) {
+        return refundQueries.getOrDefault(refundId, 0);
+    }
+
+    void holdNextRefundQuery(CountDownLatch release) {
+        nextRefundQueryGate.set(release);
     }
 
     synchronized UUID completePayment(UUID paymentId) {
@@ -161,7 +185,12 @@ final class ProviderMockFixture implements AutoCloseable {
                     finishReply(exchange, reply);
                 } else if ("GET".equals(method) && parts.length == 6 && "v1".equals(parts[1])
                         && "refunds".equals(parts[2]) && "attempts".equals(parts[4])) {
-                    write(exchange, 200, queryRefund(UUID.fromString(parts[3]), UUID.fromString(parts[5])));
+                    var release = nextRefundQueryGate.getAndSet(null);
+                    var response = queryRefund(UUID.fromString(parts[3]), UUID.fromString(parts[5]));
+                    if (release != null) {
+                        release.await(5, java.util.concurrent.TimeUnit.SECONDS);
+                    }
+                    write(exchange, 200, response);
                 } else {
                     throw new Rejected(404);
                 }
@@ -255,6 +284,7 @@ final class ProviderMockFixture implements AutoCloseable {
     }
 
     private synchronized Reply createRefund(CreateRefundRequest request) {
+        refundPosts.merge(request.refundId(), 1, Integer::sum);
         var attempts = refunds.computeIfAbsent(request.refundId(), ignored -> new LinkedHashMap<>());
         Attempt existing = attempts.get(request.attemptId());
         if (existing != null) {
@@ -299,6 +329,7 @@ final class ProviderMockFixture implements AutoCloseable {
     }
 
     private synchronized RefundResponse queryRefund(UUID refundId, UUID attemptId) {
+        refundQueries.merge(refundId, 1, Integer::sum);
         Attempt result = refunds.getOrDefault(refundId, Map.of()).get(attemptId);
         if (result == null) {
             throw new Rejected(404);
