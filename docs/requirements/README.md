@@ -28,6 +28,8 @@ Phần ban theo nghĩa vụ/J7, rút số dư nhỏ, HIDDEN/provision và trigge
 
 Các giá trị trong [bảng tham số](parameters.md) lấy từ Thẻ 16 và xác nhận của người dùng ngày 18–19/11/2026, thay phần khác giá trị hoặc còn để ngỏ trong nguồn cũ cùng chủ đề. Hoa hồng chung là 5%; khách đã thanh toán tự mở chu kỳ thử lại hoàn tiền khi hết lượt, Admin chỉ xem tiến độ. P-37 chốt tìm theo tên sản phẩm và tên cửa hàng không phân biệt dấu tiếng Việt, không phân biệt hoa thường. P-01 vẫn dùng tạm 15 phút; không thay N-09 hoặc N-11. Những thay đổi này không tự mở rộng phần Should/Could hoặc thay các quyết định kiến trúc khác.
 
+[Quyết định 0003 ngày 23/11/2026](../decisions/0003-mot-phien-refresh-tren-user.md) thay phần quản lý phiên: mỗi User có một phiên hiện hành, lưu hash refresh token, thời hạn và session_id ngay trên User thay AuthSession; login mới kết thúc phiên trước. Giữ cookie HttpOnly/Origin theo 0001 và quyền G-14. Tài liệu đã cập nhật yêu cầu; code/migration/Supabase chưa chuyển sang thiết kế này.
+
 | Trục | Nhãn | Ý nghĩa |
 |---|---|---|
 | Yêu cầu | Đã xác nhận | Nguồn còn hiệu lực theo baseline, không phải kết quả runtime |
@@ -60,6 +62,7 @@ Nguồn: FRD “Từ điển định danh” và “Giải nghĩa công thức�
 |---|---|
 | User | Một tài khoản/credential thuộc đúng accountType CUSTOMER/SELLER/ADMIN; JWT sub=user_id, tối đa một role hiệu lực |
 | Customer / Seller | Hồ sơ shared PK=User.id của tài khoản đúng loại, không chồng lấp trên cùng User; Admin là tài khoản riêng |
+| Phiên đăng nhập / refresh token | Mỗi User một session_id hiện hành cùng hash/hạn refresh token; login mới thay phiên cũ. Token nguyên văn chỉ trong cookie HttpOnly, không nằm trong DTO User. Theo quyết định 0003, chưa triển khai |
 | Role / Permission / ownership | Quyền hiện hành của role, điều kiện trạng thái và tài nguyên thuộc sub cùng cần hợp lệ |
 | CheckoutSession | Một lần thu chung, có N Order theo Seller; không là một Order lớn |
 | Order / OrderItem | Đơn của một Seller / dòng hàng snapshot; không FulfillmentGroup, SellerOrder, ParentOrder |

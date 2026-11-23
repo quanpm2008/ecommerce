@@ -605,6 +605,8 @@ Mục này là nơi tra cứu chính cho quy tắc áp dụng xuyên các luồn
 
 Với API bảo vệ: xác minh RS256 bằng khóa công khai/JWKS Identity theo S5 §2.5, iss, aud, exp và claims phiên; lấy authorization context hiện hành từ Identity; so authzVersion và session; kiểm tra permission, trạng thái hồ sơ và ownership. JWKS là định dạng chuẩn riêng, không bọc envelope data; có thể cache public key theo chính sách rotation, khác với việc cấm cache quyết định quyền. Identity không sẵn sàng trả 503 khi cần context hiện hành; token stale trả 401 TOKEN_STALE; thiếu quyền trả 403; tài nguyên người khác trả 404 nhất quán theo S4 §5.7. Gateway kiểm tra JWT ở biên; service vẫn thực thi quyền đầy đủ. Gateway dùng HTTP client reactive nếu cần gọi Identity, không dùng OpenFeign blocking trên event loop.
 
+Thiết kế phiên mục tiêu theo [quyết định 0003](../decisions/0003-mot-phien-refresh-tren-user.md): validator và internal authorization-context đối chiếu claim sessionId với `users.session_id` hiện hành, cùng authzVersion/quyền/trạng thái. Không tiếp tục coi AuthSession là nguồn phiên hiệu lực. Login thành công thay sessionId nên access phiên trước bị từ chối ở lần kiểm tra tiếp theo dù JWT chưa hết hạn; thay phiên không tự tăng authzVersion. Code hiện tại vẫn dùng AuthSession, cần cutover toàn bộ caller/validator theo GAP-IDN-005.
+
 Gateway xóa header danh tính do client gửi, không tin X-User-Id/X-Actor-Type/X-Permissions. Service lấy sub từ token đã xác minh. List cũng phải lọc owner tại server, không chỉ detail. Idempotency replay phải kiểm tra quyền hiện tại trước khi trả dữ liệu đã lưu.
 
 ### 6.2. Chính sách cấm và thu hồi phiên
@@ -616,7 +618,7 @@ Authority hiện hành: [Thẻ 15](coverage.md#the-15), [FRD UC-E03](FRD.md), [D
 | ACTIVE | ACTIVE / ACTIVE | Quyền bình thường theo accountType, approval và ownership |
 | BANNED | ACTIVE / BANNED | Chỉ nghĩa vụ hiện tại: đơn/Payment/Refund chưa kết thúc; Seller thêm Settlement/hiệu ứng tài chính pending, pending hoặc available. Không mua/bán mới, giỏ, checkout, review hoặc thống kê chung |
 | DISABLED | DISABLED / BANNED | Đã xác minh hết nghĩa vụ: thu hồi phiên, chặn API bảo vệ; không xóa dữ liệu/tiền |
-| Logout/reset/đổi mật khẩu | Không đổi đợt cấm | Thu hồi phiên theo API; reset/đổi mật khẩu thu hồi toàn bộ phiên |
+| Logout/reset/đổi mật khẩu | Không đổi đợt cấm | Thu hồi phiên hiện hành trên User theo API; đổi/reset mật khẩu và chuyển DISABLED xóa cả ba trường phiên cùng transaction cập nhật User, reset không tạo phiên mới |
 
 Order chưa kết thúc gồm AWAITING_PAYMENT/PAID/PACKING/DELIVERED. Order terminal vẫn có thể còn Payment PENDING/SUCCESS chưa apply, Refund PENDING/FAILED hoặc FULL_CHECKOUT chưa giải quyết. Seller chỉ còn pending dùng OBLIGATIONS_READ_ONLY; chỉ available dùng WITHDRAWAL_ONLY, chỉ đơn dùng OPEN_ORDERS_ONLY, cả đơn và available dùng ORDERS_AND_WITHDRAWAL. Không rút pending; Seller BANNED được rút toàn bộ available dương dưới 10.000đ, không rút một phần dưới ngưỡng; Seller ACTIVE giữ ngưỡng chung. Phiên chỉ đọc/ xử lý đúng dữ liệu nghĩa vụ thuộc chủ, không toàn bộ lịch sử.
 
@@ -630,9 +632,19 @@ Không có transaction chung Identity–Finance. Request phải kiểm tra quy�
 
 Access token chỉ ở memory. Khi tải lại trang, SPA gọi refresh với cookie để khôi phục phiên; không khôi phục token từ localStorage/sessionStorage. Một yêu cầu refresh đang chạy trong cùng SPA được chia sẻ cho các request đồng thời; tránh tự tạo nhiều lần rotation. Khi refresh thất bại, xóa phiên local và chuyển đăng nhập; không lặp refresh vô hạn. Nếu nhiều tab cùng xoay token, xử lý phối hợp hoặc yêu cầu đăng nhập lại an toàn; không nới kiểm tra reuse chỉ để tránh lỗi UI.
 
+Mỗi User chỉ một phiên; các tab chia sẻ cookie là cùng phiên. Login thành công, kể cả Google Should, thay hash/thời hạn và tạo sessionId mới trong một transaction. Login sai/lỗi xác minh nghĩa vụ không thay phiên. Hai login được tuần tự hóa trên User, lần ghi thành công sau cùng là phiên hiện hành.
+
 Refresh token do Identity đặt trong HttpOnly Secure Cookie, SameSite và Path theo cấu hình đã review. Triển khai ưu tiên SPA/API cùng site để giảm phức tạp cookie; nếu khác site cần review CORS/SameSite/CSRF riêng. Môi trường triển khai dùng HTTPS; cách hỗ trợ local phải có profile tường minh, không tắt Secure cho mọi môi trường.
 
-Endpoint dựa cookie phải kiểm tra Origin theo allowlist và có cơ chế CSRF được kiểm thử; CORS credentials không dùng wildcard. Logout thu hồi phiên rồi clear cookie đúng thuộc tính đã đặt. Refresh rotation cập nhật hash trong transaction; lưu dấu token đã xoay để nhận biết reuse theo chính sách được review. Không log token, resetUrl, password, presigned URL hoặc nội dung credential. Quên mật khẩu luôn trả cùng thông báo 202, kể cả email không tồn tại.
+Endpoint dựa cookie chỉ đọc HttpOnly `refresh_token`, kiểm tra Origin theo [quyết định 0001](../decisions/0001-refresh-cookie-va-origin.md) và có cơ chế CSRF được kiểm thử; CORS credentials không dùng wildcard. Token nguyên văn không vào DTO User/AuthTokens, log hay event. Quên mật khẩu luôn trả cùng thông báo 202, kể cả email không tồn tại.
+
+Theo [quyết định 0003](../decisions/0003-mot-phien-refresh-tren-user.md), User lưu `refresh_token_hash` TEXT NULL UNIQUE, `refresh_token_expires_at` TIMESTAMPTZ NULL và `session_id` UUID NULL UNIQUE, cùng có giá trị hoặc cùng NULL; không thêm refresh_token nguyên văn. Sau xác minh quyền/nghĩa vụ, refresh xoay hash và lưu dấu cũ trong cùng transaction, giữ sessionId, gia hạn từ thời điểm thành công theo TTL cấu hình; P-06 chưa chốt, 15 phút/7 ngày không phải giá trị bắt buộc mới. `rotated_refresh_tokens` giữ token_hash PK, user_id FK User, session_id, rotated_at; không FK AuthSession, không là phiên thứ hai; giữ toàn bộ dấu chuỗi khi phiên còn hiệu lực.
+
+Reuse token đã xoay đúng sessionId hiện hành phải commit xóa ba trường User rồi trả 401 INVALID_REFRESH_TOKEN. Token lạ/hết hạn/phiên bị thay trả 401 nhưng không xóa phiên mới. Hai refresh cùng token chỉ một lần xoay, lần còn lại thu hồi chuỗi do reuse; không grace period. Login/refresh/logout/thu hồi khóa hoặc cập nhật có điều kiện cùng User, kiểm tra lại hash/sessionId và version/trạng thái trước ghi. HTTP nghĩa vụ ngoài transaction giữ khóa; request cũ không ghi đè login mới.
+
+Logout không cần Bearer còn hạn, không nhận userId/sessionId client. Cookie hiện tại hoặc dấu đã xoay chỉ thu hồi khi đúng User và phiên hiện hành. Origin hợp lệ luôn trả 204 và clear cookie đúng Path/thuộc tính, kể cả thiếu/lạ/hết phiên; cookie cũ không xóa phiên mới. Origin sai trả 403, không thay dữ liệu.
+
+Đây là thiết kế cần triển khai, code/database hiện tại vẫn dùng AuthSession. Cutover dùng migration mới, thu hồi mọi phiên cũ để đăng nhập lại; chuyển lịch sử token và mọi caller/validator sang User rồi bỏ AuthSession, không duy trì hai nguồn trạng thái. Không log token, resetUrl, password, presigned URL hoặc nội dung credential.
 
 ### 6.4. Xác thực lời gọi nội bộ
 

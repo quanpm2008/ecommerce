@@ -365,7 +365,7 @@ Cách đọc: Mỗi use case trình bày mục tiêu, điều kiện, các bư�
 
 2. Hệ thống xác minh thông tin, vai trò tài khoản, trạng thái duyệt/cấm và quyền truy cập; đúng mật khẩu không đồng nghĩa được đăng nhập vào kênh khác.
 
-3. Nếu hợp lệ, hệ thống cho đăng nhập vào đúng kênh tài khoản và cấp quyền tương ứng. Không có đăng nhập dùng chung Customer/Seller/Administrator.
+3. Nếu hợp lệ, hệ thống tạo phiên mới cho đúng tài khoản/kênh: lưu hash/thời hạn refresh và sessionId mới trên User cùng transaction. Mỗi User chỉ một phiên; login mới (kể cả Google Should) thay phiên trước, access token phiên trước bị từ chối ở lần kiểm tra quyền tiếp theo dù chưa hết hạn. Không có đăng nhập dùng chung Customer/Seller/Administrator.
 
 4. BANNED nhận phiên giới hạn theo accessMode/allowlist UC-E03; Customer không được mua hoặc thanh toán mới.
 
@@ -383,6 +383,10 @@ Cách đọc: Mỗi use case trình bày mục tiêu, điều kiện, các bư�
 
 **Kết quả mong đợi:** Đúng loại tài khoản, quyền hiện hành theo UC-E03; không dựa vào lịch sử đã từng thanh toán hoặc chỉ trạng thái terminal của Order.
 
+**Vòng đời phiên theo [quyết định 0003](../decisions/0003-mot-phien-refresh-tren-user.md) — mục tiêu chưa triển khai:** refresh chỉ nhận cookie HttpOnly `refresh_token`, kiểm tra Origin theo quyết định 0001; không trả token nguyên văn qua JSON. Xác minh quyền/nghĩa vụ hiện hành rồi xoay hash và lưu dấu token cũ cùng transaction, giữ sessionId, gia hạn theo TTL cấu hình từ thời điểm thành công (P-06 chưa chốt). Giữ toàn bộ dấu chuỗi khi phiên còn hiệu lực. Dùng lại token đã xoay của đúng phiên hiện hành phải commit thu hồi phiên rồi trả 401 INVALID_REFRESH_TOKEN, không grace period; token lạ/hết hạn/thuộc phiên bị thay chỉ trả 401, không xóa phiên mới.
+
+Login sai hoặc lỗi xác minh nghĩa vụ không thay phiên hiện có. Login/refresh/logout/thu hồi phải tuần tự hóa trên cùng User và kiểm tra lại hash/sessionId, version/trạng thái trước ghi; HTTP nghĩa vụ ngoài transaction giữ khóa. Hai login giữ lần ghi thành công sau cùng; hai refresh cùng token chỉ một lần xoay, lần còn lại là reuse thu hồi chuỗi. Request refresh/logout cũ không được ghi đè login mới. Các tab chia sẻ cookie là một phiên và cần phối hợp refresh, không phải nhiều phiên thiết bị độc lập.
+
 #### UC-A04 | Đổi mật khẩu
 
 *Vai trò: Khách hàng (local), Người bán, Quản trị viên · Ưu tiên: M*
@@ -397,7 +401,7 @@ Cách đọc: Mỗi use case trình bày mục tiêu, điều kiện, các bư�
 
 2. Hệ thống kiểm tra mật khẩu hiện tại, yêu cầu về độ mạnh và việc mật khẩu mới khác mật khẩu cũ.
 
-3. Hệ thống xác nhận đổi mật khẩu thành công và yêu cầu các thiết bị đăng nhập khác đăng nhập lại.
+3. Hệ thống đổi mật khẩu và thu hồi phiên hiện hành trên User cùng transaction; access/refresh cũ không dùng lại, người dùng phải đăng nhập lại.
 
 **LUỒNG THAY THẾ / NGOẠI LỆ**
 
@@ -423,7 +427,7 @@ Cách đọc: Mỗi use case trình bày mục tiêu, điều kiện, các bư�
 
 4. Người dùng mở liên kết còn hiệu lực, đặt mật khẩu mới (đáp ứng các điều kiện) và nhận thông báo thành công.
 
-5. Hệ thống yêu cầu các phiên đăng nhập trước đó đăng nhập lại.
+5. Hệ thống thu hồi phiên hiện hành cùng transaction reset mật khẩu; không tạo phiên mới, người dùng phải đăng nhập lại.
 
 **LUỒNG THAY THẾ / NGOẠI LỆ**
 
@@ -475,15 +479,16 @@ Cách đọc: Mỗi use case trình bày mục tiêu, điều kiện, các bư�
 
 **LUỒNG CHÍNH**
 
-1. Hệ thống kết thúc phiên đăng nhập tại thiết bị hiện tại.
+1. Hệ thống chỉ đọc cookie `refresh_token` và kiểm tra Origin, không yêu cầu access token còn hạn. Token hiện tại hoặc dấu token đã xoay chỉ thu hồi khi đúng User và đúng sessionId hiện hành; xóa ba trường phiên trên User. Không nhận userId/sessionId từ client để chọn tài khoản.
 
 2. Màn hình quay về trạng thái chưa đăng nhập; các chức năng cần tài khoản yêu cầu đăng nhập lại.
 
 **LUỒNG THAY THẾ / NGOẠI LỆ**
 
-* Phiên hiện tại đã hết hạn: hệ thống vẫn xử lý thao tác đăng xuất như thành công.
+* Cookie thiếu/không biết, phiên hết hạn hoặc đã kết thúc: vẫn trả 204 và xóa cookie đúng Path/thuộc tính. Cookie phiên cũ không được xóa phiên mới.
+* Sai Origin: trả 403, không thay dữ liệu.
 
-**Kết quả mong đợi:** Việc đăng xuất một thiết bị không ảnh hưởng các thiết bị khác; phiên vừa đăng xuất không được dùng lại.
+**Kết quả mong đợi:** Logout hợp lệ Origin trả 204, clear cookie; phiên thu hồi không dùng lại cả access và refresh. Các tab chung cookie cùng một phiên và đều cần đăng nhập lại. Không cam kết các thiết bị của cùng User có phiên độc lập: đăng nhập mới đã thay phiên trước. Quy tắc theo [quyết định 0003](../decisions/0003-mot-phien-refresh-tren-user.md), chưa phải bằng chứng code đã triển khai.
 
 ### Nhóm B — Customer: mua sắm (đa-seller, tách đơn theo cửa hàng)
 

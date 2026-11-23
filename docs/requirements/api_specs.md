@@ -126,7 +126,7 @@ API v1.1 đồng bộ FRD v5.5 và Database v5.1. Auth và RBAC của v1.0 theo 
 
 * Gateway và service xác minh JWT bằng thuật toán cho phép, chữ ký, iss, aud, exp và sessionId. sub \= User.user\_id; không dùng X-Actor-Type để chọn bảng tài khoản. Gateway xóa mọi X-User-Id/X-Actor-Id/X-Actor-Type/X-Permissions từ client, chuyển tiếp Bearer và X-Request-Id qua kênh nội bộ tin cậy.
 
-* Mỗi service lấy sub từ JWT đã xác minh, gọi Identity authorization context để lấy trạng thái User, authzVersion, permissions và hồ sơ. Với API own, đối chiếu customerId/sellerId/recipientUserId của tài nguyên với sub; không tin owner ID trong body, query hay header client.
+* Mỗi service lấy sub từ JWT đã xác minh, gọi Identity authorization context để lấy trạng thái User, authzVersion, permissions và hồ sơ. Identity đối chiếu sessionId JWT với `User.session_id` hiện hành, khác hoặc NULL thì từ chối phiên. Với API own, đối chiếu customerId/sellerId/recipientUserId của tài nguyên với sub; không tin owner ID trong body, query hay header client.
 
 * MVP không cache quyền bảo vệ: Identity không sẵn sàng → 503 SERVICE\_UNAVAILABLE, không cho qua. Token authzVersion cũ → 401 TOKEN\_STALE để client refresh. Mọi API vẫn kiểm tra trạng thái nghiệp vụ và ownership; trước checkout/thu tiền/rút tiền kiểm tra quyền hiện hành, sau đó cập nhật có điều kiện trong transaction dữ liệu sở hữu.
 
@@ -153,7 +153,12 @@ Thay đổi không tương thích ngược (đổi tên field, đổi kiểu, b�
 
 * Vẫn dùng POST /identity/auth/login trên hạ tầng Identity, nhưng FE phải gửi accountType CUSTOMER/SELLER/ADMIN đúng kênh web app. Mỗi vai trò có user\_id/email/session riêng; sai loại tài khoản dù đúng mật khẩu trả INVALID\_CREDENTIALS chung, không gợi ý đăng ký Seller; không đăng nhập dùng chung đa vai trò.
 
-* Refresh: POST /identity/auth/refresh. Refresh token được xoay vòng (rotation): mỗi lần refresh trả token mới và vô hiệu token cũ.
+* Theo [quyết định 0003](../decisions/0003-mot-phien-refresh-tren-user.md), User là nguồn duy nhất của phiên hiện hành: `refresh_token_hash` TEXT NULL UNIQUE, `refresh_token_expires_at` TIMESTAMPTZ NULL và `session_id` UUID NULL UNIQUE; cả ba cùng NULL khi không có phiên, cùng có giá trị khi cấp phiên. Mỗi User tối đa một phiên; không lưu token nguyên văn. Đây là đích đặc tả, code/database hiện tại chưa chuyển khỏi AuthSession.
+* Login thành công (kể cả Google Should) tạo sessionId mới, thay hash/thời hạn nguyên tử trên User; phiên trước không refresh được và access token có sessionId cũ bị từ chối ở lần kiểm tra quyền tiếp theo dù chưa hết hạn. Login sai/kiểm tra nghĩa vụ lỗi giữ nguyên phiên. Hai login đồng thời được tuần tự hóa trên User, lần ghi thành công sau cùng là phiên hiện hành; không tăng authzVersion chỉ vì thay phiên.
+* Refresh POST /identity/auth/refresh chỉ đọc cookie, xoay token nhưng giữ sessionId; hạn mới bằng thời điểm refresh thành công cộng TTL refresh đang cấu hình. Không cố định ví dụ P-06 thành TTL bắt buộc.
+* Cookie `refresh_token` do Identity đặt qua `Set-Cookie`: `HttpOnly; Secure; SameSite=Strict; Path=/api/v1/identity/auth`. Login/Google/refresh cấp cookie, không trả refreshToken trong JSON, DTO User/AuthTokens, API quản trị, log hay sự kiện. Access token chỉ giữ trong memory FE. Profile local tường minh chỉ bỏ Secure cho http://localhost.
+* FE gửi `credentials: "include"` khi login/Google để nhận cookie và khi refresh/logout để gửi cookie. Refresh/logout bắt buộc Origin trong `IDENTITY_ALLOWED_ORIGINS`; thiếu/sai trả 403 FORBIDDEN, không thay dữ liệu. Gateway dùng cùng allowlist `GATEWAY_CORS_ALLOWED_ORIGINS`, bật allowCredentials, không wildcard và chuyển nguyên Cookie/Set-Cookie. Origin dev là http://localhost:5173; SPA/API khác site cần xem lại SameSite theo [0001](../decisions/0001-refresh-cookie-va-origin.md).
+* Login/refresh/logout/thu hồi phải khóa hoặc cập nhật có điều kiện trên cùng User, kiểm tra lại hash/sessionId trước ghi. HTTP kiểm tra nghĩa vụ nằm ngoài transaction giữ khóa; kiểm tra lại version/trạng thái trước commit để refresh/logout cũ không ghi đè login mới.
 
 * Refresh token thuộc đúng một tài khoản/accountType; login/refresh áp dụng cùng đánh giá nghĩa vụ G-14 bên dưới, kể cả DISABLED phải kiểm tra nghĩa vụ đến muộn trước khi từ chối. Seller PENDING/REJECTED không login; không hợp quyền giữa các tài khoản.
 
@@ -192,7 +197,7 @@ Policy nền theo accountType, không cấp seller:application:own cho mọi Use
 
 Với các API đọc checkout/payment của chính Customer, dùng order:read:own; API hủy checkout dùng order:cancel:own. Với Notification, notification:read:own bao gồm đọc/đánh dấu/xóa phần hiển thị của chính mình. API media kiểm tra purpose và quyền tương ứng. Không mở CRUD Role/Permission hoặc endpoint tự gán ADMIN trong MVP.
 
-Mỗi đổi UserRole/trạng thái truy cập tăng authzVersion trong transaction Identity và ghi audit/outbox. Thay RolePermission bằng migration phải tăng version mọi User liên quan. Phiên đã thu hồi và token version cũ bị chặn; refresh luôn tải lại quyền, không phát lại quyền từ token cũ.
+Mỗi đổi UserRole/trạng thái truy cập tăng authzVersion trong transaction Identity và ghi audit/outbox. Thay RolePermission bằng migration phải tăng version mọi User liên quan. Phiên đã thu hồi và token version cũ bị chặn; refresh luôn tải lại quyền, không phát lại quyền từ token cũ. Chuyển DISABLED xóa cả ba trường phiên trên User cùng transaction cập nhật trạng thái; tài khoản được mở lại do nghĩa vụ muộn phải đăng nhập để tạo phiên mới.
 
 G-14 chỉ tác động tài khoản đã chọn, không các tài khoản khác của cùng người. Quyền hiện hành theo §3.2; không hứa transaction nguyên tử xuyên service. Job Payment/Refund tiếp tục bằng danh tính service.
 
@@ -501,7 +506,7 @@ Mỗi use case có **một service owner** (service sở hữu dữ liệu chín
 
 | Service | Entity sở hữu | Không tự ý ghi |
 | :---- | :---- | :---- |
-| Identity & Seller | User, Customer, Seller, SellerApplication, CustomerAddress, Role, Permission, UserRole, RolePermission, AuthSession, PasswordResetToken, AdminAuditLog | Product, Order, Payment; service khác không sửa RBAC |
+| Identity & Seller | User (credential và phiên hiện hành), Customer, Seller, SellerApplication, CustomerAddress, Role, Permission, UserRole, RolePermission, rotated_refresh_tokens (dấu token chống reuse), PasswordResetToken, AdminAuditLog | Product, Order, Payment; service khác không sửa RBAC/phiên |
 | Product | Category, Product (gồm media JSONB), Review | Inventory, OrderItem |
 | Cart | Cart, CartItem | Order, Reservation |
 | Order | CheckoutSession, Order, OrderItem, Inventory, Reservation, StockMovement | Payment, Refund, Settlement, Wallet |
@@ -526,7 +531,7 @@ Mỗi service gồm: phạm vi, bảng endpoint, DTO và chi tiết endpoint. C�
 | 3 | POST | /identity/auth/google | Đăng ký / đăng nhập Customer bằng Google (Should) | PUBLIC | E06, A03 |
 | 4 | POST | /identity/auth/register-seller | Đăng ký bán hàng | PUBLIC | A02 |
 | 5 | POST | /identity/auth/refresh | Làm mới access token | PUBLIC | A03 |
-| 6 | POST | /identity/auth/logout | Đăng xuất thiết bị hiện tại | ANY\_AUTH (session own) | A07 |
+| 6 | POST | /identity/auth/logout | Thu hồi phiên hiện hành nếu cookie thuộc đúng phiên | PUBLIC (cookie + Origin; không cần Bearer) | A07 |
 | 7 | POST | /identity/auth/password/forgot | Yêu cầu đặt lại mật khẩu | PUBLIC | A05 |
 | 8 | POST | /identity/auth/password/reset | Đặt mật khẩu mới bằng liên kết | PUBLIC | A05 |
 | 9 | PUT | /identity/users/me/password | Đổi mật khẩu | account:update:own (LOCAL) | A04 |
@@ -564,7 +569,7 @@ Mỗi service gồm: phạm vi, bảng endpoint, DTO và chi tiết endpoint. C�
 | SellerPublic | sellerId, sellerName (users.full\_name), description, logoUrl (từ users.avatar\_object\_key). Không có sellers.logo\_object\_key hay sellerName/contactPhone riêng trong hồ sơ lưu trữ. |
 | SellerAdminView | {user:UserSummary,sellerProfile:SellerSelfProfile,reviewedByUserId,banImpact}; không credential/token |
 | Address | addressId, recipientName, recipientPhone, provinceCode, provinceName, wardCode, wardName, addressDetail, lastUsedAt, isDefault theo DB 3.1.4, createdAt |
-| AuthTokens | accessToken, accessTokenExpiresIn, refreshToken, tokenType=Bearer, accountType, accessMode, profile: UserSelfProfile. Backend phải kiểm tra quyền hiện tại, không tin quyền snapshot từ token. |
+| AuthTokens | accessToken, accessTokenExpiresIn, tokenType=Bearer, accountType, accessMode, profile: UserSelfProfile. Không có refreshToken; token này chỉ qua cookie HttpOnly. Không DTO hồ sơ/quản trị nào trả refresh_token_hash, refresh_token_expires_at hay session_id. Backend kiểm tra quyền hiện tại, không tin quyền snapshot từ token. |
 | UserSummary | userId,email,fullName,phoneNumber,accountType,accountStatus,userStatus,accessMode,bannedAt (nullable),disabledAt (nullable),restoreUntil (nullable),authzVersion; chỉ quản trị operations:read:any |
 | CustomerAdminView | {user:UserSummary,customerProfile,banReason,banImpact}; không banHistory/credential |
 | BanImpact | {evaluatedAt,resultingAccountStatus,obligations}; obligations = {hasOpenOrders,hasPendingPayment,hasUnresolvedRefund,hasPendingFinance,pendingBalanceVnd,availableBalanceVnd}; Customer có hasPendingFinance=false, hai số dư 0 |
@@ -631,14 +636,16 @@ POST /api/v1/identity/auth/register
 | :---- | :---- | :---- | :---- |
 | email | string | ✓ |  |
 | password | string | ✓ |  |
+| accountType | enum | ✓ | CUSTOMER / SELLER / ADMIN đúng kênh đăng nhập; sai loại trả INVALID_CREDENTIALS chung. |
 
 **Response thành công**
 
-200 AuthTokens gồm accountType/accessMode, profile chỉ chứa hồ sơ đúng tài khoản, không có cả CustomerProfile và SellerProfile.
+200 AuthTokens gồm accountType/accessMode, profile chỉ chứa hồ sơ đúng tài khoản, không có cả CustomerProfile và SellerProfile. Tạo/thay một phiên trên User theo §3.2 và đặt cookie; không trả refreshToken trong body. TTL dưới đây chỉ minh họa P-06 chưa chốt.
 
 ```text
 200 OK
-{ "data": { "accessToken": "eyJhbGciOi...", "accessTokenExpiresIn": 900, "refreshToken": "rt_7Hq...", "tokenType": "Bearer", "accountType": "SELLER", "accessMode": "FULL", "profile": { "userId": "0b6f...", "accountType": "SELLER", "roles": ["SELLER"], "permissions": ["order:fulfill:own", "withdrawal:create:own"], "authzVersion": 3, "customerProfile": null, "sellerProfile": { "sellerId": "0b6f...", "approvalStatus": "APPROVED", "status": "ACTIVE" } } } }
+Set-Cookie: refresh_token=<token>; HttpOnly; Secure; SameSite=Strict; Path=/api/v1/identity/auth
+{ "data": { "accessToken": "eyJhbGciOi...", "accessTokenExpiresIn": 900, "tokenType": "Bearer", "accountType": "SELLER", "accessMode": "FULL", "profile": { "userId": "0b6f...", "accountType": "SELLER", "roles": ["SELLER"], "permissions": ["order:fulfill:own", "withdrawal:create:own"], "authzVersion": 3, "customerProfile": null, "sellerProfile": { "sellerId": "0b6f...", "approvalStatus": "APPROVED", "status": "ACTIVE" } } } }
 ```
 
 **Lỗi nghiệp vụ**
@@ -667,7 +674,7 @@ POST /api/v1/identity/auth/register
 
 **Response thành công**
 
-200 → data: AuthTokens \+ isNewAccount: boolean
+200 → data: AuthTokens + isNewAccount: boolean; không có refreshToken trong JSON. Áp dụng cùng một phiên/User, transaction thay phiên và kiểm tra G-14 như login §3.2; thành công tạo sessionId mới và Set-Cookie đủ thuộc tính như ví dụ login. Thất bại không thay phiên hiện hành.
 
 **Lỗi nghiệp vụ**
 
@@ -711,43 +718,39 @@ POST /api/v1/identity/auth/register
 
 **Quyền: PUBLIC    UC: A03**
 
-* Xoay vòng refresh token. Token cũ dùng lại sau khi đã xoay → thu hồi toàn bộ chuỗi token đó (phát hiện đánh cắp).
+* Chỉ nhận `refresh_token` từ cookie, không nhận body hoặc token từ query/header khác; không yêu cầu Bearer. Origin/credentials và thuộc tính cookie theo §3.2.
+* Đối chiếu hash và hạn với User, xác minh quyền/nghĩa vụ rồi trong cùng transaction xoay hash, cập nhật hạn và ghi dấu token cũ vào `rotated_refresh_tokens`; giữ sessionId. Dấu gồm token_hash TEXT PK, user_id UUID FK User, session_id UUID, rotated_at TIMESTAMPTZ, không FK AuthSession. Giữ toàn bộ dấu của chuỗi khi phiên còn hiệu lực, kể cả khi gia hạn; đây không phải nguồn phiên thứ hai.
+* Reuse dấu token thuộc đúng `User.session_id` hiện hành: xóa cả ba trường phiên trên đúng User, commit thu hồi rồi trả 401 INVALID_REFRESH_TOKEN. Token không biết, hết hạn hoặc thuộc phiên đã bị thay thế trả 401 nhưng không xóa phiên mới. Hai refresh đồng thời cùng token chỉ một lần xoay thành công; lần còn lại là reuse và thu hồi chuỗi, không grace period. Các tab phải phối hợp refresh theo SAD §6.3.
 
 * Refresh dùng cùng G-14 §3.2, kiểm tra accountType/approval và Order/Payment/Refund/Finance kể cả DISABLED; nguồn lỗi 503 không mở rộng quyền.
 
-**Request body (application/json)**
-
-| Field | Kiểu | Bắt buộc | Validation / ghi chú |
-| :---- | :---- | :---- | :---- |
-| refreshToken | string | ✓ |  |
+**Request:** không có body. Header Cookie chứa `refresh_token`; Origin hợp lệ bắt buộc.
 
 **Response thành công**
 
-200 → data: AuthTokens với UserSelfProfile, roles và permissions hiện hành; không sao chép role từ access token cũ.
+200 → data: AuthTokens với UserSelfProfile, roles và permissions hiện hành; không sao chép role từ access token cũ, không có refreshToken trong JSON. Set-Cookie token mới với đầy đủ thuộc tính §3.2.
 
 **Lỗi nghiệp vụ**
 
 * INVALID\_REFRESH\_TOKEN (401)
 
-* INVALID\_REFRESH\_TOKEN (401) nếu phiên không còn hiệu lực.
+* FORBIDDEN (403) nếu Origin thiếu hoặc ngoài allowlist; không xoay/thu hồi phiên.
 
 * ACCOUNT_DISABLED (403) sau đối soát không có nghĩa vụ muộn; SELLER_PENDING_APPROVAL/SELLER_REJECTED (403); SERVICE_UNAVAILABLE (503) khi nguồn nghĩa vụ lỗi. Không cấp token quyền rộng hơn khi chưa xác minh.
 
-##### POST /identity/auth/logout — Đăng xuất thiết bị hiện tại
+##### POST /identity/auth/logout — Đăng xuất phiên hiện hành
 
-**Quyền: ANY\_AUTH (session own)    UC: A07**
+**Quyền: PUBLIC (cookie + Origin; không cần Bearer)    UC: A07**
 
-* Thu hồi AuthSession gửi lên sau khi xác minh refresh token thuộc cùng User/session; token đã hết hạn/đã logout vẫn trả 204\. Không cho dùng token người khác để thu hồi phiên không thuộc mình.
+* Chỉ đọc cookie `refresh_token`, không nhận body, userId hay sessionId từ client; không cần access token còn hạn. Kiểm tra Origin theo §3.2 trước khi thay dữ liệu.
+* Token hiện tại hoặc dấu token đã xoay chỉ được thu hồi khi xác định thuộc đúng User và đúng `User.session_id` hiện hành. Xóa cả ba trường phiên nguyên tử sau khi khóa/kiểm tra lại; cookie của phiên cũ không được xóa phiên mới, kể cả logout chạy đồng thời login.
+* Cookie thiếu, token không biết hoặc phiên đã kết thúc đều trả 204 như thành công; không tiết lộ tài khoản/phiên. Sai Origin trả 403 FORBIDDEN, không thay dữ liệu.
 
-**Request body (application/json)**
-
-| Field | Kiểu | Bắt buộc | Validation / ghi chú |
-| :---- | :---- | :---- | :---- |
-| refreshToken | string | ✓ |  |
+**Request:** không có body. Cookie và Origin; FE dùng credentials: "include".
 
 **Response thành công**
 
-204
+204, không body; xóa cookie bằng `Set-Cookie: refresh_token=; Max-Age=0; HttpOnly; Secure; SameSite=Strict; Path=/api/v1/identity/auth` (ngoại lệ Secure local như §3.2). Cookie thiếu/không biết/phiên cũ cũng được xóa với cùng Path/thuộc tính.
 
 ##### POST /identity/auth/password/forgot — Yêu cầu đặt lại mật khẩu
 
@@ -775,7 +778,7 @@ POST /api/v1/identity/auth/register
 
 **Quyền: PUBLIC    UC: A05**
 
-* Token dùng một lần, cập nhật password\_hash của User LOCAL và thu hồi mọi AuthSession; GOOGLE không tạo mật khẩu LOCAL qua reset.
+* Token dùng một lần; cập nhật password_hash của User LOCAL, tiêu thụ reset token và xóa cả ba trường phiên hiện hành trên User trong cùng transaction; GOOGLE không tạo mật khẩu LOCAL qua reset. Không tạo phiên mới, access token cũ bị từ chối qua sessionId/authzVersion hiện hành.
 
 **Request body (application/json)**
 
@@ -799,7 +802,7 @@ POST /api/v1/identity/auth/register
 
 **Quyền: account:update:own (LOCAL)    UC: A04**
 
-* Thay mật khẩu User LOCAL; thu hồi mọi phiên của User, kể cả phiên hiện tại. Thành công trả 204, FE yêu cầu login lại.
+* Thay mật khẩu User LOCAL và xóa cả ba trường phiên hiện hành trên User trong cùng transaction, kể cả phiên đang gọi; access token cũ bị từ chối qua sessionId/authzVersion hiện hành. Thành công trả 204, FE yêu cầu login lại.
 
 * Tài khoản Google → 403 FORBIDDEN (FE ẩn chức năng này).
 
@@ -2824,7 +2827,7 @@ Base /internal/v1, chỉ gọi bởi service đã xác thực (mTLS hoặc token
 
 | Provider | Method \+ Path | Consumer | Mục đích / response chính |
 | :---- | :---- | :---- | :---- |
-| Identity | POST /identity/auth/authorization-context | Gateway, mọi service bảo vệ | Bearer + service credential → {userId,accountType,accountStatus,userStatus,accessMode,bannedAt,disabledAt,restoreUntil,authzVersion,roles[],permissions[],customerProfile,sellerProfile,sessionActive}; ba mốc nullable; kiểm tra sessionId/version và allowlist G-14 hiện hành. |
+| Identity | POST /identity/auth/authorization-context | Gateway, mọi service bảo vệ | Bearer + service credential → {userId,accountType,accountStatus,userStatus,accessMode,bannedAt,disabledAt,restoreUntil,authzVersion,roles[],permissions[],customerProfile,sellerProfile,sessionActive}; ba mốc nullable; sessionId JWT phải khớp `User.session_id` khác NULL và phiên chưa hết hạn/thu hồi; kiểm tra authzVersion và allowlist G-14 hiện hành. sessionActive không dựa bảng phiên cũ; không trả hash/token hay các trường lưu phiên. |
 | Identity | GET /identity/sellers/status?ids= | Product, Cart, Order, Finance | \[{ sellerId, userId, userStatus, approvalStatus, status, sellerRoleActive, sellable }\]; no credential/PII; quyết định hiện hành không cache quyền. |
 | Identity | GET /identity/customers/{id}/checkout-eligibility | Order, Payment | { userId, userStatus, customerStatus, paymentBlocked, hasPhone, addressCount, canCheckout, authzVersion }; xác minh quyền và Customer. |
 | Identity | GET /identity/customers/{id}/addresses/{addressId} | Order | Snapshot recipientName, recipientPhone, provinceCode, provinceName, wardCode, wardName, addressDetail; mã/tên từ cùng danh mục seed DB Identity, 404 nếu không thuộc Customer. |
@@ -3011,6 +3014,7 @@ Các quyết định tiền/tồn còn hiệu lực từ bản trước. Bản v
 
 | Phiên bản | Ngày | Nội dung | Người sửa |
 | :---- | :---- | :---- | :---- |
+| Quyết định 0003 | 23/11/2026 | Đích đặc tả một phiên/User, cookie-only refresh/logout theo 0001; bỏ refreshToken JSON; rotation/reuse, cô lập phiên cũ, password/disable revocation, authorization-context, cutover và tiêu chí chấp nhận. Chỉ sửa tài liệu, chưa triển khai code/database/OpenAPI sinh từ code. | — |
 | Thẻ 15 | 17/11/2026 | Đặc tả vòng đời cấm/nghĩa vụ/30 ngày, DTO/preview, internal obligations/J7/events, rút toàn bộ số dư nhỏ, provision HIDDEN và trigger invalid sau capture; authority [coverage §the-15](coverage.md#the-15). Không xác nhận runtime. |
 | v0.3 (draft) | 19/10/2026 | Đồng bộ FRD v5.3 / Database v4.6: chốt C-02, C-03, C-04 (theo FRD), C-10 (theo Database), C-06 chốt sau, C-07 đã xử lý; mọi tham chiếu FRD 4.x đổi sang mục Database (DB x.y, G-xx, WD-xx); bỏ endpoint công khai /payments/provider/mock/callback; thay Mock Provider bằng bộ giả lập thanh toán nội bộ (6.5.1), mockScenario → simulatorScenario, provider \= SIMULATOR, thêm kịch bản REFUND\_FAIL và lộ trình hai giai đoạn. | Claude, chờ nhóm review |
 | v0.2 (draft) | 18/10/2026 | Đồng bộ Database v4.6: bỏ mọi tham chiếu Payout; enum WalletTransactionType, RefundReason, SettlementStatus và DTO Wallet/WalletTransaction/Settlement/Withdrawal theo tên field DB; Settlement không còn customerConfirmDueAt; luồng hoàn tiền theo DB (REFUND\_DEBIT khi Refund SUCCESS); cập nhật C-01, C-10, C-11, C-13. | Claude, chờ nhóm review |
@@ -3035,7 +3039,7 @@ Các comment gốc được giữ và neo tại các dòng đối chiếu dướ
 
 ### 10.4 Tác động lên schema và chuyển đổi API
 
-Database RBAC v5.0 là nền: User/Customer/Seller shared PK, bốn bảng RBAC, AuthSession, PasswordResetToken.user\_id, reviewed\_by\_user\_id, recipient\_user\_id và audience\_context đã được mô tả. Bản API này không sửa trực tiếp file database đã giao; các bổ sung dưới đây cần được đưa vào migration/đặc tả DB khi triển khai.
+Database RBAC là nền cho User/Customer/Seller shared PK, bốn bảng RBAC, PasswordResetToken.user_id, reviewed_by_user_id, recipient_user_id và audience_context. Riêng phiên áp dụng [0003](../decisions/0003-mot-phien-refresh-tren-user.md), thay mô hình AuthSession lịch sử. Đây là đích tài liệu; không xác nhận code/database/OpenAPI sinh từ code đã triển khai.
 
 | Thành phần | Đồng bộ bắt buộc |
 | :---- | :---- |
@@ -3044,12 +3048,17 @@ Database RBAC v5.0 là nền: User/Customer/Seller shared PK, bốn bảng RBAC,
 | User/Customer/Seller API | Credential lưu tại users của MỖI tài khoản tách vai trò; accountType là cột bắt buộc, tối đa một role hiện hành/User. DTO có avatarObjectKey/avatarUrl từ users.avatar\_object\_key; Seller logoUrl lấy cùng ảnh này, không còn sellers.logo\_object\_key. |
 | Product Review | Không còn public update/my-reviews; UNIQUE(customer\_id, product\_id) giữ nguyên. updated\_at có thể giữ để tương thích DB, không tạo endpoint sửa chỉ vì có cột. |
 | Danh mục địa giới DB Identity | Nạp mã/tên tỉnh, phường/xã/đặc khu, quan hệ thuộc tỉnh và phiên bản seed; API/validation cùng dữ liệu, không tích hợp RegionProvider; Order snapshot cả mã/tên. |
-| AuthSession và event | Session ID trong JWT thuộc duy nhất một accountType. Login/refresh kiểm tra quyền phiên giới hạn; logout/reset/disable thu hồi đúng tài khoản. Event truyền userId của tài khoản riêng, không cộng gộp role. |
+| Phiên User và event | Thêm refresh_token_hash TEXT NULL UNIQUE, refresh_token_expires_at TIMESTAMPTZ NULL, session_id UUID NULL UNIQUE; ràng buộc cả ba cùng NULL hoặc cùng có giá trị. rotated_refresh_tokens lưu token_hash TEXT PK, user_id UUID FK User, session_id UUID, rotated_at TIMESTAMPTZ, không FK AuthSession. Session ID thuộc đúng tài khoản/accountType; login thay phiên, refresh giữ mã; logout/reset/password/disable thu hồi đúng tài khoản. Event chỉ truyền danh tính/quyền, không token/hash. |
+| Cutover phiên | Khi triển khai dùng migration mới, không sửa V1–V11 đã áp dụng. Thu hồi mọi AuthSession cũ để yêu cầu login lại, không chọn giữ một thiết bị; chuyển dấu token sang cấu trúc mới và bỏ AuthSession sau khi mọi caller/validator chuyển sang User. Không vận hành hai nguồn phiên. Phạm vi hiện tại không đổi code, migration, OpenAPI sinh từ code hay Supabase. |
 | Thay đổi breaking | Breaking v1.1: login yêu cầu accountType và tài khoản riêng, không bổ sung role Customer/Seller trên User cũ, Seller reapplication public qua email, AVATAR dùng users.avatar\_object\_key, ban/withdraw hạn chế theo nghĩa vụ. Giữ UUID orderId/checkoutSessionId; FE/BE cần cập nhật OpenAPI đồng bộ. |
 
 ### 10.5 Kiểm thử chấp nhận RBAC và comment
 
 Ba tài khoản Customer/Seller/Admin độc lập; login sai accountType báo INVALID\_CREDENTIALS chung; Seller PENDING/REJECTED không đăng nhập; Seller REJECTED nộp SellerApplication mới qua email verification; chỉ Seller APPROVED được cấm. Token cũ/sai role bị từ chối; backend không tự nâng role.
+
+Tiêu chí 0003 (đích triển khai, chưa chạy): login LOCAL/Google thành công thay sessionId/hash/hạn, chỉ một phiên/User; sai mật khẩu/accountType/nguồn nghĩa vụ lỗi không thay phiên; hai login đồng thời chỉ phiên ghi sau hiệu lực. Access token phiên cũ bị chặn ngay ở kiểm tra quyền kế tiếp; không tăng authzVersion chỉ vì login. User/DTO quản trị/log/event/JSON không lộ refresh token/hash; Set-Cookie đủ thuộc tính, FE credentials và CORS allowlist đúng; thiếu/sai Origin refresh/logout trả 403 không ghi dữ liệu.
+
+Refresh giữ sessionId, gia hạn theo TTL cấu hình và lưu toàn chuỗi dấu; hai refresh cùng token chỉ một lần xoay, reuse hiện hành commit thu hồi trước 401, không grace period. Token không biết/hết hạn/phiên cũ trả 401 nhưng không ảnh hưởng phiên mới. Logout không body/không Bearer vẫn trả 204 và xóa cookie đúng thuộc tính khi cookie thiếu/không biết/đã kết thúc; token hiện tại hoặc đã xoay chỉ thu hồi đúng User/phiên hiện hành. Refresh/logout chạy chồng login không ghi đè phiên mới. Password/reset/DISABLED xóa đủ ba trường nguyên tử; reset không cấp phiên; authorization-context từ chối sessionId khác/NULL. Cutover thu hồi toàn bộ phiên cũ, không giữ song song hai nguồn.
 
 Tiêu chí Thẻ 15 B1–B11: chỉ CONFIRMED+hết nghĩa vụ →DISABLED/thu hồi phiên; PAID/DELIVERED →BANNED đúng chủ, hủy/xác nhận theo state, không mua/review. CANCELLED+Refund FAILED vẫn BANNED đọc nghĩa vụ; hết lượt retry →OPEN_ORDERS_ONLY với refund:retry:own của chủ Payment. Seller pending/effect chưa apply →OBLIGATIONS_READ_ONLY, không rút pending; BANNED available=9500 rút 9500, không 5000, ACTIVE không ngoại lệ. Hết nghĩa vụ/J7 lặp chỉ DISABLED một lần, không đổi mốc/ledger. Unban đúng restoreUntil →200 ACTIVE, sau 1 giây →409 ACCOUNT_RESTORE_WINDOW_EXPIRED; tiền/dữ liệu nguyên; BANNED hơn 30 ngày chưa DISABLED vẫn unban. Lỗi nguồn →503/giữ trạng thái, không ban một phần; job không ghi đè Admin unban. Nghĩa vụ muộn mở lại BANNED giới hạn giữ mốc; ADMIN/PENDING/REJECTED không bị cấm qua UC-E03.
 

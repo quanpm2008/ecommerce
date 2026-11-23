@@ -575,6 +575,12 @@ flowchart LR
 
 Thiết kế quyền hiện hành theo [SAD §6.2](software-architecture.md): ban không chọn scope; Identity suy ra accountStatus từ User/profile, hỏi Order và Finance qua API nghĩa vụ khi ban/login/refresh và J7. Chỉ DISABLED khi xác minh hết nghĩa vụ; nguồn lỗi giữ trạng thái/retry, không giả zero. Nghĩa vụ đến muộn mở lại BANNED giới hạn, không unban; timestamp của đợt cấm không được gia hạn. J7 do Identity sở hữu, không tự hủy đơn hoặc sửa số dư; đây là đặc tả chưa phải bằng chứng component hiện tại đã triển khai.
 
+**Thiết kế phiên mục tiêu, chưa có trong code:** [quyết định 0003](../decisions/0003-mot-phien-refresh-tren-user.md) thay AuthSession bằng `users.refresh_token_hash`, `refresh_token_expires_at`, `session_id` (cùng NULL hoặc cùng có giá trị). User là nguồn duy nhất cho một phiên hiện hành; bảng `rotated_refresh_tokens` chỉ giữ dấu chống reuse gắn user_id/session_id, không FK AuthSession. Sơ đồ trên vẫn mô tả component theo code hiện có, không khẳng định repository/validator đã chuyển.
+
+Khi triển khai, SessionService cấp phiên bằng cập nhật User; login thành công tạo sessionId mới, kết thúc access/refresh trước đó; refresh giữ sessionId, xoay hash/lưu dấu trong cùng transaction sau kiểm tra quyền/nghĩa vụ. SecurityConfig và AuthorizationContextService phải đối chiếu sessionId với User và authzVersion hiện hành ở lần kiểm tra quyền tiếp theo, không chỉ kiểm tra chữ ký/hạn JWT hoặc AuthSession. Reuse đúng phiên hiện hành commit thu hồi rồi 401; token phiên cũ không xóa phiên mới. Login/refresh/logout/thu hồi tuần tự hóa trên cùng User, kiểm tra lại hash/sessionId/version trước ghi; HTTP nghĩa vụ ngoài transaction giữ khóa.
+
+Cookie HttpOnly và kiểm tra Origin giữ theo quyết định 0001/[SAD §6.3](software-architecture.md). Logout cookie-only không cần Bearer còn hạn; Origin hợp lệ trả 204 và clear cookie cả khi thiếu/lạ/hết phiên, chỉ thu hồi đúng phiên hiện hành. Đổi/reset mật khẩu hoặc DISABLED xóa ba trường cùng transaction cập nhật User; reset không cấp phiên mới. Cutover phải thu hồi toàn bộ phiên cũ, chuyển mọi caller/validator rồi bỏ AuthSession bằng migration mới; phạm vi hiện tại chỉ sửa tài liệu.
+
 ### 3.8.2. Product Service
 
 Thiết kế đề xuất tách quản lý sản phẩm/danh mục, tìm kiếm, đánh giá và media. Tồn kho vẫn thuộc Order; Product chỉ gọi API, không tự ghi Inventory.

@@ -75,6 +75,7 @@ P-01 vẫn tạm 15 phút/chưa chốt; không suy dung lượng/định dạng/
   ID theo API §3.10, chưa có bằng chứng toàn đường Gateway.
 - Không log token/password/resetUrl/presigned URL/credential. Refresh cookie,
   CSRF/CORS và service allowlist: xem identity REQ-IDN-006/007, SAD §6.1–6.4.
+- [Quyết định 0003](decisions/0003-mot-phien-refresh-tren-user.md): đặc tả mới chỉ có một phiên hiện hành trên User (`refresh_token_hash`, `refresh_token_expires_at`, `session_id`), không lưu raw token; giữ dấu reuse và cookie/Origin theo 0001. Login mới thay phiên trước; validator kiểm tra session_id hiện hành để chặn cả access token cũ. Code và Supabase vẫn dùng AuthSession; task tài liệu này không chạy migration. Khi triển khai phải chuyển mọi caller và bỏ AuthSession, không giữ hai nguồn phiên hiệu lực.
 - Service credential là bắt buộc; định dạng JWT ký bất đối xứng/header/rotation
   cụ thể trong SAD A.3 còn đề xuất. Không tự thay token chuỗi dev bằng giao thức mới.
 - Đổi API/schema/event phải đồng bộ consumer và test; DELTA-01…09 nằm trong
