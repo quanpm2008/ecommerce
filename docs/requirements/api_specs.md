@@ -531,7 +531,7 @@ Mỗi service gồm: phạm vi, bảng endpoint, DTO và chi tiết endpoint. C�
 | 3 | POST | /identity/auth/google | Đăng ký / đăng nhập Customer bằng Google (Should) | PUBLIC | E06, A03 |
 | 4 | POST | /identity/auth/register-seller | Đăng ký bán hàng | PUBLIC | A02 |
 | 5 | POST | /identity/auth/refresh | Làm mới access token | PUBLIC | A03 |
-| 6 | POST | /identity/auth/logout | Thu hồi phiên hiện hành nếu cookie thuộc đúng phiên | PUBLIC (cookie + Origin; không cần Bearer) | A07 |
+| 6 | POST | /identity/auth/logout | Thu hồi phiên hiện hành nếu Bearer và cookie cùng chủ/phiên | ANY_AUTH (session own; Bearer + cookie + Origin) | A07 |
 | 7 | POST | /identity/auth/password/forgot | Yêu cầu đặt lại mật khẩu | PUBLIC | A05 |
 | 8 | POST | /identity/auth/password/reset | Đặt mật khẩu mới bằng liên kết | PUBLIC | A05 |
 | 9 | PUT | /identity/users/me/password | Đổi mật khẩu | account:update:own (LOCAL) | A04 |
@@ -740,13 +740,13 @@ Set-Cookie: refresh_token=<token>; HttpOnly; Secure; SameSite=Strict; Path=/api/
 
 ##### POST /identity/auth/logout — Đăng xuất phiên hiện hành
 
-**Quyền: PUBLIC (cookie + Origin; không cần Bearer)    UC: A07**
+**Quyền: ANY_AUTH (session own; Bearer + cookie + Origin)    UC: A07**
 
-* Chỉ đọc cookie `refresh_token`, không nhận body, userId hay sessionId từ client; không cần access token còn hạn. Kiểm tra Origin theo §3.2 trước khi thay dữ liệu.
-* Token hiện tại hoặc dấu token đã xoay chỉ được thu hồi khi xác định thuộc đúng User và đúng `User.session_id` hiện hành. Xóa cả ba trường phiên nguyên tử sau khi khóa/kiểm tra lại; cookie của phiên cũ không được xóa phiên mới, kể cả logout chạy đồng thời login.
-* Cookie thiếu, token không biết hoặc phiên đã kết thúc đều trả 204 như thành công; không tiết lộ tài khoản/phiên. Sai Origin trả 403 FORBIDDEN, không thay dữ liệu.
+* Bắt buộc `Authorization: Bearer <accessToken>` hợp lệ; User/sessionId lấy từ token đã xác minh, không nhận body hoặc userId/sessionId trong query. Refresh token chỉ đọc từ cookie `refresh_token`. Kiểm tra Origin theo §3.2 trước khi thay dữ liệu.
+* Cookie hiện tại hoặc dấu đã xoay chỉ được thu hồi khi khớp User/sessionId trong Bearer và `User.session_id` hiện hành. Xóa cả ba trường phiên nguyên tử sau khi khóa/kiểm tra lại; cookie hoặc Bearer của phiên cũ không được xóa phiên mới, kể cả logout chạy đồng thời login.
+* Sau khi qua xác thực Bearer và Origin, cookie thiếu/không biết/không khớp trả 204 và clear cookie, không thu hồi phiên khác. Thiếu/sai/hết hạn Bearer hoặc Bearer của phiên đã kết thúc/bị thay trả 401; sai Origin trả 403 FORBIDDEN, không thay dữ liệu.
 
-**Request:** không có body. Cookie và Origin; FE dùng credentials: "include".
+**Request:** không có body. Header Authorization Bearer, cookie và Origin; FE dùng credentials: "include".
 
 **Response thành công**
 
@@ -3014,7 +3014,7 @@ Các quyết định tiền/tồn còn hiệu lực từ bản trước. Bản v
 
 | Phiên bản | Ngày | Nội dung | Người sửa |
 | :---- | :---- | :---- | :---- |
-| Quyết định 0003 | 23/11/2026 | Đích đặc tả một phiên/User, cookie-only refresh/logout theo 0001; bỏ refreshToken JSON; rotation/reuse, cô lập phiên cũ, password/disable revocation, authorization-context, cutover và tiêu chí chấp nhận. Chỉ sửa tài liệu, chưa triển khai code/database/OpenAPI sinh từ code. | — |
+| Quyết định 0003 | 23/11/2026 | Đích đặc tả một phiên/User; refresh chỉ dùng cookie, logout giữ ANY_AUTH (session own), Bearer + cookie + Origin theo contract hiện có; bỏ refreshToken JSON; rotation/reuse, cô lập phiên cũ, password/disable revocation, authorization-context, cutover và tiêu chí chấp nhận. Chỉ sửa tài liệu, chưa triển khai code/database/OpenAPI sinh từ code. | — |
 | Thẻ 15 | 17/11/2026 | Đặc tả vòng đời cấm/nghĩa vụ/30 ngày, DTO/preview, internal obligations/J7/events, rút toàn bộ số dư nhỏ, provision HIDDEN và trigger invalid sau capture; authority [coverage §the-15](coverage.md#the-15). Không xác nhận runtime. |
 | v0.3 (draft) | 19/10/2026 | Đồng bộ FRD v5.3 / Database v4.6: chốt C-02, C-03, C-04 (theo FRD), C-10 (theo Database), C-06 chốt sau, C-07 đã xử lý; mọi tham chiếu FRD 4.x đổi sang mục Database (DB x.y, G-xx, WD-xx); bỏ endpoint công khai /payments/provider/mock/callback; thay Mock Provider bằng bộ giả lập thanh toán nội bộ (6.5.1), mockScenario → simulatorScenario, provider \= SIMULATOR, thêm kịch bản REFUND\_FAIL và lộ trình hai giai đoạn. | Claude, chờ nhóm review |
 | v0.2 (draft) | 18/10/2026 | Đồng bộ Database v4.6: bỏ mọi tham chiếu Payout; enum WalletTransactionType, RefundReason, SettlementStatus và DTO Wallet/WalletTransaction/Settlement/Withdrawal theo tên field DB; Settlement không còn customerConfirmDueAt; luồng hoàn tiền theo DB (REFUND\_DEBIT khi Refund SUCCESS); cập nhật C-01, C-10, C-11, C-13. | Claude, chờ nhóm review |
@@ -3058,7 +3058,7 @@ Ba tài khoản Customer/Seller/Admin độc lập; login sai accountType báo I
 
 Tiêu chí 0003 (đích triển khai, chưa chạy): login LOCAL/Google thành công thay sessionId/hash/hạn, chỉ một phiên/User; sai mật khẩu/accountType/nguồn nghĩa vụ lỗi không thay phiên; hai login đồng thời chỉ phiên ghi sau hiệu lực. Access token phiên cũ bị chặn ngay ở kiểm tra quyền kế tiếp; không tăng authzVersion chỉ vì login. User/DTO quản trị/log/event/JSON không lộ refresh token/hash; Set-Cookie đủ thuộc tính, FE credentials và CORS allowlist đúng; thiếu/sai Origin refresh/logout trả 403 không ghi dữ liệu.
 
-Refresh giữ sessionId, gia hạn theo TTL cấu hình và lưu toàn chuỗi dấu; hai refresh cùng token chỉ một lần xoay, reuse hiện hành commit thu hồi trước 401, không grace period. Token không biết/hết hạn/phiên cũ trả 401 nhưng không ảnh hưởng phiên mới. Logout không body/không Bearer vẫn trả 204 và xóa cookie đúng thuộc tính khi cookie thiếu/không biết/đã kết thúc; token hiện tại hoặc đã xoay chỉ thu hồi đúng User/phiên hiện hành. Refresh/logout chạy chồng login không ghi đè phiên mới. Password/reset/DISABLED xóa đủ ba trường nguyên tử; reset không cấp phiên; authorization-context từ chối sessionId khác/NULL. Cutover thu hồi toàn bộ phiên cũ, không giữ song song hai nguồn.
+Refresh giữ sessionId, gia hạn theo TTL cấu hình và lưu toàn chuỗi dấu; hai refresh cùng token chỉ một lần xoay, reuse hiện hành commit thu hồi trước 401, không grace period. Token không biết/hết hạn/phiên cũ trả 401 nhưng không ảnh hưởng phiên mới. Logout không body nhưng bắt buộc Bearer hợp lệ và Origin; cookie hiện tại hoặc đã xoay phải khớp User/sessionId từ Bearer và phiên hiện hành mới thu hồi. Sau xác thực Bearer/Origin, cookie thiếu/không biết/cũ vẫn 204/clear cookie, không thu hồi phiên khác; thiếu/sai/hết hạn Bearer hoặc Bearer phiên bị thay trả 401, sai Origin 403 không ghi dữ liệu. Refresh/logout chạy chồng login không ghi đè phiên mới. Password/reset/DISABLED xóa đủ ba trường nguyên tử; reset không cấp phiên; authorization-context từ chối sessionId khác/NULL. Cutover thu hồi toàn bộ phiên cũ, không giữ song song hai nguồn.
 
 Tiêu chí Thẻ 15 B1–B11: chỉ CONFIRMED+hết nghĩa vụ →DISABLED/thu hồi phiên; PAID/DELIVERED →BANNED đúng chủ, hủy/xác nhận theo state, không mua/review. CANCELLED+Refund FAILED vẫn BANNED đọc nghĩa vụ; hết lượt retry →OPEN_ORDERS_ONLY với refund:retry:own của chủ Payment. Seller pending/effect chưa apply →OBLIGATIONS_READ_ONLY, không rút pending; BANNED available=9500 rút 9500, không 5000, ACTIVE không ngoại lệ. Hết nghĩa vụ/J7 lặp chỉ DISABLED một lần, không đổi mốc/ledger. Unban đúng restoreUntil →200 ACTIVE, sau 1 giây →409 ACCOUNT_RESTORE_WINDOW_EXPIRED; tiền/dữ liệu nguyên; BANNED hơn 30 ngày chưa DISABLED vẫn unban. Lỗi nguồn →503/giữ trạng thái, không ban một phần; job không ghi đè Admin unban. Nghĩa vụ muộn mở lại BANNED giới hạn giữ mốc; ADMIN/PENDING/REJECTED không bị cấm qua UC-E03.
 

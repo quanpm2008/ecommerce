@@ -475,20 +475,20 @@ Login sai hoặc lỗi xác minh nghĩa vụ không thay phiên hiện có. Logi
 
 **Mục tiêu:** Người dùng kết thúc phiên đăng nhập trên thiết bị đang dùng.
 
-**Điều kiện:** Người dùng chọn “Đăng xuất”.
+**Điều kiện:** Người dùng chọn “Đăng xuất”; API giữ ANY_AUTH (session own), cần Bearer hợp lệ, cookie refresh và Origin trong allowlist.
 
 **LUỒNG CHÍNH**
 
-1. Hệ thống chỉ đọc cookie `refresh_token` và kiểm tra Origin, không yêu cầu access token còn hạn. Token hiện tại hoặc dấu token đã xoay chỉ thu hồi khi đúng User và đúng sessionId hiện hành; xóa ba trường phiên trên User. Không nhận userId/sessionId từ client để chọn tài khoản.
+1. Hệ thống xác minh Bearer hợp lệ và Origin, lấy User/sessionId từ Bearer; refresh token chỉ đọc từ cookie `refresh_token`. Chỉ khi cookie hiện tại hoặc dấu đã xoay khớp cả chủ thể Bearer và phiên User hiện hành mới xóa ba trường phiên trên User. Không nhận userId/sessionId trong body/query để chọn tài khoản.
 
 2. Màn hình quay về trạng thái chưa đăng nhập; các chức năng cần tài khoản yêu cầu đăng nhập lại.
 
 **LUỒNG THAY THẾ / NGOẠI LỆ**
 
-* Cookie thiếu/không biết, phiên hết hạn hoặc đã kết thúc: vẫn trả 204 và xóa cookie đúng Path/thuộc tính. Cookie phiên cũ không được xóa phiên mới.
-* Sai Origin: trả 403, không thay dữ liệu.
+* Sau khi qua xác thực Bearer và Origin, cookie thiếu/không biết/không khớp vẫn trả 204 và xóa cookie đúng Path/thuộc tính, không thu hồi phiên khác. Cookie phiên cũ không xóa phiên mới.
+* Thiếu/sai/hết hạn Bearer hoặc Bearer của phiên đã kết thúc/bị thay trả 401; sai Origin trả 403, không thay dữ liệu.
 
-**Kết quả mong đợi:** Logout hợp lệ Origin trả 204, clear cookie; phiên thu hồi không dùng lại cả access và refresh. Các tab chung cookie cùng một phiên và đều cần đăng nhập lại. Không cam kết các thiết bị của cùng User có phiên độc lập: đăng nhập mới đã thay phiên trước. Quy tắc theo [quyết định 0003](../decisions/0003-mot-phien-refresh-tren-user.md), chưa phải bằng chứng code đã triển khai.
+**Kết quả mong đợi:** Logout qua xác thực Bearer và Origin trả 204, clear cookie; chỉ phiên có cookie cùng chủ/phiên hiện hành được thu hồi và không dùng lại cả access/refresh. Các tab chung cookie cùng một phiên và đều cần đăng nhập lại. Không cam kết các thiết bị của cùng User có phiên độc lập: đăng nhập mới đã thay phiên trước. Quy tắc theo [quyết định 0003](../decisions/0003-mot-phien-refresh-tren-user.md), chưa phải bằng chứng code đã triển khai.
 
 ### Nhóm B — Customer: mua sắm (đa-seller, tách đơn theo cửa hàng)
 

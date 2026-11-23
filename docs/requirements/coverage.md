@@ -10,7 +10,7 @@ Nguồn: người dùng yêu cầu cập nhật tài liệu refresh token/API v�
 | Lưu phiên | User có refresh_token_hash, refresh_token_expires_at, session_id; tối đa một phiên. Không lưu raw token hoặc phiên hiệu lực trùng trong AuthSession | Code/migration/Supabase vẫn dùng auth_sessions và rotated_refresh_tokens FK đến bảng phiên cũ; chưa có các trường User mới |
 | Login và kiểm tra access | Login mới thay phiên trước; access JWT phải khớp users.session_id hiện hành | Chưa chuyển SessionService/SessionTokenValidator/internal authorization-context sang User |
 | Refresh/reuse | Cookie-only, xoay hash và dấu reuse nguyên tử; token thuộc phiên cũ không thu hồi phiên mới | Cookie/Origin đã triển khai theo 0001; lưu trữ một phiên và các ca đồng thời mới chưa triển khai |
-| Logout/reset/disable | Logout cookie-only, 204 và clear cookie; chỉ xóa đúng phiên hiện hành. Đổi/reset mật khẩu và DISABLED xóa bộ ba trên User | Chưa chuyển luồng thu hồi từ AuthSession sang User |
+| Logout/reset/disable | Logout giữ ANY_AUTH (session own), Bearer + cookie + Origin, chỉ thu hồi khi cùng chủ/phiên hiện hành; sau xác thực trả 204/clear cookie. Đổi/reset mật khẩu và DISABLED xóa bộ ba trên User | Chưa chuyển luồng thu hồi từ AuthSession sang User |
 | API/AC | Login/Google Should/refresh/logout/password/internal context được mô tả trong API; ca thay phiên, reuse và đồng thời trong Database/Identity | Không sửa OpenAPI sinh từ code, migration, test ứng dụng hoặc dữ liệu trong task tài liệu này |
 
 Các tài liệu nguồn lịch sử `docs/api.md`, `docs/database.md`, FRD v5.4 và bản Google Docs không được sửa trong task này. Khi triển khai cần migration mới và cutover mọi caller, yêu cầu đăng nhập lại rồi bỏ AuthSession; không sửa migration đã chạy. Kiểm tra tài liệu không phải bằng chứng tính năng mới hoạt động trên ứng dụng hoặc Supabase.
@@ -87,16 +87,16 @@ Hash là SHA-256 toàn bộ bytes, chỉ phát hiện đổi nguồn. Ba hàng `
 | `business/UET FRD v5.4 - dong bo API DB.md` | FRD v5.4, 06/11/2026; 37 UC (2 loại bỏ), nghiệp vụ/ngoại lệ | 1539 | `e4fbc0e7b16583e90da42e0ca0fb139f54b63682be9a5c8ca3a91ca283b07de9` |
 | `business/database.md` | Database RBAC v5.0, 25/10/2026; data dictionary/G/WD/state | 1055 | `033b8c01e69a8e6c9f783c51b29933ae8afe240e5f85e37423c60c4923e65ab1` |
 | `business/api.md` | API v1.0, 25/10/2026, có cập nhật sau metadata; contract để review | 2979 | `6cf4d3144537fcabf1e4aafd3f1e3886200166e6ad3cbe696dbd5463d12b4046` |
-| `docs/requirements/software-architecture.md` | SAD-ECOM-01 v1.1 + Thẻ 15/Thẻ 16/P-37 + quyết định 0003, 23/11/2026 | 1163 | `974ea75e26b51185cb81e9b0bb996cebb58a97ca0ac471d567f1a469e5768459` |
-| `docs/requirements/system-architecture.md` | Kiến trúc hệ thống + Thẻ 15/Thẻ 16/P-37 + quyết định 0003, 23/11/2026 | 1162 | `bddaaa64a50abbe05b155e4eb52a6bdbf3e34c76ea98eda822d24d7a82ce8c4a` |
+| `docs/requirements/software-architecture.md` | SAD-ECOM-01 v1.1 + Thẻ 15/Thẻ 16/P-37 + quyết định 0003, 23/11/2026 | 1163 | `b432a3dc399c6c16f14ef9eb20c27b20839bf0f979946ac7399d3077247382c0` |
+| `docs/requirements/system-architecture.md` | Kiến trúc hệ thống + Thẻ 15/Thẻ 16/P-37 + quyết định 0003, 23/11/2026 | 1162 | `bddfd7405312bb8c98b69f177992d789c67c60ef9e90acfd72c884304d67d82f` |
 
 ### Nguồn mới được thêm vào harness ngày 16/11/2026
 
 | Tài liệu | Phiên bản | Dòng | SHA-256 |
 |---|---|---:|---|
-| [docs/requirements/FRD.md](FRD.md) | FRD v5.5 + Thẻ 15/Thẻ 16/P-37 + quyết định 0003, 23/11/2026 | 1559 | `ffecdf34b7de6c7be6e25a6f12e59b10ca4b9ab286b742739d262c85e7a042bd` |
-| [docs/requirements/api_specs.md](api_specs.md) | API v1.1 + Thẻ 15/Thẻ 16/P-37 + quyết định 0003, 23/11/2026 | 3076 | `4c942bfe36fc4edf136905450ac54ad660e98c803527c3eed54b5ebc828f7c6a` |
-| [docs/requirements/database.md](database.md) | Database v5.1 + Thẻ 15/Thẻ 16/P-37 + quyết định 0003, 23/11/2026 | 1142 | `cfc18381b9b53e1a60be597edd388ba22fb7883c67dd1434fab0d386df89afba` |
+| [docs/requirements/FRD.md](FRD.md) | FRD v5.5 + Thẻ 15/Thẻ 16/P-37 + quyết định 0003, 23/11/2026 | 1559 | `174ca599d57519f6821555fe1f13cfc32620788d4b03e9628eb9468c77226fa1` |
+| [docs/requirements/api_specs.md](api_specs.md) | API v1.1 + Thẻ 15/Thẻ 16/P-37 + quyết định 0003, 23/11/2026 | 3076 | `d3e43f0655931cf265e4502147110472f0b24f3228deda9ab38343af64083f9d` |
+| [docs/requirements/database.md](database.md) | Database v5.1 + Thẻ 15/Thẻ 16/P-37 + quyết định 0003, 23/11/2026 | 1142 | `1d7e793b129f0a7434b6c83bca7d863d831e399f23036f00e5cdb332a9a50169` |
 
 Các phần thuộc Thẻ 15 và các tham số Thẻ 16 được hiệu chỉnh theo nguồn quyết định tương ứng; không xác nhận đã rà lại toàn bộ 377 clause/implementation theo nguồn mới. Các dẫn `Lx–y` chưa sửa bên dưới vẫn là snapshot cũ, không chuyển nguyên số dòng sang bản mới. Khi chạm phần ngoài phạm vi, đối chiếu authority trước triển khai, không suy diễn từ hash/ngày sửa. Các inventory nguồn cũ giữ tên/section cũ như provenance, không phải đề nghị dùng lại scope/đa vai trò/snapshot đã bị thay.
 

@@ -642,7 +642,7 @@ Theo [quyết định 0003](../decisions/0003-mot-phien-refresh-tren-user.md), U
 
 Reuse token đã xoay đúng sessionId hiện hành phải commit xóa ba trường User rồi trả 401 INVALID_REFRESH_TOKEN. Token lạ/hết hạn/phiên bị thay trả 401 nhưng không xóa phiên mới. Hai refresh cùng token chỉ một lần xoay, lần còn lại thu hồi chuỗi do reuse; không grace period. Login/refresh/logout/thu hồi khóa hoặc cập nhật có điều kiện cùng User, kiểm tra lại hash/sessionId và version/trạng thái trước ghi. HTTP nghĩa vụ ngoài transaction giữ khóa; request cũ không ghi đè login mới.
 
-Logout không cần Bearer còn hạn, không nhận userId/sessionId client. Cookie hiện tại hoặc dấu đã xoay chỉ thu hồi khi đúng User và phiên hiện hành. Origin hợp lệ luôn trả 204 và clear cookie đúng Path/thuộc tính, kể cả thiếu/lạ/hết phiên; cookie cũ không xóa phiên mới. Origin sai trả 403, không thay dữ liệu.
+Logout giữ ANY_AUTH (session own): cần Bearer hợp lệ, refresh cookie và Origin. Lấy User/sessionId từ Bearer đã xác minh; chỉ cookie hiện tại hoặc dấu đã xoay cùng chủ/phiên hiện hành mới được thu hồi. Sau xác thực Bearer/Origin, cookie thiếu/lạ/cũ vẫn 204 và clear cookie đúng Path/thuộc tính, không xóa phiên khác. Thiếu/sai/hết hạn Bearer hoặc Bearer phiên bị thay trả 401; sai Origin trả 403 không thay dữ liệu. Chỉ refresh không yêu cầu Bearer; không nhận userId/sessionId trong body/query để chọn phiên logout.
 
 Đây là thiết kế cần triển khai, code/database hiện tại vẫn dùng AuthSession. Cutover dùng migration mới, thu hồi mọi phiên cũ để đăng nhập lại; chuyển lịch sử token và mọi caller/validator sang User rồi bỏ AuthSession, không duy trì hai nguồn trạng thái. Không log token, resetUrl, password, presigned URL hoặc nội dung credential.
 

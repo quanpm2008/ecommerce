@@ -44,9 +44,11 @@ Chốt contract chung trong 0003; cập nhật Database và authority/coverage; 
 Chỉ kiểm tra tài liệu. Không chạy runtime hoặc truy cập database cho task này. Lệnh kiểm tra coverage toàn repo đã có giới hạn link lịch sử được ghi nhận; không dùng nó để tuyên bố toàn repo pass.
 
 - Kiểm tra Python tập trung từ root: PASS 5 hash/số dòng nguồn hiện hành; PASS 29 link đến quyết định 0003 và explicit anchor không trùng trong các tài liệu đã sửa.
-- PASS từ điển User có hash/hạn/session_id, không có cột raw refresh_token hay AuthSession như bảng đích; AuthTokens/ví dụ login không chứa refreshToken JSON; refresh/logout dùng cookie + Origin, logout 204.
+- PASS từ điển User có hash/hạn/session_id, không có cột raw refresh_token hay AuthSession như bảng đích; AuthTokens/ví dụ login không chứa refreshToken JSON; refresh/logout dùng cookie + Origin, logout 204. Đính chính phạm vi: logout vẫn cần Bearer hợp lệ theo ANY_AUTH (session own); kiểm tra bổ sung bên dưới.
 - PASS FRD không còn cam kết phiên độc lập theo thiết bị; hồ sơ và kiến trúc dẫn quyết định mới.
 - Không chạy kiểm tra link lịch sử toàn repo đã biết có lỗi, không chạy test ứng dụng hoặc truy cập Supabase. Đây là bằng chứng cấu trúc/contract tài liệu, không phải runtime proof.
+- Đính chính: lựa chọn một phiên trên User không cho phép bỏ Bearer của logout. Đã khôi phục yêu cầu Bearer + cookie + Origin và khớp chủ/phiên hiện hành ở quyết định, API, Database, FRD, Identity, SAD và coverage; chỉ refresh không cần Bearer.
+- Kiểm tra Python bổ sung PASS: 8 tài liệu giữ ANY_AUTH/Bearer cho logout, cookie/Origin và cùng chủ/phiên; refresh vẫn không cần Bearer. PASS 5 fingerprint/số dòng nguồn sau đính chính; không chạy runtime.
 
 ## Result
 
