@@ -1,5 +1,6 @@
 package com.example.order_service;
 
+import com.example.order_service.service.CheckoutQuote;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.crypto.RSASSASigner;
@@ -59,6 +60,8 @@ class CartCheckoutPreviewHttpTests extends OrderPostgresTestSupport {
 	private int port;
 	@Autowired
 	private JdbcTemplate jdbc;
+	@Autowired
+	private CheckoutQuote quotes;
 
 	@DynamicPropertySource
 	static void properties(DynamicPropertyRegistry registry) {
@@ -106,7 +109,10 @@ class CartCheckoutPreviewHttpTests extends OrderPostgresTestSupport {
 		JsonNode data = data(request(cart(SELECTED)));
 		assertThat(data.path("source").asString()).isEqualTo("CART");
 		assertThat(data.path("canPlaceOrder").asBoolean()).isTrue();
-		assertThat(data.path("quoteToken").asString()).isNotBlank();
+		var quote = quotes.verifyCart(data.path("quoteToken").asString(), CUSTOMER);
+		assertThat(quote.cartId()).isEqualTo(CART);
+		assertThat(quote.totalAmountVnd()).isEqualTo(750000);
+		assertThat(quote.expiresAt()).isEqualTo(quote.issuedAt().plusSeconds(300));
 		assertThat(data.path("totalAmountVnd").asLong()).isEqualTo(750000);
 		assertThat(data.path("shippingFeeVnd").asLong()).isZero();
 		assertThat(data.at("/defaultAddress/addressId").asString()).isEqualTo(ADDRESS.toString());
@@ -124,6 +130,18 @@ class CartCheckoutPreviewHttpTests extends OrderPostgresTestSupport {
 		assertThat(productRequest.path("productIds").values()).containsExactlyInAnyOrder(
 				JSON.valueToTree(FIRST.productId().toString()), JSON.valueToTree(SECOND.productId().toString()));
 		assertThat(inventory()).isEqualTo(inventoryBefore);
+		assertNoCheckoutOrMovement();
+	}
+
+	@Test
+	void rollsUpMultipleLinesFromTheSameSellerIntoOneOrder() throws Exception {
+		REPLIES.put(PRODUCT_PATH, Map.of("data", List.of(product(SECOND.productId(), SELLER_ONE, "Second", 450000),
+				product(FIRST.productId(), SELLER_ONE, "First", 150000))));
+		stock(SECOND.productId(), SELLER_ONE);
+		JsonNode data = data(request(cart(SELECTED)));
+		assertThat(data.path("orders").size()).isEqualTo(1);
+		assertThat(data.at("/orders/0/items").size()).isEqualTo(2);
+		assertThat(data.at("/orders/0/orderTotalVnd").asLong()).isEqualTo(750000);
 		assertNoCheckoutOrMovement();
 	}
 
