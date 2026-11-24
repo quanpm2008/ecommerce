@@ -352,6 +352,7 @@ Dòng sản phẩm với số lượng Customer muốn mua.
 | cart\_id | UUID | Có | FK | Giỏ chủ. |
 | product\_id | UUID | Có | Ref | Product thuộc Product Service. |
 | quantity | INTEGER | Có | CHECK | 1–99 đơn vị (P-10). |
+| row\_version | BIGINT | Có | CHECK | Bắt đầu từ 0, tăng trong cùng transaction mỗi lần thay đổi nội dung dòng đang tồn tại. Checkout CART đọc làm `rowVersion` theo DELTA-02. Dòng tạo lại có ID mới. |
 | created\_at, updated\_at | TIMESTAMPTZ | Có | — | Dùng xử lý nhiều thao tác cập nhật. |
 
 **Ràng buộc:** UNIQUE(cart\_id, product\_id), quantity 1–99; tối đa 50 sản phẩm khác nhau/giỏ. Kiểm tra giới hạn nguyên tử kể cả thêm đồng thời; cùng sản phẩm cộng vào dòng hiện có, tổng không vượt 99, không tạo dòng mới. Chỉ đúng owner thao tác. Hết hàng không biểu diễn bằng quantity 0; giá/tồn kiểm tra lại checkout. Mua ngay tối đa 99 của một sản phẩm, không tạo/đọc/trừ dòng giỏ (P-10).

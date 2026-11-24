@@ -2756,6 +2756,7 @@ Base /internal/v1, chỉ gọi bởi service đã xác thực (mTLS hoặc token
 | Order | GET /inventory/details?productIds= | Product | Tồn thực/giữ/khả dụng/version; Product Service chỉ chuyển tiếp dữ liệu đúng quyền Seller/Admin. |
 | Order | GET /orders/checkout-sessions/{id}/payable | Payment | { customerId, status, expiresAt, totalAmountVnd, orders\[{ orderId, status }\] }. Chỉ Payment gọi bằng service credential. Order đọc customerId từ checkout đã xác thực quyền sở hữu lúc tạo. Payment đối chiếu chủ phiên với bản ghi Payment đã có khi gọi lại. Trạng thái Order cho phép giới hạn tra cứu của Customer BANNED vào đúng nghĩa vụ. Relay dùng checkoutSessionId và service credential, không lưu hoặc chuyển tiếp Bearer của khách. |
 | Order | GET /orders/accounts/{userId}/obligations?accountType=CUSTOMER\|SELLER | Identity | {hasOpenOrders,openOrderIds[],hasPendingPayment,hasUnresolvedRefund,evaluatedAt,orderStateVersion}; xác minh Payment qua API nội bộ. Dấu đóng không kết luận hết nghĩa vụ. Payment PENDING, SUCCESS chưa áp dụng và Refund chưa giải quyết vẫn được đánh giá theo G-14, kể cả FULL_CHECKOUT. |
+| Cart | POST /cart/checkout-items | Order | Đọc toàn bộ tập dòng đã chọn theo Customer và trả snapshot có chủ giỏ, số lượng và phiên bản. Xem [DELTA-02](#delta-02-cart-checkout-items). |
 | Order | GET /orders/order-items/{id}/review-eligibility?customerId= | Product | { eligible, productId, orderStatus }; xác minh chủ Order và CONFIRMED. |
 | Payment | GET /payments/by-checkout/{checkoutSessionId} | Order | Trạng thái Payment và link có hạn nếu đủ điều kiện; Order đã kiểm tra chủ phiên. |
 | Payment | POST /payments/checkouts/{checkoutSessionId}/provider-session | Order | Chỉ Order gọi bằng service credential. Tạo hoặc lấy cùng link và kết quả theo checkoutSessionId. Kiểm tra payable, hạn và dấu đóng; Customer, số tiền và quy ước VND lấy từ checkout do Order sở hữu. |
@@ -2768,6 +2769,22 @@ Base /internal/v1, chỉ gọi bởi service đã xác thực (mTLS hoặc token
 | Finance | GET /finance/sellers/{sellerId}/obligations | Identity | {hasPendingFinance,pendingBalanceVnd,availableBalanceVnd,evaluatedAt,financeStateVersion}; gồm settlement/hiệu ứng pending chưa apply kể cả bằng 0, không chỉ wallet. |
 | Order | GET /orders/sellers/{sellerId}/open-orders | Identity | {hasOpenOrders,evaluatedAt}; chỉ đọc đơn đã thu còn PAID/PACKING/DELIVERED để phân quyền Seller BANNED trong authorization-context Phase 4. |
 | Notification | POST /notifications | Identity, Product, Order, Payment, Finance | Tạo thông báo từ service allowlist; hợp đồng chi tiết 7.1.1. Không lộ qua public Gateway. |
+
+<a id="delta-02-cart-checkout-items"></a>
+
+#### DELTA-02 — Đọc các dòng giỏ dùng cho checkout
+
+- `POST /internal/v1/cart/checkout-items` chỉ nhận `X-Service-Token` riêng của Order. Body `{customerId, cartItemIds}` gồm UUID Customer đã xác thực ở Order và 1–50 UUID dòng khác nhau. Cart đọc theo chủ giỏ và chỉ trả thành công khi toàn bộ dòng thuộc cùng giỏ của Customer.
+- HTTP 200 trả `{"data":{"cartId":"<uuid>","customerId":"<uuid>","items":[{"cartItemId":"<uuid>","productId":"<uuid>","quantity":2,"rowVersion":7}]}}`. Các trường đều bắt buộc. `customerId` lấy từ chủ giỏ đã lưu. `quantity` là số nguyên 1–99 và `rowVersion` là số nguyên 64 bit không âm theo Database §3.3.2. `items` chứa đúng tập ID yêu cầu, mỗi ID một lần. Order đối chiếu theo ID. Thứ tự trả về không ảnh hưởng kết quả.
+- Cart trả `400 VALIDATION_ERROR` nếu input sai, `401 UNAUTHENTICATED` nếu thiếu hoặc sai token và `404 NOT_FOUND` chung nếu bất kỳ dòng nào thiếu hoặc khác chủ. Ở Preview, Order giữ lỗi 404 chung, không tiết lộ chủ khác. Với Pay mới, cùng lỗi 404 hợp lệ hoặc snapshot đã xác minh có mã giỏ, sản phẩm, số lượng hoặc phiên bản khác quote dẫn đến `409 CHECKOUT_QUOTE_CHANGED`. Timeout, lỗi nguồn/credential và phản hồi sai cấu trúc, thiếu/trùng dòng hoặc sai chủ dẫn đến `503 SERVICE_UNAVAILABLE`. Order đọc Cart trước transaction giữ hàng. Replay hợp lệ dùng phiên cũ theo §6.4.
+
+<a id="order-obligations-state-version"></a>
+
+#### Phiên bản kết quả nghĩa vụ Order
+
+`orderStateVersion` là chuỗi hex thường 64 ký tự, tính bằng SHA-256 trên mảng JSON UTF-8 viết gọn theo thứ tự cố định `[accountType,userId,hasOpenOrders,openOrderIds,hasPendingPayment,hasUnresolvedRefund]`. UUID dùng dạng chuẩn chữ thường và `openOrderIds` là danh sách ID duy nhất đã sắp xếp theo thứ tự từ điển. Chỉ tính trên kết quả đã xác minh. Tài khoản được Identity xác minh nhưng chưa có dữ liệu nghĩa vụ dùng các cờ `false` và danh sách rỗng. Trường hợp nguồn chưa xác minh được xử lý theo §7.1.2.
+
+Identity dùng version này để nhận diện kết quả nghĩa vụ đã thay đổi bằng phép so bằng. `evaluatedAt` ghi thời điểm đánh giá và nằm ngoài hash. Việc đánh giá quyền dùng dữ liệu hiện hành và kiểm tra phiên bản/đợt cấm do Identity sở hữu trước commit. Hash không yêu cầu bộ đếm hoặc migration và không dùng làm token khóa hay thứ tự cập nhật.
 
 #### 7.1.1 Tạo thông báo nội bộ
 
