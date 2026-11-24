@@ -29,7 +29,11 @@ public interface PaymentCheckoutClient {
 	Refunds refundsByOrders(@RequestParam("orderIds") List<UUID> orderIds,
 			@RequestHeader("X-Service-Token") String credential);
 
-	record Refunds(List<Refund> data) {}
+	@GetMapping("/internal/v1/payments/refunds")
+	Refunds refundsByCheckouts(@RequestParam("checkoutSessionIds") List<UUID> checkoutSessionIds,
+			@RequestHeader("X-Service-Token") String credential);
+
+	record Refunds(@JsonProperty(required = true) List<Refund> data) {}
 
 	record Refund(UUID refundId, UUID paymentId, UUID orderId, String scope, long amountVnd, String reason,
 			String status, int retryCycle, int retryCount, boolean customerRetryRequired, boolean canRetryRefund,
@@ -43,7 +47,8 @@ public interface PaymentCheckoutClient {
 	record Envelope(@JsonProperty(required = true) Collection data) {}
 
 	record Collection(UUID paymentId, UUID checkoutSessionId, Status status, String paymentUrl, Instant expiresAt,
-			Instant collectionClosedAt, boolean isSimulated) {}
+			Instant collectionClosedAt, boolean isSimulated, UUID customerId, Long amountVnd, String currency,
+			Instant completedAt) {}
 
 	enum Status { PENDING, SUCCESS, FAILED }
 }
