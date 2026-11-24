@@ -118,13 +118,18 @@ final class Phase2LocalBrokerSupport implements AutoCloseable {
 	}
 
 	void startApplications(URI fixture) throws Exception {
+		startApplications(fixture, null, null);
+	}
+
+	void startApplications(URI fixture, URI cart, String cartToken) throws Exception {
 		prepareOrderTimeFixture();
 		for (String service : List.of("order", "payment", "finance")) {
 			ports.put(service, freePort());
 		}
-		start("finance", fixture);
-		start("payment", fixture);
-		start("order", fixture);
+		start("finance", fixture, List.of());
+		start("payment", fixture, List.of());
+		start("order", fixture, cart == null ? List.of() : List.of(
+				"--order.cart.base-url=" + cart, "--order.cart.service-token=" + cartToken));
 		for (String service : SERVICES) {
 			ready(service);
 			String schema = switch (service) {
@@ -139,7 +144,7 @@ final class Phase2LocalBrokerSupport implements AutoCloseable {
 
 	void restartOrder(URI fixture) throws Exception {
 		stop("order");
-		start("order", fixture);
+		start("order", fixture, List.of());
 		ready("order");
 	}
 
@@ -193,7 +198,7 @@ final class Phase2LocalBrokerSupport implements AutoCloseable {
 	}
 
 	String db(String service, String sql, Object... args) throws Exception {
-		try (var connection = DriverManager.getConnection(DB + service + "_test_4a", DB_USER, DB_PASSWORD);
+		try (var connection = connection(service);
 			 var statement = connection.prepareStatement(sql)) {
 			for (int i = 0; i < args.length; i++) statement.setObject(i + 1, args[i]);
 			try (var result = statement.executeQuery()) {
@@ -203,11 +208,15 @@ final class Phase2LocalBrokerSupport implements AutoCloseable {
 	}
 
 	void execute(String service, String sql, Object... args) throws Exception {
-		try (var connection = DriverManager.getConnection(DB + service + "_test_4a", DB_USER, DB_PASSWORD);
+		try (var connection = connection(service);
 			 var statement = connection.prepareStatement(sql)) {
 			for (int i = 0; i < args.length; i++) statement.setObject(i + 1, args[i]);
 			statement.executeUpdate();
 		}
+	}
+
+	java.sql.Connection connection(String service) throws java.sql.SQLException {
+		return DriverManager.getConnection(DB + service + "_test_4a", DB_USER, DB_PASSWORD);
 	}
 
 	static <T> T waitFor(String description, int seconds, Callable<T> probe) throws Exception {
@@ -240,7 +249,7 @@ final class Phase2LocalBrokerSupport implements AutoCloseable {
 		});
 	}
 
-	private void start(String service, URI fixture) throws Exception {
+	private void start(String service, URI fixture, List<String> additionalArguments) throws Exception {
 		Path directory = Path.of("").toAbsolutePath();
 		Path root = Files.isDirectory(directory.resolve("order-service")) ? directory : directory.getParent();
 		Path jar;
@@ -289,6 +298,7 @@ final class Phase2LocalBrokerSupport implements AutoCloseable {
 					"--finance.kafka.payment-topic=" + paymentTopic, "--finance.kafka.result-topic=" + financeTopic,
 					"--finance.kafka.identity-topic=" + identityTopic, "--finance.kafka.group=" + name + "-finance"));
 		}
+		command.addAll(additionalArguments);
 		var builder = new ProcessBuilder(command).redirectErrorStream(true).directory(root.toFile());
 		builder.environment().put("AWS_ACCESS_KEY_ID", "phase2-4a");
 		builder.environment().put("AWS_SECRET_ACCESS_KEY", "fixture");
@@ -315,7 +325,7 @@ final class Phase2LocalBrokerSupport implements AutoCloseable {
 			if (queue != null) sqs.deleteQueue(request -> request.queueUrl(queue));
 		} finally {
 			try {
-				kafka.deleteTopics(List.of(orderTopic, paymentTopic, identityTopic)).all().get(8, TimeUnit.SECONDS);
+				kafka.deleteTopics(List.of(orderTopic, paymentTopic, identityTopic, financeTopic)).all().get(8, TimeUnit.SECONDS);
 			} finally {
 				producer.close(Duration.ofSeconds(2));
 				kafka.close(Duration.ofSeconds(2));
