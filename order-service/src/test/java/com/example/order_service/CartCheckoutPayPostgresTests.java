@@ -23,6 +23,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -144,6 +145,167 @@ class CartCheckoutPayPostgresTests extends PayHttpTestSupport {
 		assertThat(lastTouch.get()).isNull();
 	}
 
+	@Test
+	void replaysCommittedIntent() throws Exception {
+		var cart = sameSellerCart();
+		var customer = cart.first().customer();
+		var address = cart.first().address();
+		var key = UUID.randomUUID();
+		var alias = UUID.randomUUID();
+		String quote = preview(cart);
+		var checkout = pay(customer, key, quote, address);
+		assertThat(checkout.statusCode()).as(checkout.body()).isEqualTo(202);
+		var original = body(checkout).path("data");
+		var session = UUID.fromString(original.path("checkoutSessionId").asString());
+
+		CLOCK.advance(Duration.ofMinutes(5));
+		CARTS.remove(customer);
+		ADDRESSES.remove(address);
+		PRICES.remove(cart.first().product());
+		financeStatus.set(503);
+		lastTouch.set(null);
+		var before = inventory(cart);
+		int cartCalls = CART_CALLS.size();
+		for (UUID retry : List.of(key, alias)) {
+			var response = pay(customer, retry, quote, address);
+			assertThat(response.statusCode()).as(response.body()).isEqualTo(202);
+			assertThat(response.headers().firstValue("Idempotent-Replayed")).contains("true");
+			assertThat(body(response).path("data")).isEqualTo(original);
+		}
+		assertThat(inventory(cart)).isEqualTo(before);
+		assertRejected(pay(customer, key, quote, UUID.randomUUID()), 409, "IDEMPOTENCY_KEY_REUSED");
+		assertRejected(pay(customer, UUID.randomUUID(), quote, UUID.randomUUID()), 409, "CHECKOUT_INTENT_CONFLICT");
+		assertRejected(pay(UUID.randomUUID(), key, quote, address), 400, "CHECKOUT_QUOTE_INVALID");
+		revokedCustomer.set(customer);
+		assertRejected(pay(customer, key, quote, address), 401, "UNAUTHENTICATED");
+		revokedCustomer.set(null);
+
+		jdbc.update("update orders.checkout_session set status = 'CLOSED', close_reason = 'EXPIRED' where checkout_session_id = ?", session);
+		jdbc.update("update orders.purchase_order set status = 'EXPIRED' where checkout_session_id = ?", session);
+		jdbc.update("update orders.reservation set status = 'RELEASED', resolved_at = now() where product_id in (?, ?)",
+				cart.first().product(), cart.second().product());
+		jdbc.update("update orders.inventory set reserved_quantity = 0 where product_id in (?, ?)",
+				cart.first().product(), cart.second().product());
+		var released = inventory(cart);
+		var closed = pay(customer, alias, quote, address);
+		assertThat(closed.statusCode()).as(closed.body()).isEqualTo(200);
+		var closedData = body(closed).path("data");
+		assertThat(closedData.path("checkoutSessionId")).isEqualTo(original.path("checkoutSessionId"));
+		assertThat(closedData.path("shippingAddress")).isEqualTo(original.path("shippingAddress"));
+		assertThat(closedData.path("expiresAt")).isEqualTo(original.path("expiresAt"));
+		assertThat(closedData.path("status").asString()).isEqualTo("CLOSED");
+		assertThat(closedData.path("paymentUrl").isNull()).isTrue();
+		assertThat(inventory(cart)).isEqualTo(released);
+		assertThat(CART_CALLS).hasSize(cartCalls);
+		assertThat(lastTouch.get()).isNull();
+		assertThat(jdbc.queryForList("select idempotency_key from orders.idempotency_record where result_ref = ?",
+				String.class, session)).containsExactlyInAnyOrder(key.toString(), alias.toString());
+	}
+
+	@Test
+	void racingCartPaysShareOnlyOneCheckout() throws Exception {
+		var cart = cart();
+		var customer = cart.first().customer();
+		var address = cart.first().address();
+		String quote = preview(cart);
+		var keys = List.of(UUID.randomUUID(), UUID.randomUUID());
+		var start = new java.util.concurrent.CountDownLatch(1);
+		try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+			var futures = keys.stream().map(key -> executor.submit(() -> {
+				start.await();
+				return pay(customer, key, quote, address);
+			})).toList();
+			start.countDown();
+			var first = futures.getFirst().get(15, java.util.concurrent.TimeUnit.SECONDS);
+			var second = futures.getLast().get(15, java.util.concurrent.TimeUnit.SECONDS);
+			assertThat(List.of(first, second)).extracting(HttpResponse::statusCode).containsExactly(202, 202);
+			var firstId = body(first).at("/data/checkoutSessionId");
+			assertThat(body(second).at("/data/checkoutSessionId")).isEqualTo(firstId);
+			assertThat(List.of(first, second).stream().filter(r -> r.headers().firstValue("Idempotent-Replayed").isPresent()).count())
+					.isEqualTo(1);
+			assertThat(jdbc.queryForObject("select count(*) from orders.checkout_session where customer_id = ?", Integer.class, customer))
+					.isEqualTo(1);
+			assertThat(jdbc.queryForObject("select count(*) from orders.idempotency_record where result_ref = ?", Integer.class,
+					UUID.fromString(firstId.asString()))).isEqualTo(2);
+			assertThat(jdbc.queryForObject("select sum(reserved_quantity)::int from orders.inventory where product_id in (?, ?)",
+					Integer.class, cart.first().product(), cart.second().product())).isEqualTo(3);
+		}
+	}
+
+	@Test
+	void rejectsChangedOrMissingCartWithoutWriting() throws Exception {
+		var cart = cart();
+		var customer = cart.first().customer();
+		String quote = preview(cart);
+		var before = counts();
+		var stock = inventory(cart);
+		var snapshot = cart.snapshot();
+		var first = snapshot.items().getFirst();
+		var changedVersion = new Line(first.cartItemId(), first.productId(), first.quantity(), first.rowVersion() + 2);
+		CARTS.put(customer, new Snapshot(snapshot.cartId(), customer, List.of(changedVersion, snapshot.items().getLast())));
+		assertRejected(pay(customer, UUID.randomUUID(), quote, cart.first().address()), 409, "CHECKOUT_QUOTE_CHANGED");
+		CARTS.put(customer, new Snapshot(UUID.randomUUID(), customer, snapshot.items()));
+		assertRejected(pay(customer, UUID.randomUUID(), quote, cart.first().address()), 409, "CHECKOUT_QUOTE_CHANGED");
+		CARTS.remove(customer);
+		assertRejected(pay(customer, UUID.randomUUID(), quote, cart.first().address()), 409, "CHECKOUT_QUOTE_CHANGED");
+		assertThat(counts()).isEqualTo(before);
+		assertThat(inventory(cart)).isEqualTo(stock);
+	}
+
+	@Test
+	void rejectsUnverifiedCartWithoutWriting() throws Exception {
+		var cart = cart();
+		var customer = cart.first().customer();
+		String quote = preview(cart);
+		var before = counts();
+		var stock = inventory(cart);
+		var snapshot = cart.snapshot();
+		for (Object invalid : List.of(
+				new Snapshot(snapshot.cartId(), UUID.randomUUID(), snapshot.items()),
+				new Snapshot(null, customer, snapshot.items()),
+				new Snapshot(snapshot.cartId(), customer, List.of(snapshot.items().getFirst(), snapshot.items().getFirst())))) {
+			CART_REPLY.set(new Reply(200, Map.of("data", invalid)));
+			assertRejected(pay(customer, UUID.randomUUID(), quote, cart.first().address()), 503, "SERVICE_UNAVAILABLE");
+		}
+		CART_REPLY.set(new Reply(503, Map.of("error", Map.of("code", "SERVICE_UNAVAILABLE"))));
+		assertRejected(pay(customer, UUID.randomUUID(), quote, cart.first().address()), 503, "SERVICE_UNAVAILABLE");
+		assertThat(counts()).isEqualTo(before);
+		assertThat(inventory(cart)).isEqualTo(stock);
+	}
+
+	@Test
+	void rejectsPriceChangeAndExpiredFreshQuoteWithoutWriting() throws Exception {
+		var cart = cart();
+		var customer = cart.first().customer();
+		String quote = preview(cart);
+		var before = counts();
+		var stock = inventory(cart);
+		PRICES.put(cart.second().product(), 1600L);
+		assertRejected(pay(customer, UUID.randomUUID(), quote, cart.first().address()), 409, "CHECKOUT_QUOTE_CHANGED");
+		CLOCK.advance(Duration.ofMinutes(5));
+		int cartCalls = CART_CALLS.size();
+		assertRejected(pay(customer, UUID.randomUUID(), quote, cart.first().address()), 409, "CHECKOUT_QUOTE_EXPIRED");
+		assertThat(CART_CALLS).hasSize(cartCalls);
+		assertThat(counts()).isEqualTo(before);
+		assertThat(inventory(cart)).isEqualTo(stock);
+	}
+
+	private CartCase sameSellerCart() {
+		var cart = cart();
+		PRODUCT_SELLERS.put(cart.second().product(), SELLER);
+		jdbc.update("update orders.inventory set seller_id = ? where product_id = ?", SELLER, cart.second().product());
+		var items = cart.snapshot().items().stream().sorted(Comparator.comparing(line -> line.productId().toString())).toList();
+		var smallestProduct = items.getFirst();
+		var largestProduct = items.getLast();
+		var snapshot = new Snapshot(cart.snapshot().cartId(), cart.first().customer(), List.of(
+				new Line(UUID.fromString("f0000000-0000-0000-0000-000000000001"),
+						smallestProduct.productId(), smallestProduct.quantity(), smallestProduct.rowVersion()),
+				new Line(UUID.fromString("00000000-0000-0000-0000-000000000002"),
+						largestProduct.productId(), largestProduct.quantity(), largestProduct.rowVersion())));
+		CARTS.put(cart.first().customer(), snapshot);
+		return new CartCase(cart.first(), cart.second(), snapshot);
+	}
+
 	private CartCase cart() {
 		var first = sample(8, 2);
 		var second = sample(8, 1);
@@ -243,7 +405,7 @@ class CartCheckoutPayPostgresTests extends PayHttpTestSupport {
 		for (var input : JSON.readTree(exchange.getRequestBody()).path("productIds")) {
 			UUID product = UUID.fromString(input.asString());
 			if (PRICES.containsKey(product)) {
-				products.add(Map.of("productId", product, "sellerId", PRODUCT_SELLERS.get(product), "productName", "Product",
+				products.add(Map.of("productId", product, "sellerId", PRODUCT_SELLERS.get(product), "productName", "Product " + product,
 						"priceVnd", PRICES.get(product), "media", List.of(), "coverImageUrl", "https://example.invalid/cart.png", "sellable", true));
 			}
 		}

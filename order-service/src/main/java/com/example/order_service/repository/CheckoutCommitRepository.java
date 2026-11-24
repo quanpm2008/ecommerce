@@ -60,8 +60,11 @@ public class CheckoutCommitRepository {
 			reserve(line);
 		}
 		var orders = new ArrayList<CheckoutResponse.OrderSummary>();
-		for (var entry : checkout.lines().stream().collect(Collectors.groupingBy(Line::seller)).entrySet()) {
-			orders.add(writeOrder(id, times, checkout, entry.getKey(), entry.getValue()));
+		var linesBySeller = checkout.lines().stream().collect(Collectors.groupingBy(Line::seller));
+		for (UUID seller : linesBySeller.keySet().stream().sorted(Comparator.comparing(UUID::toString)).toList()) {
+			var lines = linesBySeller.get(seller).stream()
+					.sorted(Comparator.comparing(line -> line.product().toString())).toList();
+			orders.add(writeOrder(id, times, checkout, seller, lines));
 		}
 		entities.persist(new CheckoutIdempotency(
 				new CheckoutIdempotency.Key(checkout.customer(), "CUSTOMER", PAY_ENDPOINT, checkout.key()), checkout.hash(), id));
