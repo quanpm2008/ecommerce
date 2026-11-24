@@ -48,7 +48,7 @@ public class CheckoutPaymentInternalController {
 
     @GetMapping("/by-checkout/{checkoutSessionId}")
     public ResponseEntity<?> read(@PathVariable UUID checkoutSessionId, HttpServletRequest request) {
-        return authorized(request, () -> ResponseEntity.ok(new Envelope(collections.read(checkoutSessionId))));
+        return authorized(request, () -> ResponseEntity.ok(new Envelope(collections.readWithOwner(checkoutSessionId))));
     }
 
     @GetMapping("/refunds")

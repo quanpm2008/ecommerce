@@ -103,7 +103,12 @@ public class PaymentCollectionService {
                 !"AWAITING_PAYMENT".equals(checkout.status()) || !checkout.expiresAt().isAfter(clock.instant()));
     }
 
-    public CheckoutCollectionView read(UUID checkoutId) {
+    public CollectionView read(UUID checkoutId) {
+        var result = readWithOwner(checkoutId);
+        return result == null ? null : result.collection();
+    }
+
+    public CheckoutCollectionView readWithOwner(UUID checkoutId) {
         return view(checkoutId, false);
     }
 
