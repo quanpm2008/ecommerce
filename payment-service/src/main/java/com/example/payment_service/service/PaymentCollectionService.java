@@ -26,6 +26,7 @@ import com.example.payment_service.entity.Payment;
 import com.example.payment_service.entity.PaymentStatus;
 import com.example.payment_service.repository.PaymentCollectionWorkRepository;
 import com.example.payment_service.repository.PaymentRepository;
+import com.fasterxml.jackson.annotation.JsonUnwrapped;
 
 import feign.FeignException;
 
@@ -70,7 +71,7 @@ public class PaymentCollectionService {
                 return null;
             }
             verifySnapshot(existing.orElseThrow(), fetchPayable(checkoutId));
-            return view(checkoutId, true);
+            return creationView(checkoutId, true);
         }
         if (gateway.getIfAvailable() == null) {
             throw new SourceUnavailable();
@@ -98,10 +99,11 @@ public class PaymentCollectionService {
         if (newlyCreated) {
             process(checkoutId);
         }
-        return view(checkoutId, !"AWAITING_PAYMENT".equals(checkout.status()) || !checkout.expiresAt().isAfter(clock.instant()));
+        return creationView(checkoutId,
+                !"AWAITING_PAYMENT".equals(checkout.status()) || !checkout.expiresAt().isAfter(clock.instant()));
     }
 
-    public CollectionView read(UUID checkoutId) {
+    public CheckoutCollectionView read(UUID checkoutId) {
         return view(checkoutId, false);
     }
 
@@ -270,7 +272,12 @@ public class PaymentCollectionService {
         }
     }
 
-    private CollectionView view(UUID checkoutId, boolean hideLink) {
+    private CollectionView creationView(UUID checkoutId, boolean hideLink) {
+        var snapshot = view(checkoutId, hideLink);
+        return snapshot == null ? null : snapshot.collection();
+    }
+
+    private CheckoutCollectionView view(UUID checkoutId, boolean hideLink) {
         return transactions.execute(transaction -> {
             var payment = payments.findByCheckoutSessionId(checkoutId).orElse(null);
             if (payment == null) {
@@ -279,9 +286,10 @@ public class PaymentCollectionService {
             Instant closedAt = work.closedAt(checkoutId);
             String url = !hideLink && closedAt == null && payment.isPending() && payment.getExpiresAt() != null
                     && payment.getExpiresAt().isAfter(clock.instant()) ? payment.getPaymentUrl() : null;
-            return new CollectionView(payment.getPaymentId(), checkoutId, payment.getStatus(), url,
+            var collection = new CollectionView(payment.getPaymentId(), payment.getCheckoutSessionId(), payment.getStatus(), url,
                     payment.getExpiresAt(), closedAt, payment.getAmountVnd(), payment.getCurrency(),
                     payment.getProviderTransactionId(), payment.getErrorCode(), payment.getCompletedAt(), true);
+            return new CheckoutCollectionView(payment.getCustomerId(), collection);
         });
     }
 
@@ -321,6 +329,8 @@ public class PaymentCollectionService {
     public record CollectionView(UUID paymentId, UUID checkoutSessionId, PaymentStatus status, String paymentUrl,
             Instant expiresAt, Instant collectionClosedAt, long amountVnd, String currency,
             String providerTransactionId, String errorCode, Instant completedAt, boolean isSimulated) { }
+
+    public record CheckoutCollectionView(UUID customerId, @JsonUnwrapped CollectionView collection) { }
 
     public static final class SourceUnavailable extends RuntimeException { }
     public static final class CheckoutNotFound extends RuntimeException { }
