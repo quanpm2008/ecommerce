@@ -2,6 +2,8 @@ package com.example.order_service;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 
 import java.io.IOException;
@@ -13,6 +15,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import static com.example.order_service.Phase2LocalBrokerSupport.JSON;
@@ -33,6 +36,9 @@ final class CartCheckoutBrokerFixture implements AutoCloseable {
                 create table %s.item (cart_item_id uuid primary key, cart_id uuid not null references %s.cart,
                     product_id uuid not null, quantity integer not null, row_version bigint not null)
                 """.formatted(schema, schema));
+        stack.execute("order", """
+                create table %s.inbox (event_id uuid primary key, checkout_session_id uuid unique not null)
+                """.formatted(schema));
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/internal/v1/cart/checkout-items", this::checkoutItems);
         server.start();
@@ -53,6 +59,77 @@ final class CartCheckoutBrokerFixture implements AutoCloseable {
         stack.execute("order", "insert into " + schema + ".item values (?, ?, ?, ?, ?)",
                 item.cartItemId(), cart, product, quantity, item.rowVersion());
         return item;
+    }
+
+    void changeQuantity(Item item, int quantity) throws Exception {
+        stack.execute("order", "update " + schema + ".item set quantity=?, row_version=row_version+1 where cart_item_id=?",
+                quantity, item.cartItemId());
+    }
+
+    void remove(Item item) throws Exception {
+        stack.execute("order", "delete from " + schema + ".item where cart_item_id=?", item.cartItemId());
+    }
+
+    Map<UUID, Item> items(UUID owner) throws SQLException {
+        return Map.copyOf(snapshot(owner).items());
+    }
+
+    int appliedCount(UUID checkout) throws Exception {
+        return Integer.parseInt(stack.db("order", "select count(*) from " + schema + ".inbox where checkout_session_id=?", checkout));
+    }
+
+    boolean apply(ConsumerRecord<String, String> record) throws SQLException {
+        return apply(record, () -> {});
+    }
+
+    boolean apply(ConsumerRecord<String, String> record, Runnable beforeCommit) throws SQLException {
+        var envelope = JSON.readTree(record.value());
+        var payload = envelope.path("payload");
+        if (!"checkout.paid".equals(envelope.path("eventType").asString())
+                || !"CART".equals(payload.path("source").asString())) {
+            return false;
+        }
+        UUID checkout = UUID.fromString(payload.path("checkoutSessionId").asString());
+        if (!checkout.toString().equals(record.key())) {
+            throw new IllegalArgumentException("Cart checkout event key differs from its checkoutSessionId");
+        }
+        UUID customer = UUID.fromString(payload.path("customerId").asString());
+        UUID event = UUID.fromString(envelope.path("eventId").asString());
+        try (var connection = stack.connection("order")) {
+            connection.setAutoCommit(false);
+            try (var insert = connection.prepareStatement("insert into " + schema + ".inbox values (?, ?) on conflict do nothing");
+                    var update = connection.prepareStatement("""
+                        update %s.item set quantity=greatest(quantity-?,0), row_version=row_version+1
+                        where cart_item_id=? and cart_id=(select cart_id from %s.cart where customer_id=?)
+                        """.formatted(schema, schema));
+                    var delete = connection.prepareStatement("""
+                        delete from %s.item where quantity=0 and cart_item_id=?
+                        and cart_id=(select cart_id from %s.cart where customer_id=?)
+                        """.formatted(schema, schema))) {
+                insert.setObject(1, event);
+                insert.setObject(2, checkout);
+                if (insert.executeUpdate() == 0) {
+                    connection.rollback();
+                    return false;
+                }
+                for (var item : payload.path("cartItems")) {
+                    UUID id = UUID.fromString(item.path("cartItemId").asString());
+                    update.setInt(1, item.path("quantity").asInt());
+                    update.setObject(2, id);
+                    update.setObject(3, customer);
+                    update.executeUpdate();
+                    delete.setObject(1, id);
+                    delete.setObject(2, customer);
+                    delete.executeUpdate();
+                }
+                beforeCommit.run();
+                connection.commit();
+                return true;
+            } catch (RuntimeException | SQLException failure) {
+                connection.rollback();
+                throw failure;
+            }
+        }
     }
 
     private Snapshot snapshot(UUID owner) throws SQLException {
@@ -88,32 +165,42 @@ final class CartCheckoutBrokerFixture implements AutoCloseable {
                 error(exchange, 400, "VALIDATION_ERROR");
                 return;
             }
-            JsonNode body = JSON.readTree(exchange.getRequestBody());
-            var requested = body.path("cartItemIds");
-            if (!body.path("customerId").isString() || !requested.isArray() || requested.isEmpty() || requested.size() > 50) {
+            Selection selection;
+            try {
+                selection = selection(JSON.readTree(exchange.getRequestBody()));
+            } catch (JacksonException | IllegalArgumentException invalid) {
                 error(exchange, 400, "VALIDATION_ERROR");
                 return;
             }
-            UUID owner = UUID.fromString(body.path("customerId").asString());
-            var ids = new HashSet<UUID>();
-            for (var id : requested) {
-                if (!id.isString() || !ids.add(UUID.fromString(id.asString()))) {
-                    error(exchange, 400, "VALIDATION_ERROR");
-                    return;
-                }
-            }
-            var snapshot = snapshot(owner);
-            if (snapshot == null || !snapshot.items().keySet().containsAll(ids)) {
+            var snapshot = snapshot(selection.owner());
+            if (snapshot == null || !snapshot.items().keySet().containsAll(selection.ids())) {
                 error(exchange, 404, "NOT_FOUND");
                 return;
             }
             var items = new ArrayList<Item>();
-            ids.forEach(id -> items.add(snapshot.items().get(id)));
+            selection.ids().forEach(id -> items.add(snapshot.items().get(id)));
             respond(exchange, 200, Map.of("data", Map.of(
                     "cartId", snapshot.cartId(), "customerId", snapshot.customerId(), "items", items)));
         } catch (SQLException failure) {
             throw new IOException(failure);
         }
+    }
+
+    private static Selection selection(JsonNode body) {
+        if (body == null || !body.path("customerId").isString()) {
+            throw new IllegalArgumentException("Customer UUID required");
+        }
+        var requested = body.path("cartItemIds");
+        if (!requested.isArray() || requested.isEmpty() || requested.size() > 50) {
+            throw new IllegalArgumentException("Specify 1–50 Cart line IDs");
+        }
+        var ids = new HashSet<UUID>();
+        for (var id : requested) {
+            if (!id.isString() || !ids.add(UUID.fromString(id.asString()))) {
+                throw new IllegalArgumentException("Cart line UUIDs must be distinct");
+            }
+        }
+        return new Selection(UUID.fromString(body.path("customerId").asString()), ids);
     }
 
     private static void error(HttpExchange exchange, int status, String code) throws IOException {
@@ -134,5 +221,6 @@ final class CartCheckoutBrokerFixture implements AutoCloseable {
     }
 
     record Item(UUID cartItemId, UUID productId, int quantity, long rowVersion) {}
+    private record Selection(UUID owner, Set<UUID> ids) {}
     private record Snapshot(UUID cartId, UUID customerId, Map<UUID, Item> items) {}
 }
