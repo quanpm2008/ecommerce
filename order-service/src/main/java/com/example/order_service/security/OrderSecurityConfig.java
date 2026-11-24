@@ -113,6 +113,8 @@ public class OrderSecurityConfig {
 						.hasAuthority("service:payment-service")
 						.requestMatchers(HttpMethod.GET, "/internal/v1/orders/reconciliation-totals")
 						.hasAuthority("service:finance-service")
+						.requestMatchers(HttpMethod.GET, "/internal/v1/orders/accounts/{userId}/obligations")
+						.hasAuthority("service:identity-service")
 						.requestMatchers(HttpMethod.GET, "/internal/v1/orders/sellers/{id}/open-orders")
 						.hasAuthority("service:identity-service")
 						.requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
