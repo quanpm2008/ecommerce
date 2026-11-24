@@ -62,6 +62,7 @@ Chạy lệnh gắn vào task sau mỗi thay đổi liên quan. Sau mỗi wave c
 | Payment, gồm link, quyền đọc, cảnh báo, Refund và nguồn đối soát | 25/25 | [Log Payment](../../../payment-service/target/phase4-final-r2.log) |
 | Finance, gồm cạnh tranh rút, replay, ledger, rollback, quyền đọc và đối soát | 14/14 | [Log Finance](../../../finance-service/target/phase4-final-r2.log) |
 | Preflight, E2E Phase 4 và hồi quy tích hợp Phase 2/3 | 4/4 | [Log E2E](../../../order-service/target/phase4-e2e-final.log) |
-| Identity triển khai thật | Chờ quyền annotate và quyền ví Seller BANNED | [Context D-06](04-CONTEXT.md) |
+| Identity triển khai thật | Đạt ca Admin có quyền, Admin chỉ đọc, Seller BANNED rút hết 9.500đ và đối chiếu PostgreSQL | [Bằng chứng](04-IDENTITY-EVIDENCE.md) |
+| Cổng UI GSD và build bốn backend từ Git | Đạt trên `verify/phase4-20261124`, commit `e8904d1` | [Báo cáo xác minh](04-VERIFICATION.md) |
 
 Ba bộ dùng Java 21, Maven 3.10.0, PostgreSQL 16, Kafka cho ca cần broker. Không có test bị skip trong ba lượt trên. Mỗi module có JAR build từ workspace. Logs nằm trong `target/`; chúng là hiện vật local của lượt chạy.

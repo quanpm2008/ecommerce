@@ -30,7 +30,7 @@ Ngày 20/11/2026. Phạm vi, mục tiêu Roadmap và PLAN.md Phase 1 đã đư�
 - [x] **ORD-08**: Khi có bằng chứng Seller/Product không hợp lệ tại thời điểm thu, chỉ hủy đơn liên quan sau khi áp dụng thanh toán hợp lệ.
   - Nghiệm thu: Ban sau khi đã thu không tự kích hoạt hủy. Lỗi nguồn giữ việc xác minh lại. Đơn khác tiếp tục và nhánh checkout đã đóng vẫn đi theo FULL_CHECKOUT.
   - Nguồn: [docs/requirements/coverage.md · Thẻ 15, mục 3](../docs/requirements/coverage.md) · [docs/requirements/database.md · §8.2B](../docs/requirements/database.md) · [docs/requirements/checkout-orders.md · AC-ORD-003](../docs/requirements/checkout-orders.md)
-- [ ] **ORD-09**: Cho Customer/Seller/Admin tra cứu đơn đúng quyền và phạm vi, gồm trạng thái, hạn xử lý và thông tin hoàn tiền phù hợp.
+- [x] **ORD-09**: Cho Customer/Seller/Admin tra cứu đơn đúng quyền và phạm vi, gồm trạng thái, hạn xử lý và thông tin hoàn tiền phù hợp.
   - Nghiệm thu: Customer/Seller không thấy đơn khác chủ; Seller thấy cảnh báo theo hạn; Admin chỉ xem theo quyền. Đơn hủy có thể trả trạng thái đang chờ tạo Refund.
   - Nguồn: [docs/requirements/FRD.md · UC-B07, UC-D02, UC-E08](../docs/requirements/FRD.md) · [docs/requirements/api_specs.md · §6.4](../docs/requirements/api_specs.md) · [docs/requirements/parameters.md · P-36](../docs/requirements/parameters.md)
 - [ ] **ORD-10**: Hỗ trợ nguồn CART đã chọn theo chủ giỏ và snapshot khi biên DELTA-02 được chốt; phát checkout.paid để Cart áp dụng phần đã mua.
@@ -60,7 +60,7 @@ Ngày 20/11/2026. Phạm vi, mục tiêu Roadmap và PLAN.md Phase 1 đã đư�
 - [x] **PAY-06**: J5 chỉ tra cứu khi kết quả lần hoàn chưa rõ. Một lần thực hiện đầu và tối đa ba retry sau 1/5/15 phút với lỗi xác định. Chỉ Customer đúng chủ mở chu kỳ mới khi hết lượt.
   - Nghiệm thu: Giữ Refund, số tiền và mã nghĩa vụ; mỗi lần thử có định danh; hai tab chỉ mở một chu kỳ tương ứng; giữ lịch sử, Admin không làm thay.
   - Nguồn: [docs/requirements/parameters.md · P-RF-01](../docs/requirements/parameters.md) · [docs/requirements/api_specs.md · §6.5 retry, §6.5.1, §7.3 J5](../docs/requirements/api_specs.md) · [docs/requirements/payments.md · AC-PAY-004/005/006](../docs/requirements/payments.md)
-- [ ] **PAY-07**: Cho khách tra cứu thu/hoàn đúng checkout, kể cả FULL_CHECKOUT không có orderId; cho Admin xem khoản bất thường và ghi chú theo quyền.
+- [x] **PAY-07**: Cho khách tra cứu thu/hoàn đúng checkout, kể cả FULL_CHECKOUT không có orderId; cho Admin xem khoản bất thường và ghi chú theo quyền.
   - Nghiệm thu: Không trả dữ liệu khác chủ; Admin không retry thay khách, không sửa kết quả tài chính; tổng thu/hoàn phục vụ Finance đối soát.
   - Nguồn: [docs/requirements/FRD.md · UC-E08, UC-G02](../docs/requirements/FRD.md) · [docs/requirements/api_specs.md · §6.5, §7.1 Payment totals](../docs/requirements/api_specs.md) · [docs/requirements/payments.md · AC-PAY-004](../docs/requirements/payments.md)
 - [ ] **PAY-08**: Cung cấp trạng thái và nghĩa vụ thu/hoàn để Order tổng hợp, kể cả FULL_CHECKOUT của checkout đã đóng.
@@ -78,10 +78,10 @@ Ngày 20/11/2026. Phạm vi, mục tiêu Roadmap và PLAN.md Phase 1 đã đư�
 - [x] **FIN-03**: Kiểm soát Inbox và giữ công việc khi event đến trước Settlement hoặc ví cần thiết.
   - Nghiệm thu: Replay và sự kiện đến sai thứ tự không mất tác động, không tạo số dư âm và xử lý được sau khi phụ thuộc xuất hiện.
   - Nguồn: [docs/requirements/finance.md · REQ-FIN-002, AC-FIN-003, AT-14](../docs/requirements/finance.md) · [docs/requirements/software-architecture.md · §5.3, §5.5, §6.6](../docs/requirements/software-architecture.md)
-- [ ] **FIN-04**: Cung cấp ví, Settlement, lịch sử ledger và rút tiền; ghi Withdrawal và ledger một lần trong transaction.
+- [x] **FIN-04**: Cung cấp ví, Settlement, lịch sử ledger và rút tiền; ghi Withdrawal và ledger một lần trong transaction.
   - Nghiệm thu: Không rút tiền chờ hoặc vượt available; hai yêu cầu đồng thời không làm âm ví; Seller BANNED đủ điều kiện được rút toàn bộ số dư dương nhỏ theo ngoại lệ đã duyệt.
   - Nguồn: [docs/requirements/FRD.md · UC-D05](../docs/requirements/FRD.md) · [docs/requirements/database.md · §8.3 WD-01–11](../docs/requirements/database.md) · [docs/requirements/coverage.md · Thẻ 15, mục 1](../docs/requirements/coverage.md) · [docs/requirements/finance.md · AC-FIN-002](../docs/requirements/finance.md)
-- [ ] **FIN-05**: Đối soát tổng thu, hoàn, số dư và khoản chờ theo nguồn của Order/Payment/Finance; hỗ trợ tra cứu vận hành đúng quyền.
+- [x] **FIN-05**: Đối soát tổng thu, hoàn, số dư và khoản chờ theo nguồn của Order/Payment/Finance; hỗ trợ tra cứu vận hành đúng quyền.
   - Nghiệm thu: Phát hiện chênh lệch; thiếu nguồn không báo cân bằng và không tự sửa sổ. Không đưa dashboard phân tích đã hoãn vào pha này.
   - Nguồn: [docs/requirements/FRD.md · UC-D04, UC-E08](../docs/requirements/FRD.md) · [docs/requirements/finance.md · REQ-FIN-004, AC-FIN-001](../docs/requirements/finance.md) · [docs/requirements/software-architecture.md · §6.6, §7.1](../docs/requirements/software-architecture.md)
 - [ ] **FIN-06**: Cung cấp API nghĩa vụ Seller cho Identity dựa trên Settlement, Wallet và tác động tài chính còn chờ.
@@ -120,10 +120,10 @@ Service khác chỉ xuất hiện dưới dạng hợp đồng và dependency. X
 | PAY-06 | Phase 3 | Complete |
 | FIN-02 | Phase 3 | Complete |
 | FIN-03 | Phase 3 | Complete |
-| ORD-09 | Phase 4 | Pending |
-| PAY-07 | Phase 4 | Pending |
-| FIN-04 | Phase 4 | Pending |
-| FIN-05 | Phase 4 | Pending |
+| ORD-09 | Phase 4 | Complete |
+| PAY-07 | Phase 4 | Complete |
+| FIN-04 | Phase 4 | Complete |
+| FIN-05 | Phase 4 | Complete |
 | ORD-10 | Phase 5 | Pending |
 | ORD-11 | Phase 5 | Pending |
 | PAY-08 | Phase 5 | Pending |

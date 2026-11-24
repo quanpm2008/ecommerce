@@ -11,7 +11,7 @@ Trước khi lập nhiệm vụ cho mỗi phase, kiểm tra AS-IS từ code, mig
 - [x] **Phase 1: Giữ hàng và tạo checkout BUY_NOW** - Order tạo được phiên giữ hàng từ sản phẩm hợp lệ, giữ đúng chủ và chứng minh chống trùng cũng như chống bán vượt tồn.
 - [x] **Phase 2: Thanh toán, hết hạn và tiền chờ** - Từ một checkout có thể đi đến PAID và tiền chờ hoặc hết hạn, nhả hàng và hoàn đúng một lần nếu đã thu. (completed 2026-11-22)
 - [x] **Phase 3: Giao hàng, hủy đơn và quyết toán** - Đơn đã thanh toán đi qua fulfillment; hủy và xác nhận có hiệu ứng Refund hoặc Settlement trên đúng đơn. (completed 2026-11-24)
-- [ ] **Phase 4: Tra cứu, ví và đối soát** - Khách và quản trị tra cứu được trạng thái, Seller rút được tiền khả dụng và Finance đối chiếu được sổ tiền.
+- [x] **Phase 4: Tra cứu, ví và đối soát** - Khách và quản trị tra cứu được trạng thái, Seller rút được tiền khả dụng và Finance đối chiếu được sổ tiền. (completed 2026-11-24)
 - [ ] **Phase 5: Biên CART và nghĩa vụ đang xử lý** - Ba service cung cấp đúng phần tích hợp do mình sở hữu khi Cart và Identity kết nối.
 
 ## Phase Details
@@ -112,7 +112,7 @@ Trước khi lập nhiệm vụ cho mỗi phase, kiểm tra AS-IS từ code, mig
   1. Customer và Seller chỉ tra đúng chủ, Admin xem theo quyền và không can thiệp vào kết quả hoàn (ORD-09, PAY-07).
   2. Hai yêu cầu rút đồng thời không tạo số dư âm hay ghi ledger lặp; giữ ngoại lệ rút số dư nhỏ đã duyệt (FIN-04).
   3. Thiếu nguồn đối soát được báo không đủ dữ liệu; chênh lệch không tự sửa sổ (FIN-05).
-**Plans**: 7/7 plans executed
+**Plans**: 7/7 plans complete
 **Wave 1**
 - [x] 04-01-PLAN.md — Đối chiếu AS-IS và đồng bộ hợp đồng Phase 4.
 
@@ -145,7 +145,7 @@ Trước khi lập nhiệm vụ cho mỗi phase, kiểm tra AS-IS từ code, mig
 | 1. Giữ hàng và tạo checkout BUY_NOW | 9/9 | Complete (3A và E1) | 2026-11-22 |
 | 2. Thanh toán, hết hạn và tiền chờ | 9/9 | Complete    | 2026-11-22 |
 | 3. Giao hàng, hủy đơn và quyết toán | 7/7 | Complete    | 2026-11-24 |
-| 4. Tra cứu, ví và đối soát | 7/7 | In Progress | — |
+| 4. Tra cứu, ví và đối soát | 7/7 | Complete    | 2026-11-24 |
 | 5. Biên CART và nghĩa vụ đang xử lý | 0/TBD | Not started | — |
 
 Điều khoản nguồn tại [Requirements](REQUIREMENTS.md). Điều kiện tích hợp chưa chốt tại [báo cáo xung đột](intel/INGEST-CONFLICTS.md).

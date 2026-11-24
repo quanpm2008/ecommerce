@@ -12,4 +12,8 @@ Chạy preflight, Phase 2, Phase 3 và Phase 4 trên ba JAR build từ workspace
 
 Phase 4 kiểm một checkout hai Seller, tra cứu đúng chủ, audit khoản thu, rút đồng thời cùng key và `withdrawal.completed` trên Kafka. Finance lấy đủ ba nguồn thật của ba JAR. Khi dừng Payment, đối soát trả `INCOMPLETE` và giữ chênh lệch chưa biết.
 
-Identity, Product và provider trong bài tích hợp dùng HTTP mock theo hợp đồng. Notification kiểm tại event Kafka. Hai ca quyền Identity thật và mốc commit của cổng UI GSD vẫn chờ xác minh. [Báo cáo xác minh](04-VERIFICATION.md)
+Identity, Product và provider trong bài tích hợp hồi quy trên dùng HTTP mock theo hợp đồng. Lượt bổ sung chạy bốn ứng dụng thật và xác minh riêng Admin annotate, Admin chỉ đọc và Seller BANNED rút hết 9.500đ. Notification được kiểm tại event Kafka. [Bằng chứng Identity](04-IDENTITY-EVIDENCE.md)
+
+## Task Commits
+
+1. **Task 1: Snapshot mã và migration của bốn backend dùng để xác minh Phase 4** - `e8904d1` (nhánh local `verify/phase4-20261124`).
