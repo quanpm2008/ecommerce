@@ -9,19 +9,28 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.net.URLDecoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -53,6 +62,7 @@ class AccountObligationsPostgresTests extends OrderPostgresTestSupport {
 
     @Autowired AccountObligationsService obligations;
     @Autowired JdbcTemplate jdbc;
+    @LocalServerPort int port;
 
     @DynamicPropertySource
     static void paymentSource(DynamicPropertyRegistry config) {
@@ -188,6 +198,97 @@ class AccountObligationsPostgresTests extends OrderPostgresTestSupport {
         assertUnavailable(paid.customer(), AccountType.CUSTOMER);
     }
 
+    @Test
+    void servesExactCanonicalVersionsForBothAccountTypes() throws Exception {
+        UUID empty = UUID.fromString("00000000-0000-0000-0000-000000000053");
+        var emptyCustomer = data(account(empty, "CUSTOMER", "test-identity"));
+        var emptySeller = data(account(empty, "SELLER", "test-identity"));
+        assertThat(emptyCustomer.path("hasOpenOrders").asBoolean()).isFalse();
+        assertThat(emptyCustomer.path("openOrderIds").isArray()).isTrue();
+        assertThat(emptyCustomer.path("openOrderIds").isEmpty()).isTrue();
+        assertThat(emptyCustomer.path("hasPendingPayment").asBoolean()).isFalse();
+        assertThat(emptyCustomer.path("hasUnresolvedRefund").asBoolean()).isFalse();
+        assertThat(version(emptyCustomer)).isEqualTo("99491deae7f0e85a65861aeff6157a87acf8b37134c34dc84c70133ab392d6c3");
+        assertThat(version(emptySeller)).isEqualTo("5e0b77c1c11382fc29b2a83453ad431bf72da23734cdac2d9920e3f61b34804f");
+        assertThat(ORDER_FILTERS).isEmpty();
+        assertThat(CHECKOUT_FILTERS).isEmpty();
+
+        var checkout = checkout("AWAITING_PAYMENT", null);
+        UUID seller = UUID.randomUUID();
+        UUID higher = UUID.fromString("f" + UUID.randomUUID().toString().substring(1));
+        UUID lower = UUID.fromString("0" + UUID.randomUUID().toString().substring(1));
+        order(checkout, seller, "AWAITING_PAYMENT", higher);
+        order(checkout, UUID.randomUUID(), "AWAITING_PAYMENT", lower);
+        var customer = data(account(checkout.customer(), "CUSTOMER", "test-identity"));
+        assertThat(customer.path("openOrderIds").get(0).asString()).isEqualTo(lower.toString());
+        assertThat(customer.path("openOrderIds").get(1).asString()).isEqualTo(higher.toString());
+        assertThat(version(customer)).isEqualTo(digest("CUSTOMER", checkout.customer(), false, lower, higher));
+        var sellerData = data(account(seller, "SELLER", "test-identity"));
+        assertThat(version(sellerData)).isEqualTo(digest("SELLER", seller, false, higher));
+        var repeated = data(account(checkout.customer(), "CUSTOMER", "test-identity"));
+        assertThat(Instant.parse(repeated.path("evaluatedAt").asString()))
+                .isAfter(Instant.parse(customer.path("evaluatedAt").asString()));
+        assertThat(version(repeated)).isEqualTo(version(customer));
+
+        PAYMENTS.put(checkout.id(), payment(checkout, "PENDING", false));
+        var pending = data(account(checkout.customer(), "CUSTOMER", "test-identity"));
+        assertThat(version(pending)).isEqualTo(digest("CUSTOMER", checkout.customer(), true, lower, higher));
+        assertThat(version(pending)).isNotEqualTo(version(customer));
+    }
+
+    @Test
+    void permitsOnlyIdentityAndReportsUnverifiedSourcesWithoutChangingTheLegacySellerRoute() throws Exception {
+        var checkout = checkout("AWAITING_PAYMENT", null);
+        UUID seller = UUID.randomUUID();
+        order(checkout, seller, "AWAITING_PAYMENT");
+        var account = account(seller, "SELLER", "test-identity");
+        assertThat(data(account).path("hasOpenOrders").asBoolean()).isTrue();
+        var legacy = call("/internal/v1/orders/sellers/" + seller + "/open-orders", "test-identity");
+        assertThat(data(legacy).path("hasOpenOrders").asBoolean()).isFalse();
+        assertError(account(seller, "SELLER"), 401, "UNAUTHENTICATED");
+        assertError(account(seller, "SELLER", "test-identity", "test-product"), 401, "UNAUTHENTICATED");
+        assertError(account(seller, "SELLER", "test-product"), 403, "FORBIDDEN");
+        assertError(account(seller, "SELLER", "test-payment"), 403, "FORBIDDEN");
+        assertError(account(seller, "ADMIN", "test-identity"), 400, "VALIDATION_ERROR");
+        PAYMENT_OVERRIDE.set(new Reply(503, Map.of()));
+        assertError(account(seller, "SELLER", "test-identity"), 503, "SERVICE_UNAVAILABLE");
+    }
+
+    private HttpResponse<String> account(UUID user, String type, String... tokens) throws Exception {
+        return call("/internal/v1/orders/accounts/" + user + "/obligations?accountType=" + type, tokens);
+    }
+
+    private HttpResponse<String> call(String path, String... tokens) throws Exception {
+        var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path)).GET();
+        for (String token : tokens) {
+            request.header("X-Service-Token", token);
+        }
+        try (var client = HttpClient.newHttpClient()) {
+            return client.send(request.build(), HttpResponse.BodyHandlers.ofString());
+        }
+    }
+
+    private static JsonNode data(HttpResponse<String> response) {
+        assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
+        return JSON.readTree(response.body()).path("data");
+    }
+
+    private static void assertError(HttpResponse<String> response, int status, String code) {
+        assertThat(response.statusCode()).as(response.body()).isEqualTo(status);
+        var envelope = JSON.readTree(response.body());
+        assertThat(envelope.has("data")).isFalse();
+        assertThat(envelope.path("error").path("code").asString()).isEqualTo(code);
+    }
+
+    private static String version(JsonNode data) {
+        return data.path("orderStateVersion").asString();
+    }
+
+    private static String digest(String type, UUID owner, boolean pending, UUID... openOrders) throws Exception {
+        var canonical = JSON.writeValueAsBytes(List.of(type, owner, true, openOrders, pending, false));
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(canonical));
+    }
+
     private void assertUnavailable(UUID owner, AccountType accountType) {
         assertThatThrownBy(() -> obligations.read(owner, accountType)).isInstanceOf(SourceUnavailable.class);
     }
@@ -211,7 +312,10 @@ class AccountObligationsPostgresTests extends OrderPostgresTestSupport {
     }
 
     private UUID order(Checkout checkout, UUID seller, String state) {
-        UUID id = UUID.randomUUID();
+        return order(checkout, seller, state, UUID.randomUUID());
+    }
+
+    private UUID order(Checkout checkout, UUID seller, String state, UUID id) {
         jdbc.update("""
                 insert into orders.purchase_order (order_id, checkout_session_id, seller_id, seller_name_snapshot,
                     customer_id, total_amount_vnd, currency, commission_bps_snapshot, recipient_name, recipient_phone,
