@@ -42,7 +42,7 @@ public class OrderItem {
 	}
 
 	public OrderItem(UUID orderItemId, UUID orderId, UUID productId, String productNameSnapshot,
-			String coverMediaSnapshot, long unitPriceVndSnapshot, int quantity) {
+			String coverMediaSnapshot, long unitPriceVndSnapshot, int quantity, UUID sourceCartItemId) {
 		this.orderItemId = orderItemId;
 		this.orderId = orderId;
 		this.productId = productId;
@@ -50,6 +50,7 @@ public class OrderItem {
 		this.coverMediaSnapshot = coverMediaSnapshot;
 		this.unitPriceVndSnapshot = unitPriceVndSnapshot;
 		this.quantity = quantity;
+		this.sourceCartItemId = sourceCartItemId;
 	}
 
 	public UUID getOrderItemId() {

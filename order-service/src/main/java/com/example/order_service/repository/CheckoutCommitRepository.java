@@ -1,5 +1,6 @@
 package com.example.order_service.repository;
 
+import com.example.order_service.client.CartCheckoutItemsClient.Snapshot;
 import com.example.order_service.client.PayIdentityClient.ShippingAddress;
 import com.example.order_service.dto.response.CheckoutResponse;
 import com.example.order_service.entity.CheckoutCommand;
@@ -9,10 +10,13 @@ import com.example.order_service.entity.Order;
 import com.example.order_service.entity.OrderItem;
 import com.example.order_service.entity.Reservation;
 import jakarta.persistence.EntityManager;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.json.JsonMapper;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -26,10 +30,15 @@ public class CheckoutCommitRepository {
 	public static final String PAY_ENDPOINT = "/api/v1/orders/checkout/pay";
 	private final EntityManager entities;
 	private final InventoryStockRepository inventory;
+	private final JsonMapper json;
+	private final Clock clock;
 
-	public CheckoutCommitRepository(EntityManager entities, InventoryStockRepository inventory) {
+	public CheckoutCommitRepository(EntityManager entities, InventoryStockRepository inventory, JsonMapper json,
+			ObjectProvider<Clock> clock) {
 		this.entities = entities;
 		this.inventory = inventory;
+		this.json = json;
+		this.clock = clock.getIfAvailable(Clock::systemUTC);
 	}
 
 	@Transactional(isolation = Isolation.READ_COMMITTED)
@@ -38,7 +47,12 @@ public class CheckoutCommitRepository {
 		long total = checkout.lines().stream().mapToLong(Line::total).reduce(0, Math::addExact);
 		Instant created = inventory.databaseNow();
 		Times times = new Times(created, created.plus(Duration.ofMinutes(15)));
-		entities.persist(new CheckoutSession(id, checkout.intent(), checkout.customer(), CheckoutSession.Source.BUY_NOW,
+		Snapshot cart = checkout.cart();
+		var source = cart == null ? CheckoutSession.Source.BUY_NOW : CheckoutSession.Source.CART;
+		UUID cartId = cart == null ? null : cart.cartId();
+		String cartItems = cart == null ? null : json.writeValueAsString(cart.items().stream()
+				.sorted(Comparator.comparing(line -> line.cartItemId().toString())).toList());
+		entities.persist(new CheckoutSession(id, checkout.intent(), checkout.customer(), source, cartId, cartItems,
 				checkout.key(), checkout.hash(), total, CheckoutSession.Status.AWAITING_PAYMENT,
 				checkout.addressId(), times.created(), times.expires()));
 		entities.flush();
@@ -55,7 +69,10 @@ public class CheckoutCommitRepository {
 			entities.persist(new CheckoutCommand(UUID.randomUUID(), id, command, times.expires(), times.created()));
 		}
 		entities.flush();
-		return new CheckoutResponse(id, "BUY_NOW", "AWAITING_PAYMENT", null, "NONE", null, total, 0,
+		if (checkout.quoteExpiresAt() != null && !clock.instant().isBefore(checkout.quoteExpiresAt())) {
+			throw new QuoteExpired();
+		}
+		return new CheckoutResponse(id, source.name(), "AWAITING_PAYMENT", null, "NONE", null, total, 0,
 				times.expires(), null, checkout.address(), List.copyOf(orders), List.of(), true);
 	}
 
@@ -80,7 +97,7 @@ public class CheckoutCommitRepository {
 		for (Line line : lines) {
 			UUID item = UUID.randomUUID();
 			entities.persist(new OrderItem(item, order, line.product(), line.productName(), line.coverImageUrl(), line.price(),
-					line.quantity()));
+					line.quantity(), line.sourceCartItemId()));
 			reservations.add(new Reservation(UUID.randomUUID(), item, line.product(), line.quantity(),
 					Reservation.Status.HELD, times.expires(), times.created()));
 		}
@@ -96,16 +113,28 @@ public class CheckoutCommitRepository {
 	}
 
 	public record NewCheckout(UUID customer, UUID intent, String key, String hash, UUID addressId,
-			ShippingAddress address, int commissionBps, List<Line> lines) {
+			ShippingAddress address, int commissionBps, List<Line> lines, Snapshot cart, Instant quoteExpiresAt) {
+		public NewCheckout(UUID customer, UUID intent, String key, String hash, UUID addressId,
+				ShippingAddress address, int commissionBps, List<Line> lines) {
+			this(customer, intent, key, hash, addressId, address, commissionBps, lines, null, null);
+		}
 	}
 
 	public record Line(UUID product, UUID seller, String sellerName, String productName, String coverImageUrl,
-			long price, int quantity) {
+			long price, int quantity, UUID sourceCartItemId) {
+		public Line(UUID product, UUID seller, String sellerName, String productName, String coverImageUrl,
+				long price, int quantity) {
+			this(product, seller, sellerName, productName, coverImageUrl, price, quantity, null);
+		}
+
 		long total() {
 			return Math.multiplyExact(price, quantity);
 		}
 	}
 
 	public static final class StockUnavailable extends RuntimeException {
+	}
+
+	public static final class QuoteExpired extends RuntimeException {
 	}
 }

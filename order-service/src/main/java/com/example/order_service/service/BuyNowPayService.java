@@ -1,21 +1,33 @@
 package com.example.order_service.service;
 
+import com.example.order_service.client.CartCheckoutItemsClient;
+import com.example.order_service.client.CartCheckoutItemsClient.Snapshot;
 import com.example.order_service.client.CheckoutIdentityClient;
+import com.example.order_service.client.CheckoutIdentityClient.Seller;
 import com.example.order_service.client.FinanceCommissionClient;
 import com.example.order_service.client.PayIdentityClient;
 import com.example.order_service.client.ProductBatchClient;
 import com.example.order_service.dto.response.CheckoutResponse;
 import com.example.order_service.exception.BuyNowPayRejected;
 import com.example.order_service.repository.CheckoutCommitRepository;
+import com.example.order_service.repository.CheckoutCommitRepository.Line;
 import com.example.order_service.repository.CheckoutReplayRepository;
 import com.example.order_service.repository.PendingCheckoutReader;
 import com.example.order_service.security.OrderAuthorization.CurrentUser;
+import com.example.order_service.service.CheckoutQuote.CartClaims;
+import com.example.order_service.service.CheckoutQuote.Claims;
+import com.example.order_service.service.CheckoutQuote.VerifiedQuote;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 public class BuyNowPayService {
@@ -27,10 +39,11 @@ public class BuyNowPayService {
 	private final CheckoutCommitRepository commit;
 	private final PendingCheckoutReader pending;
 	private final CheckoutReplayRepository replays;
+	private final CartCheckoutItemsClient.Reader cart;
 
 	BuyNowPayService(CheckoutQuote quote, CheckoutIdentityClient identity, PayIdentityClient addresses,
 			ProductBatchClient products, FinanceCommissionClient finance, CheckoutCommitRepository commit,
-			PendingCheckoutReader pending, CheckoutReplayRepository replays) {
+			PendingCheckoutReader pending, CheckoutReplayRepository replays, CartCheckoutItemsClient.Reader cart) {
 		this.quote = quote;
 		this.identity = identity;
 		this.addresses = addresses;
@@ -39,11 +52,15 @@ public class BuyNowPayService {
 		this.commit = commit;
 		this.pending = pending;
 		this.replays = replays;
+		this.cart = cart;
 	}
 
 	public PayResult pay(CurrentUser customer, String key, String quoteToken, UUID addressId) {
-		var claims = quote.verify(quoteToken, customer.userId());
-		String hash = quote.requestHash(claims, addressId);
+		var claims = quote.verifyAny(quoteToken, customer.userId());
+		String hash = switch (claims) {
+			case Claims buyNow -> quote.requestHash(buyNow, addressId);
+			case CartClaims cartClaims -> quote.requestHash(cartClaims, addressId);
+		};
 		CheckoutResponse replay = replays.findOrRegisterAlias(customer.userId(), key, claims.checkoutIntentId(), hash);
 		if (replay != null) {
 			return new PayResult(replay, true);
@@ -67,7 +84,7 @@ public class BuyNowPayService {
 		}
 	}
 
-	private CheckoutResponse freshPay(CurrentUser customer, String key, CheckoutQuote.Claims claims, UUID addressId,
+	private CheckoutResponse freshPay(CurrentUser customer, String key, VerifiedQuote claims, UUID addressId,
 			String hash) {
 		if (quote.isExpired(claims)) {
 			throw new BuyNowPayRejected(409, "CHECKOUT_QUOTE_EXPIRED");
@@ -90,36 +107,90 @@ public class BuyNowPayService {
 			throw new BuyNowPayRejected(503, "SERVICE_UNAVAILABLE");
 		}
 		var shippingAddress = addresses.address(customer.userId(), addressId);
-		var results = products.getProducts(List.of(claims.productId()));
-		if (results.isEmpty() || !results.getFirst().sellable()) {
-			throw new BuyNowPayRejected(409, "CHECKOUT_ITEMS_INVALID");
-		}
-		var item = results.getFirst();
-		if (!item.sellerId().equals(claims.sellerId()) || item.priceVnd() != claims.unitPriceVnd()) {
-			throw new BuyNowPayRejected(409, "CHECKOUT_QUOTE_CHANGED");
-		}
-		if (!identity.sellerIsSellable(item.sellerId())) {
-			throw new BuyNowPayRejected(409, "CHECKOUT_ITEMS_INVALID");
-		}
-		if (item.coverImageUrl() == null || item.coverImageUrl().isBlank()) {
-			throw new BuyNowPayRejected(503, "SERVICE_UNAVAILABLE");
-		}
-		var seller = identity.seller(item.sellerId());
+		Snapshot snapshot = claims instanceof CartClaims cartClaims ? readCart(cartClaims) : null;
+		List<Line> lines = switch (claims) {
+			case Claims buyNow -> List.of(buyNowLine(buyNow));
+			case CartClaims cartClaims -> cartLines(cartClaims);
+		};
 		int commissionBps = finance.commissionBps();
-		var line = new CheckoutCommitRepository.Line(item.productId(), seller.sellerId(), seller.sellerName(),
-				item.productName(), item.coverImageUrl(), item.priceVnd(), claims.quantity());
 		if (quote.isExpired(claims)) {
 			throw new BuyNowPayRejected(409, "CHECKOUT_QUOTE_EXPIRED");
 		}
 		CheckoutResponse response;
 		try {
 			response = commit.commit(new CheckoutCommitRepository.NewCheckout(customer.userId(), claims.checkoutIntentId(),
-					key, hash, addressId, shippingAddress, commissionBps, List.of(line)));
+					key, hash, addressId, shippingAddress, commissionBps, lines, snapshot, claims.expiresAt()));
 		} catch (CheckoutCommitRepository.StockUnavailable unavailable) {
 			throw new BuyNowPayRejected(409, "CHECKOUT_ITEMS_INVALID");
+		} catch (CheckoutCommitRepository.QuoteExpired expired) {
+			throw new BuyNowPayRejected(409, "CHECKOUT_QUOTE_EXPIRED");
 		}
 		addresses.touch(customer.userId(), addressId, response.checkoutSessionId());
 		return response;
+	}
+
+	private Snapshot readCart(CartClaims claims) {
+		try {
+			var ids = claims.items().stream().map(CheckoutQuote.CartLine::cartItemId).toList();
+			var current = cart.read(claims.customerId(), ids);
+			if (!claims.matches(current)) {
+				throw new BuyNowPayRejected(409, "CHECKOUT_QUOTE_CHANGED");
+			}
+			return current;
+		} catch (CartCheckoutItemsClient.MissingItems missing) {
+			throw new BuyNowPayRejected(409, "CHECKOUT_QUOTE_CHANGED");
+		} catch (CartCheckoutItemsClient.Unavailable unavailable) {
+			throw new BuyNowPayRejected(503, "SERVICE_UNAVAILABLE");
+		}
+	}
+
+	private Line buyNowLine(Claims claims) {
+		var results = products.getProducts(List.of(claims.productId()));
+		if (results.isEmpty()) {
+			throw new BuyNowPayRejected(409, "CHECKOUT_ITEMS_INVALID");
+		}
+		return verifiedLine(results.getFirst(), claims.sellerId(), claims.unitPriceVnd(), claims.quantity(), null,
+				new HashMap<>());
+	}
+
+	private List<Line> cartLines(CartClaims claims) {
+		var productsRequested = claims.items().stream().map(CheckoutQuote.CartLine::productId).distinct().toList();
+		var catalog = products.getProducts(productsRequested).stream()
+				.collect(Collectors.toMap(ProductBatchClient.ProductInfo::productId, Function.identity()));
+		if (catalog.size() != productsRequested.size()) {
+			throw new BuyNowPayRejected(503, "SERVICE_UNAVAILABLE");
+		}
+		var sellers = new HashMap<UUID, Seller>();
+		var lines = new ArrayList<Line>();
+		for (var line : claims.items()) {
+			var item = catalog.get(line.productId());
+			if (item.priceVnd() <= 0) {
+				throw new BuyNowPayRejected(503, "SERVICE_UNAVAILABLE");
+			}
+			lines.add(verifiedLine(item, line.sellerId(), line.unitPriceVnd(), line.quantity(), line.cartItemId(), sellers));
+		}
+		return lines;
+	}
+
+	private Line verifiedLine(ProductBatchClient.ProductInfo item, UUID quotedSeller, long quotedPrice, int quantity,
+			UUID sourceCartItemId, Map<UUID, Seller> sellers) {
+		if (!item.sellable()) {
+			throw new BuyNowPayRejected(409, "CHECKOUT_ITEMS_INVALID");
+		}
+		if (!item.sellerId().equals(quotedSeller) || item.priceVnd() != quotedPrice) {
+			throw new BuyNowPayRejected(409, "CHECKOUT_QUOTE_CHANGED");
+		}
+		if (item.coverImageUrl() == null || item.coverImageUrl().isBlank()) {
+			throw new BuyNowPayRejected(503, "SERVICE_UNAVAILABLE");
+		}
+		var seller = sellers.computeIfAbsent(item.sellerId(), sellerId -> {
+			if (!identity.sellerIsSellable(sellerId)) {
+				throw new BuyNowPayRejected(409, "CHECKOUT_ITEMS_INVALID");
+			}
+			return identity.seller(sellerId);
+		});
+		return new Line(item.productId(), seller.sellerId(), seller.sellerName(), item.productName(), item.coverImageUrl(),
+				item.priceVnd(), quantity, sourceCartItemId);
 	}
 
 	private static boolean uniqueViolation(Throwable failure) {

@@ -82,12 +82,14 @@ public class CheckoutSession {
 	}
 
 	public CheckoutSession(UUID checkoutSessionId, UUID checkoutIntentId, UUID customerId, Source checkoutSource,
-			String idempotencyKey, String requestHash, long totalAmountVnd, Status status,
+			UUID sourceCartId, String cartSnapshot, String idempotencyKey, String requestHash, long totalAmountVnd, Status status,
 			UUID addressId, Instant createdAt, Instant expiresAt) {
 		this.checkoutSessionId = checkoutSessionId;
 		this.checkoutIntentId = checkoutIntentId;
 		this.customerId = customerId;
 		this.checkoutSource = checkoutSource;
+		this.sourceCartId = sourceCartId;
+		this.cartSnapshot = cartSnapshot;
 		this.idempotencyKey = idempotencyKey;
 		this.requestHash = requestHash;
 		this.totalAmountVnd = totalAmountVnd;
