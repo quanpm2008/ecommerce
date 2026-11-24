@@ -14,6 +14,13 @@ public interface ProductSaleEvidenceClient {
 	@PostMapping("/internal/v1/products/sale-evidence")
 	Envelope read(@RequestHeader("X-Service-Token") String credential, @RequestBody Request request);
 
+	@PostMapping("/internal/v1/products/reviews/summary")
+	ReviewTotals reviews(@RequestHeader("X-Service-Token") String credential, @RequestBody ReviewRequest request);
+
+	record ReviewRequest(UUID customerId, List<UUID> productIds) {}
+	record ReviewTotals(List<Review> data) {}
+	record Review(UUID productId, UUID reviewId, Boolean hasReviewed) {}
+
 	record Request(String completedAt, List<UUID> productIds) {}
 	record Envelope(Data data) {}
 	record Data(String completedAt, List<Item> items) {}

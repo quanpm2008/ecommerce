@@ -15,7 +15,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Address book entry (DB §3.1.4). Orders keep their own snapshot; {@code deletedAt} marks a soft delete (G-13).
+ * Address book entry (DB §3.1.4). Orders keep their own snapshot. {@code deletedAt} filters legacy rows.
  */
 @Entity
 @Getter
@@ -71,16 +71,7 @@ public class CustomerAddress {
 		this.addressDetail = addressDetail;
 	}
 
-	/** An address used by a checkout may be referenced by orders, so it is only hidden (G-13). */
-	public boolean mustBeKept() {
-		return lastUsedAt != null;
-	}
-
-	public void markDeleted(Instant now) {
-		this.deletedAt = now;
-	}
-
-	/** A committed checkout used this address; it becomes the default and is kept on delete. */
+	/** A committed checkout used this address, which now ranks first in the address book. */
 	public void markUsed(Instant now) {
 		this.lastUsedAt = now;
 	}

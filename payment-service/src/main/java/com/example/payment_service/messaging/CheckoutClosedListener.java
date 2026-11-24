@@ -67,19 +67,40 @@ public class CheckoutClosedListener {
     }
 
     void receive(ConsumerRecord<String, String> record, Acknowledgment ack) {
-        Close close;
+        Runnable apply;
+        String type = "checkout.closed";
         try {
-            close = read(record);
+            JsonNode envelope = json.readTree(record.value());
+            if (envelope == null || !envelope.isObject() || !envelope.path("eventType").isString()) {
+                throw new IllegalArgumentException("Invalid event envelope");
+            }
+            type = envelope.path("eventType").asString();
+            apply = switch (type) {
+                case "checkout.closed" -> {
+                    var close = readClose(envelope, record.key());
+                    yield () -> outcomes.checkoutClosed(close.eventId(), close.checkoutId(), close.customerId(),
+                            close.version(), close.closedAt());
+                }
+                case "checkout.paid" -> {
+                    var paid = OrderRefundEvent.paid(envelope, record.key());
+                    yield () -> outcomes.checkoutPaid(paid);
+                }
+                case "order.cancelled" -> {
+                    var cancel = OrderRefundEvent.cancelled(envelope, record.key());
+                    yield cancel == null ? null : () -> outcomes.orderCancelled(cancel);
+                }
+                default -> null;
+            };
         } catch (RuntimeException invalid) {
-            retain(record, "INVALID_CLOSURE");
+            retain(record, "checkout.closed".equals(type) ? "INVALID_CLOSURE" : "INVALID_ORDER_REFUND_EVENT");
             ack.acknowledge();
             return;
         }
-        if (close != null) {
+        if (apply != null) {
             try {
-                outcomes.checkoutClosed(close.eventId(), close.checkoutId(), close.customerId(), close.version(), close.closedAt());
+                apply.run();
             } catch (OutcomeConflict invalid) {
-                retain(record, "CHECKOUT_MISMATCH");
+                retain(record, "checkout.closed".equals(type) ? "CHECKOUT_MISMATCH" : "ORDER_REFUND_MISMATCH");
             }
         }
         ack.acknowledge();
@@ -91,21 +112,14 @@ public class CheckoutClosedListener {
                 record.partition(), record.offset(), reason);
     }
 
-    private Close read(ConsumerRecord<String, String> record) {
-        JsonNode envelope = json.readTree(record.value());
-        if (envelope == null || !envelope.isObject() || !envelope.path("eventType").isString()) {
-            throw new IllegalArgumentException("Invalid event envelope");
-        }
-        if (!"checkout.closed".equals(envelope.path("eventType").asString())) {
-            return null;
-        }
+    private Close readClose(JsonNode envelope, String key) {
         JsonNode payload = envelope.path("payload");
         JsonNode version = envelope.path("version");
         UUID checkoutId = UUID.fromString(payload.path("checkoutSessionId").asString());
         String reason = payload.path("closeReason").asString();
         if (!"order-service".equals(envelope.path("producer").asString())
                 || !checkoutId.toString().equals(envelope.path("aggregateId").asString())
-                || !checkoutId.toString().equals(record.key())
+                || !checkoutId.toString().equals(key)
                 || !version.isIntegralNumber() || !version.canConvertToLong() || version.asLong() < 1
                 || !("PAYMENT_FAILED".equals(reason) || "EXPIRED".equals(reason))) {
             throw new IllegalArgumentException("Invalid closure envelope");

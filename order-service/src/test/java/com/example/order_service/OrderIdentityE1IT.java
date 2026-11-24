@@ -145,6 +145,9 @@ class OrderIdentityE1IT {
 		run.note("API 6.1 delete disposable fixture address; API 6.4 replay saved address snapshot");
 		run.request(IDENTITY, "DELETE", ADDRESSES + "/" + address, bearer, null, null, 204);
 		run.request(IDENTITY, "GET", addressPath, null, token, null, 404);
+		var deletedTouch = run.request(IDENTITY, "POST", addressPath + "/touch", null, token,
+				Map.of("checkoutSessionId", session), 200).path("data");
+		assertTrue(!deletedTouch.path("applied").asBoolean(), "Deleted address touch must be a no-op");
 		JsonNode replay = run.request(ORDER, "POST", PAY, bearer, null, pay, 202, key).path("data");
 		assertTrue(session.equals(replay.path("checkoutSessionId").asString()), "Replay returned a different checkout");
 		assertTrue(pending.path("shippingAddress").isObject()

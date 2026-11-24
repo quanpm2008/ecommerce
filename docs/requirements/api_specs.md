@@ -1,5 +1,7 @@
 # Đặc tả API và phân quyền RBAC cho hệ thống Ecommerce
 
+Luồng thanh toán hiện hành áp dụng [quyết định provider demo và SQS](../decisions/0001-provider-checkout.md), 20/11/2026.
+
 Tài khoản Customer, Seller, Administrator độc lập; RBAC một vai trò/User
 
 | Thông tin | Giá trị |
@@ -106,9 +108,11 @@ API v1.1 đồng bộ FRD v5.5 và Database v5.1. Auth và RBAC của v1.0 theo 
 | 7 service | Identity & Seller · Product · Cart · Order (Order Inventory Fulfillment) · Payment · Finance · Notification. Mỗi service sở hữu database riêng (PostgreSQL), không join chéo DB. |
 | Message broker \+ Outbox | Sự kiện bất đồng bộ giữa service (Mục 7.2). Mỗi service phát event qua bảng OutboxEvent, consumer chống lặp qua InboxEvent. |
 | Object storage | Lưu ảnh/video; FE upload trực tiếp bằng presigned URL (N-08). |
-| Bộ giả lập thanh toán nội bộ | Thành phần bên trong Payment service: cài đặt SimulatedGateway của interface PaymentGateway (charge, refund, query); không có nhà cung cấp bên ngoài, không có endpoint callback công khai (DB 8.4, N-01). |
+| Provider demo | Ứng dụng HTTPS độc lập do nhóm xây. Tạo link, nhận xác nhận giả lập, xử lý hoàn và gửi webhook có chữ ký cho Payment (§6.5.1). |
 
 ### 2.2 Định tuyến tại Gateway
+
+Route chính xác `POST /api/v1/payments/webhooks/demo-provider` đi thẳng tới Payment để xác thực chữ ký trên body gốc. Route dùng định danh provider thay cho JWT người dùng. Các route nội bộ tạo giao dịch và hoàn tiền giữ allowlist riêng.
 
 | Prefix public (sau /api/v1) | Service | Prefix nội bộ (sau /internal/v1) |
 | :---- | :---- | :---- |
@@ -176,7 +180,7 @@ Authority cho các clause Thẻ 15: [coverage §the-15](coverage.md#the-15), tha
 
 Nghĩa vụ hiện tại gồm Order AWAITING_PAYMENT/PAID/PACKING/DELIVERED; Payment PENDING, SUCCESS chưa apply vào Order hoặc hoàn muộn chưa kết thúc; Refund PENDING/FAILED chưa giải quyết kể cả Order/CheckoutSession đã đóng. CONFIRMED/CANCELLED/PAYMENT_FAILED/EXPIRED không tự giữ quyền nhưng nghĩa vụ Payment/Refund/Finance vẫn tính riêng. Seller thêm Settlement PENDING/PENDING_REFUND, hiệu ứng chưa apply (kể cả số tiền 0), pendingBalanceVnd > 0 hoặc availableBalanceVnd > 0. Không dùng lịch sử đã thanh toán.
 
-Mọi request tính lại allowlist và ownership/state hiện hành; accessMode không cấp quyền trên Order người khác. Public browsing chỉ là công khai, không mở quyền mua sắm authenticated. J1/J2/J2b và Refund tiếp tục chạy.
+Mọi request người dùng tính lại allowlist và ownership/state hiện hành; accessMode không cấp quyền trên Order người khác. Public browsing chỉ là công khai, không mở quyền mua sắm authenticated. J1, webhook và Refund tiếp tục xử lý.
 
 #### 3.2.1 Mô hình RBAC và hợp đồng kiểm tra quyền
 
@@ -252,7 +256,7 @@ Mọi response JSON dùng một trong hai dạng sau. FE chỉ cần một hàm 
 | :---- | :---- |
 | 200 OK | Đọc dữ liệu; cập nhật thành công; gửi lại request idempotent đã xử lý. |
 | 201 Created | Tạo mới tài nguyên (đăng ký, checkout, thanh toán, rút tiền, review...). |
-| 202 Accepted | Đã nhận yêu cầu, kết quả chưa rõ (thanh toán đang chờ kết quả từ bộ giả lập; quên mật khẩu). |
+| 202 Accepted | Đã nhận yêu cầu, kết quả chưa rõ (checkout đang chờ link hoặc kết quả từ provider; quên mật khẩu). |
 | 204 No Content | Xóa thành công; đăng xuất; đánh dấu đã đọc. |
 | 400 Bad Request | Sai định dạng / thiếu field / vi phạm validation (VALIDATION\_ERROR). |
 | 401 Unauthorized | Chưa đăng nhập, token sai hoặc hết hạn (UNAUTHENTICATED, TOKEN\_EXPIRED, INVALID\_CREDENTIALS). |
@@ -376,6 +380,11 @@ Mỗi service chỉ trả mã trong bảng này. Thêm mã mới phải cập nh
 | IDEMPOTENCY\_KEY\_REUSED | 409 | Cùng Idempotency-Key nhưng payload khác lần đầu. |
 | IDEMPOTENCY\_KEY\_REQUIRED | 400 | Thiếu header Idempotency-Key ở endpoint bắt buộc. |
 | VERSION\_CONFLICT | 409 | Dữ liệu đã bị thay đổi ở nơi khác (tồn kho). Tải lại rồi thử lại. |
+| INVENTORY_PROVISION_CONFLICT | 409 | Inventory đã tồn tại cho `productId` nhưng `sellerId` khác chủ đã lưu. Giữ nguyên dữ liệu. |
+| CHECKOUT_QUOTE_INVALID | 400 | Quote sai định dạng, chữ ký, mục đích, phiên bản hoặc Customer. Trả thông báo chung. |
+| CHECKOUT_QUOTE_EXPIRED | 409 | Quote hợp lệ đã hết hạn và chưa có phiên để trả lại. Yêu cầu Preview và xác nhận lại. |
+| CHECKOUT_QUOTE_CHANGED | 409 | Giá hoặc tập hàng đã thay đổi trước khi tạo phiên. Yêu cầu Preview và xác nhận lại. |
+| CHECKOUT_INTENT_CONFLICT | 409 | Key mới dùng ý định cũ với nội dung khác, hoặc key và ý định trỏ tới hai phiên khác nhau. |
 | INVALID\_STATE\_TRANSITION | 409 | Trạng thái hiện tại không cho phép thao tác. details\[0\].currentStatus. |
 | ALREADY\_PROCESSED | 409 | Đối tượng đã được người khác xử lý (Admin khác đã duyệt hồ sơ...). |
 | MEDIA\_INVALID | 422 | Sai loại/dung lượng/thời lượng file, object không tồn tại hoặc không thuộc người gửi. |
@@ -393,7 +402,7 @@ Mỗi service chỉ trả mã trong bảng này. Thêm mã mới phải cập nh
 | CHECKOUT\_PENDING\_EXISTS | 409 | Customer đã có một phiên chờ thanh toán. details\[0\].checkoutSessionId. |
 | CHECKOUT\_ITEMS\_INVALID | 409 | Một hoặc nhiều dòng hàng không hợp lệ khi đặt hàng; không tạo đơn nào. details theo dòng. |
 | CHECKOUT\_NOT\_PAYABLE | 409 | Phiên đã hết hạn, đã hủy, đã thanh toán hoặc thanh toán thất bại. |
-| PAYMENT\_IN\_PROGRESS | 409 | Đang có thanh toán chưa rõ kết quả: không cho thanh toán lại hoặc hủy phiên. |
+| PAYMENT\_IN\_PROGRESS | 409 | Đang có phiên chờ thanh toán khác: dùng link của phiên hiện tại hoặc chờ phiên hết hạn. |
 | ORDER\_NOT\_CANCELLABLE | 409 | Đơn đã đóng gói / đã giao / đã xác nhận / đã hủy. |
 | SELLER\_DEADLINE\_PASSED | 409 | Đã quá hạn 7 ngày phản hồi; hệ thống đang/đã tự hủy (J4). |
 | REVIEW\_NOT\_ALLOWED | 403 | Không phải người mua, đơn chưa xác nhận nhận hàng hoặc đã hủy. |
@@ -436,7 +445,7 @@ Mỗi service chỉ trả mã trong bảng này. Thêm mã mới phải cập nh
 | PaymentStatus | PENDING (Đang xác nhận), SUCCESS (Thành công), FAILED (Thất bại) | DB 3.4.1 |
 | PaymentRefundState | NONE, PARTIALLY\_REFUNDED, REFUNDED (trường tính toán, tương ứng DB 3.4) | DB 3.4 |
 | RefundScope | ORDER, FULL\_CHECKOUT | DB 3.4.2 |
-| RefundReason | CUSTOMER\_CANCEL, SELLER\_REJECT, SELLER\_CANCEL (Seller không hợp lệ ở bước kiểm tra giao dịch, không tự hủy vì bị cấm sau thanh toán), SELLER\_TIMEOUT (J4), LATE\_PAYMENT. | DB 3.4.2 |
+| RefundReason | CUSTOMER\_CANCEL, SELLER\_REJECT, SELLER\_CANCEL (bằng chứng Seller hoặc Product cho thấy điều kiện giao dịch không hợp lệ tại thời điểm thu theo §7.1), SELLER\_TIMEOUT (J4), LATE\_PAYMENT. | DB 3.4.2 |
 | RefundStatus | PENDING (Đang hoàn), SUCCESS (Đã hoàn), FAILED (Hoàn lỗi) | DB 3.4 |
 | SettlementStatus | PENDING (Chờ quyết toán), SETTLED (Đã quyết toán), PENDING\_REFUND (Chờ hoàn), REFUNDED (Đã hoàn) | DB 3.5.1 |
 | WalletOwnerType | SELLER, PLATFORM | DB 3.5, 8.3 |
@@ -494,7 +503,7 @@ Mỗi use case có **một service owner** (service sở hữu dữ liệu chín
 | F01 | Gợi ý sản phẩm liên quan (C) | Public | Product | Order (loại sản phẩm hết hàng) |  |
 | G01 | Thông báo | System | Notification | Mọi service (event) |  |
 | G02 | Hoàn tiền | System; Customer chủ Payment mở chu kỳ mới | Payment | Order (event hủy), Finance, Notification |  |
-| G03 | Job quá hạn/đối soát (J1–J7) | System | Order (J1,J3,J4), Payment (J2,J2b,J5), Notification (J6), Identity (J7) | — | |
+| G03 | Job quá hạn/đối soát (J1–J7) | System | Order (J1,J3,J4), Payment (J2,J5), Notification (J6), Identity (J7) | — | |
 | G04 | Quyết toán, ghi có ví | System | Finance | Order (event CONFIRMED) |  |
 
 ### 5.1 Ownership dữ liệu (theo Database RBAC v5.0)
@@ -1165,7 +1174,7 @@ Response cũ không còn hợp lệ; client đăng ký tài khoản Customer ri�
 
 #### Nguồn dữ liệu địa giới
 
-Hai API /identity/regions/\*\* đọc danh mục địa giới tĩnh seed trong DB Identity (P-26): tỉnh/thành và phường/xã/đặc khu thuộc tỉnh/thành, không có quận/huyện. Không dùng RegionProvider, upstream URL, credential hay cache API ngoài. Khi chuẩn bị seed phải ghi rõ nguồn, phiên bản và thời điểm dữ liệu; bộ dữ liệu cụ thể chưa được chọn.
+Hai API /identity/regions/\*\* đọc danh mục địa giới tĩnh seed trong DB Identity: tỉnh/thành và phường/xã/đặc khu thuộc tỉnh/thành. Nguồn và phiên bản seed theo [P-26](parameters.md#p-26). Identity không gọi API địa giới ngoài.
 
 Lưu code dạng chuỗi, name, quan hệ ward thuộc province và phiên bản dữ liệu. API danh mục, thêm/sửa địa chỉ và snapshot dùng cùng dữ liệu seed. Không đọc được/chưa sẵn sàng →503 REGION_SOURCE_UNAVAILABLE, không kết luận mã sai. 422 INVALID_REGION chỉ khi dữ liệu hợp lệ xác nhận mã hoặc quan hệ sai. Order lưu mã và tên cùng addressDetail tại checkout, không tra lại thay đổi đơn cũ.
 
@@ -1401,8 +1410,11 @@ GET /api/v1/products?q=ao thun\\\&categoryId=4c1e...\\\&sort=priceVnd,asc\\\&pag
 
 201 → data: SellerProduct
 
+Khi provision đang chờ, response có `status: HIDDEN`. Gửi lại cùng Seller, `Idempotency-Key` và nội dung trả sản phẩm cũ với trạng thái hiện tại. Cùng key nhưng nội dung khác trả `409 IDEMPOTENCY_KEY_REUSED`. Frontend đọc lại chi tiết sản phẩm để cập nhật trạng thái hiển thị.
+
 ```text
 POST /api/v1/seller/products
+Idempotency-Key: 44b9996e-82dd-4d7f-9023-288c84c9646e
 { "productName": "Áo thun basic cotton", "categoryId": "4c1e...", "priceVnd": 150000,
   "initialStock": 50, "description": "Cotton 100%...", "status": "SELLING",
   "media": [ { "objectKey": "tmp/seller/5d2a/7f3a.webp", "mediaType": "IMAGE", "sortOrder": 1 },
@@ -1724,20 +1736,14 @@ Việc **chọn dòng để thanh toán** là trạng thái phía FE: FE gửi d
 
 #### Luồng chính của Customer
 
-* **Từ giỏ: chọn dòng → POST /orders/checkout/preview (source CART) → trang Thanh toán → POST /orders/checkout-sessions.**
-
-* **Mua ngay: trang sản phẩm → POST /orders/checkout/preview (source BUY\_NOW) → POST /orders/checkout-sessions.**
-
-* Kết quả: 1 CheckoutSession \+ N Order ở AWAITING\_PAYMENT → FE gọi POST /payments (Payment Service).
-
-* Khi nhận payment.succeeded: N đơn → PAID, trừ kho, phát checkout.paid cho Cart, Finance, Notification. Chi tiết ở Mục 8.1.
+Từ giỏ (`CART`) hoặc Mua ngay (`BUY_NOW`), khách gọi Preview, rồi `POST /orders/checkout/pay`. Order giữ hàng, điều phối Payment lấy link để khách xác nhận tại provider. FE tra cứu phiên tại Order. Chỉ hiển thị thành công sau khi Order áp dụng `PAID` (§8.1).
 
 #### State machine của Order (DB 8.2B)
 
 | Từ | Sự kiện / API | Sang |
 | :---- | :---- | :---- |
-| AWAITING\_PAYMENT | payment.succeeded | PAID |
-| AWAITING\_PAYMENT | payment.failed / J1 hết hạn / khách hủy phiên | PAYMENT\_FAILED / EXPIRED / CANCELLED |
+| AWAITING\_PAYMENT | payment.succeeded được Order áp dụng trước expiresAt | PAID |
+| AWAITING\_PAYMENT | payment.failed xác định trước hạn / ExpireCheckout hoặc xử lý kết quả từ expiresAt | PAYMENT\_FAILED / EXPIRED |
 | PAID | start-packing (Seller) | PACKING |
 | PAID | cancel (Customer) | CANCELLED → Refund |
 | PAID, PACKING | reject Seller / J4 quá 7 ngày / Order chứng minh invalid giao dịch khi apply Payment SUCCESS (§8.1) | CANCELLED → Refund riêng Order; ban sau capture không là trigger |
@@ -1750,10 +1756,9 @@ Việc **chọn dòng để thanh toán** là trạng thái phía FE: FE gửi d
 | \# | Method | Path | Mô tả | Quyền | UC |
 | :---- | :---- | :---- | :---- | :---- | :---- |
 | 1 | POST | /orders/checkout/preview | Xem trước trang Thanh toán | checkout:create:own | B04, B10 |
-| 2 | POST | /orders/checkout-sessions | Đặt hàng: tạo phiên thanh toán và N đơn | checkout:create:own | B04, B10 |
+| 2 | POST | /orders/checkout/pay | Giữ hàng, tạo phiên và nhận link thanh toán | checkout:create:own | B04, B05, B10 |
 | 3 | GET | /orders/checkout-sessions/current | Phiên đang chờ thanh toán (nếu có) | order:read:own | B04, B05 |
 | 4 | GET | /orders/checkout-sessions/{checkoutSessionId} | Chi tiết phiên thanh toán | order:read:own | B05, B07 |
-| 5 | POST | /orders/checkout-sessions/{checkoutSessionId}/cancel | Hủy cả phiên trước khi thanh toán | order:cancel:own | B08 |
 | 6 | GET | /orders/me | Đơn mua của tôi | order:read:own | B07 |
 | 7 | GET | /orders/me/{orderId} | Chi tiết đơn (Customer) | order:read:own | B05, B07, B08, B09, C01 |
 | 8 | POST | /orders/me/{orderId}/cancel | Khách hủy đơn đã thanh toán | order:cancel:own | B08 |
@@ -1776,8 +1781,8 @@ Việc **chọn dòng để thanh toán** là trạng thái phía FE: FE gửi d
 
 | DTO | Field |
 | :---- | :---- |
-| CheckoutPreview | source, orders: \[{ seller, items: \[{ productId, productName, coverImageUrl, unitPriceVnd, quantity, lineTotalVnd }\], orderTotalVnd }\], shippingFeeVnd (0), totalAmountVnd, defaultAddress: Address \| null, issues: \[{ productId, cartItemId, code, availableQuantity }\], blockers: \[{ code, ... }\], canPlaceOrder, isSimulated |
-| CheckoutSession | checkoutSessionId, source, status, paymentStatus (NONE \| PENDING \| SUCCESS \| FAILED), totalAmountVnd, shippingFeeVnd, expiresAt, paidAt, shippingAddress (snapshot), orders: OrderSummary\[\], allowedActions, isSimulated |
+| CheckoutPreview | source, orders: \[{ seller, items: \[{ productId, productName, coverImageUrl, unitPriceVnd, quantity, lineTotalVnd }\], orderTotalVnd }\], shippingFeeVnd (0), totalAmountVnd, defaultAddress: Address \| null, issues: \[{ productId, cartItemId, code, availableQuantity }\], blockers: \[{ code, ... }\], canPlaceOrder, quoteToken, isSimulated |
+| CheckoutSession | checkoutSessionId, source, status, closeReason, paymentStatus (NONE \| PENDING \| SUCCESS \| FAILED), paymentUrl (null khi chưa có hoặc không còn dùng được), totalAmountVnd, shippingFeeVnd, expiresAt, paidAt, shippingAddress (snapshot), orders: OrderSummary\[\], allowedActions, isSimulated |
 | ShippingAddress | recipientName, recipientPhone, provinceCode, provinceName, wardCode, wardName, addressDetail |
 | OrderSummary | orderId, checkoutSessionId, seller { sellerId, sellerName }, status, totalAmountVnd, itemCount, firstItem { productName, coverImageUrl }, createdAt, paidAt, refundStatus (null \| PENDING \| SUCCESS \| FAILED) |
 | OrderItem | orderItemId, productId, productName, coverImageUrl, unitPriceVnd, quantity, lineTotalVnd |
@@ -1798,6 +1803,8 @@ Việc **chọn dòng để thanh toán** là trạng thái phía FE: FE gửi d
 * Không ghi dữ liệu, không giữ hàng. Dùng để render trang "Thanh toán / Xác nhận đặt hàng".
 
 * Gom dòng hàng theo Seller (mỗi nhóm \= 1 đơn dự kiến), tính tổng từng đơn và tổng chung, kiểm tra tồn và trạng thái bán được, trả địa chỉ mặc định.
+
+* Với BUY_NOW, Order đọc địa chỉ mặc định từ `GET /api/v1/identity/customers/me/addresses` bằng Bearer của Customer và tên Seller từ `GET /api/v1/identity/sellers/{sellerId}`. Quote chỉ được cấp khi có thể xác nhận và có hạn 5 phút kể từ lúc Preview cấp.
 
 * Trả 200 kể cả khi có dòng lỗi; lỗi nằm trong issues\[\] và canPlaceOrder \= false. Mọi điều kiện được kiểm tra lại ở bước tạo phiên.
 
@@ -1846,66 +1853,24 @@ POST /api/v1/orders/checkout/preview
 
 * issues\[\] theo dòng: PRODUCT\_NOT\_SELLABLE, INSUFFICIENT\_STOCK (kèm availableQuantity), QUANTITY\_LIMIT\_EXCEEDED
 
-##### POST /orders/checkout-sessions — Đặt hàng: tạo phiên thanh toán và N đơn
+##### POST /orders/checkout/pay — Tạo checkout và lấy link thanh toán
 
-**Quyền: checkout:create:own    UC: B04, B10    Idempotency-Key: bắt buộc**
+Quyền `checkout:create:own`. Bắt buộc `Idempotency-Key`. Body gồm `quoteToken` và `addressId`; danh sách hàng, số lượng và nguồn lấy từ quote đã xác minh. Quote có chữ ký gắn Customer và một `checkoutIntentId`, không chứa PII. Nếu giá hoặc tập hàng thay đổi, yêu cầu Preview và xác nhận lại. Order tự tính tổng tiền. CheckoutPreview trả quoteToken khi có thể xác nhận; quote gắn nguồn, dòng hàng/số lượng/giá, cartItemId nếu CART, tổng tiền và hạn quote.
 
-* Cần User ACTIVE, checkout:create:own và Customer ACTIVE; địa chỉ thuộc customerId=sub, có phone, chưa có phiên AWAITING\_PAYMENT. Gửi customerId/sellerId từ client không thay thế ownership.
+Trong một transaction Order, tạo phiên và N đơn theo Seller, giữ đủ hàng, lưu công việc tạo giao dịch và `ExpireCheckout`. Giữ một phiên chờ mỗi Customer và một phiên trên mỗi `(customerId, checkoutIntentId)`. Giữ kiểm tra địa chỉ hiện hành và cập nhật `lastUsedAt` qua Identity sau commit, idempotent theo mã phiên.
 
-* Lấy lại giá \+ Seller \+ trạng thái bán được từ Product Service (theo lô), tỷ lệ hoa hồng hiện hành từ Finance, rồi trong **một transaction**: tạo CheckoutSession, N Order (mỗi Seller 1 đơn, UNIQUE(checkoutSessionId, sellerId)), OrderItem snapshot, Reservation giữ toàn bộ hàng. Một dòng lỗi → rollback, không tạo gì (FRD UC-B04).
+- `202` với CheckoutSession khi phiên còn chờ và chưa có link; trả `200` cùng DTO khi link đã có hoặc phiên đã kết thúc. Khách dùng API tra cứu phiên để lấy link hoặc kết quả hiện hành.
+- Với BUY_NOW, đối chiếu nội dung bằng hash có phiên bản từ `checkoutIntentId`, nguồn, `productId`, `sellerId`, số lượng, đơn giá và tổng VND, `addressId`. Quote ký lại đúng Customer, purpose và phiên bản với cùng ý định/nội dung có thể trả lại cùng phiên. Cùng key khác nội dung → `409 IDEMPOTENCY_KEY_REUSED`. Key mới dùng ý định cũ với nội dung khác, hoặc key và ý định trỏ hai phiên khác nhau → `409 CHECKOUT_INTENT_CONFLICT`. Không đổi mapping cũ khi xung đột.
+- Sau kiểm tra chữ ký, quyền hiện hành, chủ phiên và nội dung, replay trả phiên cũ dù quote hết hạn hoặc địa chỉ gốc đã xóa. Dùng snapshot địa chỉ và tên Seller; ghi alias khi dùng key mới cho cùng ý định. Phiên `CLOSED/EXPIRED` trả `200` và `paymentUrl=null`; phiên còn lưu `AWAITING_PAYMENT` tại hoặc sau hạn trả `202` và link null. Replay không gia hạn, giữ hàng thêm hay tự đóng phiên.
+- Pay mới kiểm tra quote còn hạn, Customer ACTIVE, số điện thoại và địa chỉ hiện hành thuộc Customer. Báo `CHECKOUT_QUOTE_INVALID`, `CHECKOUT_QUOTE_EXPIRED`, `CHECKOUT_QUOTE_CHANGED`, `CUSTOMER_PAYMENT_BLOCKED`, `PROFILE_INCOMPLETE`, `CHECKOUT_ITEMS_INVALID` hoặc `CHECKOUT_PENDING_EXISTS` theo nguyên nhân. Nếu nguồn bắt buộc timeout, lỗi hoặc thiếu dữ liệu để kết luận, trả `503 SERVICE_UNAVAILABLE`. Khách chủ động mua lại bắt đầu bằng Preview mới. Số tiền hoặc URL từ client không được dùng để tạo giao dịch.
 
-* expiresAt=now+P-01. Sau commit checkout, cập nhật lastUsedAt qua Identity idempotent bằng checkoutSessionId; lỗi touch được retry, không giả định rollback checkout xuyên service.
-
-* source \= BUY\_NOW: đúng 1 Order, 1 OrderItem; không đọc/ghi giỏ (G-016).
-
-**Request body (application/json)**
-
-| Field | Kiểu | Bắt buộc | Validation / ghi chú |
-| :---- | :---- | :---- | :---- |
-| source | CheckoutSource | ✓ |  |
-| cartItemIds | uuid\[\] | nếu CART |  |
-| buyNowItem | object | nếu BUY\_NOW | { productId, quantity } |
-| addressId | uuid | ✓ | Địa chỉ trong sổ địa chỉ của Customer; dùng chung cho N đơn |
-
-**Response thành công**
-
-201 → data: CheckoutSession (gửi lặp cùng key → 200 cùng dữ liệu)
-
-```text
-POST /api/v1/orders/checkout-sessions
+```http
+POST /api/v1/orders/checkout/pay
 Idempotency-Key: 5f0c2b1a-7d3e-4e1b-9a55-2c1d9b7e0f11
-{ "source": "CART", "cartItemIds": ["ci-01", "ci-07"], "addressId": "ad-3" }
+Content-Type: application/json
+
+{"quoteToken":"<signed quote>","addressId":"dd2d93f9-dc54-4a68-8350-13a9c1d7a23f"}
 ```
-
-```text
-201 Created
-{ "data": {
-    "checkoutSessionId": "cs-71a...", "source": "CART",
-    "status": "AWAITING_PAYMENT", "paymentStatus": "NONE",
-    "totalAmountVnd": 750000, "shippingFeeVnd": 0,
-    "expiresAt": "2026-10-18T08:45:00Z", "paidAt": null,
-    "shippingAddress": { "recipientName": "Nguyễn Văn An", "recipientPhone": "0912345678",
-                         "provinceName": "Hà Nội", "wardName": "Phường Bạch Mai", "addressDetail": "12 Ngõ 5" },
-    "orders": [
-      { "orderId": "od-1", "seller": { "sellerId": "5d2a...", "sellerName": "Shop Áo Xinh" },
-        "totalAmountVnd": 300000, "status": "AWAITING_PAYMENT", "itemCount": 1 },
-      { "orderId": "od-2", "seller": { "sellerId": "9e7c...", "sellerName": "Giày Việt" },
-        "totalAmountVnd": 450000, "status": "AWAITING_PAYMENT", "itemCount": 1 } ],
-    "allowedActions": ["PAY", "CANCEL"],
-    "isSimulated": true } }
-```
-
-**Lỗi nghiệp vụ**
-
-* CUSTOMER\_PAYMENT\_BLOCKED (403)
-
-* PROFILE\_INCOMPLETE (422)
-
-* CHECKOUT\_PENDING\_EXISTS (409) — details\[0\].checkoutSessionId để FE dẫn tới phiên cũ
-
-* CHECKOUT\_ITEMS\_INVALID (409) — details theo dòng (hết hàng, ngừng bán, vượt giới hạn)
-
-* IDEMPOTENCY\_KEY\_REUSED (409), IDEMPOTENCY\_KEY\_REQUIRED (400)
 
 ##### GET /orders/checkout-sessions/current — Phiên đang chờ thanh toán (nếu có)
 
@@ -1919,9 +1884,8 @@ Idempotency-Key: 5f0c2b1a-7d3e-4e1b-9a55-2c1d9b7e0f11
 
 **Quyền: order:read:own    UC: B05, B07**
 
-* paymentStatus lấy từ Payment (internal) để FE hiển thị "Đang xác nhận thanh toán" và khóa nút khi PENDING.
-
-* allowedActions gồm PAY, CANCEL tùy trạng thái — FE dựa vào đây để bật/tắt nút.
+* paymentStatus lấy từ Payment (internal). FE hiển thị đang xác nhận khi Order chưa áp dụng kết quả. Khi phiên còn mở, chưa đến expiresAt và đúng Customer ACTIVE, link đã sẵn sàng thì trả paymentUrl và hành động OPEN_PAYMENT_LINK. Các trường hợp còn lại trả paymentUrl=null. Không có nút hủy phiên chờ.
+* Khi Payment tạm lỗi và dữ liệu của Payment cần để trả chi tiết phiên, Order trả 503 SERVICE_UNAVAILABLE theo envelope chung. Frontend giữ màn hình, ẩn thao tác mở link khi chưa xác minh được và polling lại cùng checkoutSessionId. Hiển thị “Đang kiểm tra trạng thái thanh toán”. Lỗi đọc không đổi trạng thái phiên và không kích hoạt Pay mới.
 
 **Response thành công**
 
@@ -1931,23 +1895,7 @@ Idempotency-Key: 5f0c2b1a-7d3e-4e1b-9a55-2c1d9b7e0f11
 
 * NOT\_FOUND (404)
 
-##### POST /orders/checkout-sessions/{checkoutSessionId}/cancel — Hủy cả phiên trước khi thanh toán
 
-**Quyền: order:cancel:own    UC: B08**
-
-* Chỉ khi AWAITING\_PAYMENT và không có Payment PENDING. Hủy tất cả N đơn, nhả toàn bộ hàng giữ; không hoàn tiền vì chưa thu.
-
-* MVP không cho hủy lẻ một đơn trước khi thanh toán (DB 3.6).
-
-**Response thành công**
-
-200 → data: CheckoutSession (status CANCELLED)
-
-**Lỗi nghiệp vụ**
-
-* PAYMENT\_IN\_PROGRESS (409)
-
-* INVALID\_STATE\_TRANSITION (409)
 
 ##### GET /orders/me — Đơn mua của tôi
 
@@ -2012,7 +1960,7 @@ Idempotency-Key: 5f0c2b1a-7d3e-4e1b-9a55-2c1d9b7e0f11
 
 * Customer BANNED còn Order chưa hoàn tất chỉ được hủy chính Order đó nếu trạng thái cho phép; không hủy đơn đã hoàn tất hay dùng chức năng mua sắm khác.
 
-* Để hủy phiên chưa thanh toán, dùng API hủy phiên.
+* Phiên chưa thanh toán tự hết hạn và nhả hàng tại Order.
 
 **Request body (application/json)**
 
@@ -2276,13 +2224,13 @@ Cảnh báo tồn thấp khi availableQuantity ≤5 (P-16), không lấy onHandQ
 
 ### 6.5 Payment Service
 
-**Phạm vi:** một Payment chung/CheckoutSession, Refund ORDER hoặc FULL_CHECKOUT, đối soát gateway, J2/J2b/J5; Customer chủ Payment mở chu kỳ hoàn mới, Admin chỉ đọc Refund. **UC:** B05, B07, G02, một phần B06, E02, E08.
+**Phạm vi:** một Payment chung/CheckoutSession, Refund ORDER hoặc FULL_CHECKOUT, webhook provider và đối soát theo J2/J5; Customer chủ Payment mở chu kỳ hoàn mới, Admin chỉ đọc Refund. **UC:** B05, B07, G02, một phần B06, E02, E08.
 
 #### Danh sách endpoint
 
 | \# | Method | Path | Mô tả | Quyền | UC |
 | :---- | :---- | :---- | :---- | :---- | :---- |
-| 1 | POST | /payments | Thanh toán một lần cho phiên checkout | payment:create:own | B05 |
+| 1 | POST | /payments/webhooks/demo-provider | Webhook kết quả thu và hoàn | Chữ ký provider | B05, G02 |
 | 2 | GET | /payments/by-checkout/{checkoutSessionId} | Trạng thái thanh toán của phiên | order:read:own | B05, B07 |
 | 3 | GET | /payments/admin/issues | Việc cần xử lý về tiền (Must) | operations:read:any | E08, E02 |
 | 4 | GET | /payments/admin/payments/by-checkout/{checkoutSessionId} | Payment chung và các Refund | operations:read:any | E08 |
@@ -2296,63 +2244,20 @@ Cảnh báo tồn thấp khi availableQuantity ≤5 (P-16), không lấy onHandQ
 
 | DTO | Field |
 | :---- | :---- |
-| Payment | paymentId, checkoutSessionId, amountVnd, currency, provider, status, providerTransactionId, errorCode, refundedAmountVnd, refundState, createdAt, completedAt, isSimulated |
+| Payment | paymentId, checkoutSessionId, amountVnd, currency, provider, status, collectionClosedAt, providerTransactionId, errorCode, refundedAmountVnd, refundState, createdAt, completedAt, isSimulated |
 | Refund | refundId, paymentId, orderId (null nếu FULL\_CHECKOUT), scope, amountVnd, reason, status, retryCycle, retryCount (retry tự động trong chu kỳ, không gồm lần đầu/query), customerRetryRequired, canRetryRefund (server suy ra), providerRefundId, createdAt, completedAt, isSimulated |
 
 #### Chi tiết endpoint
 
-##### POST /payments — Thanh toán một lần cho phiên checkout
+##### POST /payments/webhooks/demo-provider — Nhận kết quả của provider
 
-**Quyền: payment:create:own    UC: B05    Idempotency-Key: bắt buộc**
+Gateway chuyển đúng route này tới Payment và giữ nguyên body. Provider dùng `X-Webhook-Timestamp` (epoch giây) và `X-Webhook-Signature` (HMAC-SHA256 dạng hex trên timestamp, dấu chấm và body gốc). Payment xác minh chữ ký bằng secret cấu hình riêng, kiểm tra timestamp và đối chiếu tham chiếu, số tiền, VND với dữ liệu bền vững trước khi áp dụng. Cửa sổ xác thực 5 phút; mỗi lần gửi lại ký timestamp mới với cùng `eventId`. Không dùng JWT Customer hay redirect của browser để xác nhận kết quả.
 
-* Payment kiểm tra payment:create:own, User/Customer hiện hành và hỏi Order payable với customerId=sub; xác minh chủ phiên, AWAITING\_PAYMENT, chưa hết hạn. Phiên của người khác →404. Không cache quyền, không tin số tiền client.
+Envelope gồm `eventId, type, occurredAt, paymentId, providerTransactionId, amountVnd, currency, status, completedAt`; type là `payment.result` hoặc `refund.result`. Với refund, thêm `refundId, attemptId, providerRefundId`. Kết quả terminal mang `SUCCESS` hoặc `FAILED` và thời điểm hoàn tất; khi thất bại trả `errorCode`. Nếu provider xác định giao dịch hết hạn mà chưa thu, ghi `FAILED` với `errorCode=LINK_EXPIRED` và gửi webhook. Ghi hết hạn và ghi thu tại provider tranh cùng khóa. Khoản thu đã thành công trước hạn giữ `SUCCESS` dù webhook giao muộn. Đối chiếu riêng identifier và số tiền của refund với nghĩa vụ đã lưu.
 
-* **Số tiền luôn do server tính**, client không gửi số tiền.
+Webhook có thể tới trước phản hồi tạo link. Nếu đã có ý định theo `paymentId` nhưng chưa lưu `providerTransactionId`, gắn mã giao dịch trong cùng transaction sau khi xác thực và đối chiếu. Nếu mã đã được gắn thì phải khớp. Không hạ `SUCCESS` đã ghi khi nhận sự kiện cũ.
 
-* Tối đa 1 Payment / phiên. Gọi PaymentGateway.charge (bộ giả lập thanh toán nội bộ) **ngoài** transaction DB; lưu ý định trước khi gọi.
-
-* Kết quả: SUCCESS → 201; bộ giả lập trả FAILED rõ ràng → 201 với status: FAILED (phiên và N đơn đóng ở PAYMENT\_FAILED, giỏ giữ nguyên); timeout P-02 (giai đoạn 2\) → 202 với status: PENDING (FE hiển thị "Đang xác nhận thanh toán", poll GET /payments/by-checkout/{id} mỗi 3–5 giây).
-
-* Môi trường dev/staging: cho phép field simulatorScenario để demo/test các nhánh của giai đoạn 2 (6.5.1); production luôn dùng kịch bản SUCCESS.
-
-**Request body (application/json)**
-
-| Field | Kiểu | Bắt buộc | Validation / ghi chú |
-| :---- | :---- | :---- | :---- |
-| checkoutSessionId | uuid | ✓ | Phiên của chính Customer |
-| simulatorScenario | enum |  | Chỉ chấp nhận ở dev/staging, production bỏ qua. Giai đoạn 1: chỉ SUCCESS (mặc định). Giai đoạn 2: thêm FAIL, TIMEOUT, LATE\_SUCCESS (xem 6.5.1) |
-
-**Response thành công**
-
-201 (SUCCESS/FAILED) hoặc 202 (PENDING) → data: Payment
-
-```text
-POST /api/v1/payments
-Idempotency-Key: 0e7d0a52-55b4-4d37-9c43-0a1d2f3b9e10
-{ "checkoutSessionId": "cs-71a..." }
-```
-
-```text
-201 Created
-{ "data": { "paymentId": "pm-4c2...", "checkoutSessionId": "cs-71a...", "amountVnd": 750000,
-            "currency": "VND", "provider": "SIMULATOR", "status": "SUCCESS",
-            "providerTransactionId": "SIM-TX-88231", "errorCode": null,
-            "refundedAmountVnd": 0, "refundState": "NONE",
-            "createdAt": "2026-10-18T08:32:08Z", "completedAt": "2026-10-18T08:32:10Z",
-            "isSimulated": true } }
-```
-
-**Lỗi nghiệp vụ**
-
-* CUSTOMER\_PAYMENT\_BLOCKED (403)
-
-* CHECKOUT\_NOT\_PAYABLE (409) — đã hết hạn/hủy/đã thanh toán/thất bại
-
-* PAYMENT\_IN\_PROGRESS (409) — đã có Payment PENDING (gửi lặp cùng key trả lại Payment cũ, không lỗi)
-
-* CHECKOUT\_ITEMS\_INVALID (409) — sản phẩm/Seller không còn hợp lệ ngay trước khi thu: dừng, yêu cầu đặt lại
-
-* IDEMPOTENCY\_KEY\_REUSED (409)
+Trả `204` sau khi lưu kết quả và hiệu ứng cần thiết hoặc nhận lại cùng sự kiện đã lưu. Chữ ký không hợp lệ → `401`; payload không hợp lệ → `400`; trùng ID với nội dung khác hoặc sai tham chiếu/số tiền → `409`, không cập nhật nghiệp vụ. Trả `503` nếu chưa thể ghi bền vững. Provider lưu Outbox cùng kết quả; gửi lại lỗi tạm thời hoặc mất phản hồi và cho vận hành phát lại sự kiện chưa giao được. Không ghi secret hoặc link thanh toán vào log.
 
 ##### GET /payments/by-checkout/{checkoutSessionId} — Trạng thái thanh toán của phiên
 
@@ -2370,7 +2275,9 @@ Idempotency-Key: 0e7d0a52-55b4-4d37-9c43-0a1d2f3b9e10
 
 **Quyền: operations:read:any    UC: E08, E02**
 
-* Gom: Payment PENDING quá P-04, Refund FAILED hoặc PENDING quá ngưỡng, phiên needsManualReview.
+* `PAYMENT_PENDING`: Payment PENDING từ 2 phút trở lên, checkout còn mở và chưa có link thanh toán hợp lệ. Chỉ gắn lý do webhook chậm khi có bằng chứng trực tiếp đã lưu.
+* `REFUND_STUCK`: attempt hiện tại vẫn PENDING từ 30 phút trở lên tính từ lúc tạo attempt. Các ngưỡng chỉ dùng để hiển thị.
+* Một dòng cho mỗi khoản thu hoặc nghĩa vụ Refund. Cờ đối soát ưu tiên `MANUAL_REVIEW`. Xác định loại cuối trước khi lọc và phân trang.
 
 **Tham số (path / query)**
 
@@ -2381,7 +2288,9 @@ Idempotency-Key: 0e7d0a52-55b4-4d37-9c43-0a1d2f3b9e10
 
 **Response thành công**
 
-200 → data: \[{ issueType, paymentId, refundId, checkoutSessionId, orderId, amountVnd, since, retryCount }\] \+ meta
+200 → data: \[{ issueType, paymentId, refundId, checkoutSessionId, orderId, amountVnd, since, retryCount, displayReason, nextRetryAt }\] \+ meta
+
+`displayReason` và `nextRetryAt` có thể null. Các mã lý do gồm `PAYMENT_LINK_DELAYED`, `WEBHOOK_DELAYED`, `REFUND_ATTEMPT_STUCK`, `REFUND_WAITING_AUTO_RETRY`, `REFUND_WAITING_CUSTOMER`, `REFUND_REVIEW_REQUIRED`, `COLLECTION_REVIEW_REQUIRED`. Chỉ trả lịch thử lại tự động đã lưu. Cờ review Refund vẫn chặn thử lại khi đã hết lượt.
 
 ##### GET /payments/admin/payments/by-checkout/{checkoutSessionId} — Payment chung và các Refund
 
@@ -2423,7 +2332,8 @@ Idempotency-Key: 0e7d0a52-55b4-4d37-9c43-0a1d2f3b9e10
 
 * Chỉ Customer chủ Payment qua checkout; hỗ trợ ORDER/FULL_CHECKOUT, kể cả Customer BANNED dùng OPEN_ORDERS_ONLY trên đúng nghĩa vụ. Sai chủ →404; Seller/Admin →403. Chỉ nhận khi Refund FAILED và customerRetryRequired=true.
 * Body `{expectedRetryCycle: integer >=0}`; không nhận số tiền/key gateway từ client. Kiểm tra lại quyền/trạng thái rồi CAS/khóa Refund: tăng retryCycle, reset retryCount=0, xóa cờ chờ, chuyển PENDING và ghi công việc bền vững trong cùng local transaction. Không tạo Refund/số tiền/key gateway mới. Cùng HTTP key trả kết quả cũ; key khác với snapshot chu kỳ cũ →409 REFUND_RETRY_NOT_SAFE, không mở thêm chu kỳ.
-* Worker query trước phát lại: SUCCESS chỉ áp dụng một lần, PENDING tiếp tục query; chỉ FAILED xác định mới phát lệnh. Mỗi chu kỳ có một lần đầu + tối đa 3 retry sau 1/5/15 phút từ lỗi trước (P-RF-01), query không tính retry. Hết lượt giữ FAILED + customerRetryRequired=true, gửi thông báo Customer, chờ chu kỳ mới; vẫn query/áp SUCCESS muộn. Giữ toàn bộ lịch sử; khoảng 21 phút không là deadline.
+* Khi Refund chờ đối soát vì kết quả provider mâu thuẫn, DTO trả `canRetryRefund=false`. Yêu cầu mở chu kỳ mới trả `409 REFUND_RETRY_NOT_SAFE`.
+* Worker query trước phát lại. SUCCESS muộn áp dụng một lần nếu attempt còn chưa rõ. SUCCESS mâu thuẫn với FAILED của cùng attempt dừng gửi và chuyển đối soát theo §6.5.1. Chỉ FAILED xác định mới phát lệnh. Mỗi chu kỳ có một lần đầu và tối đa 3 retry sau 1/5/15 phút từ lỗi trước (P-RF-01), query không tính retry. Hết lượt giữ FAILED + customerRetryRequired=true, gửi thông báo Customer và chờ chu kỳ mới. Giữ toàn bộ lịch sử. Khoảng 21 phút là ước tính.
 * Không có API Admin query/retry Refund, không shim route cũ, không API đánh dấu tay đã hoàn. Không xác minh được dependency thì giữ công việc/đối soát, không suy là chưa hoàn.
 
 **Response thành công**
@@ -2439,6 +2349,7 @@ Idempotency-Key: 0e7d0a52-55b4-4d37-9c43-0a1d2f3b9e10
 **Quyền: operations:annotate    UC: E08**
 
 * Chỉ ghi chú/gỡ cờ đối soát khoản THU của CheckoutSession, không áp dụng Refund/cờ chờ Customer; không đổi trạng thái tiền, không gọi gateway. Ghi AuditLog MARK_HANDLED.
+* Payment cung cấp API công khai. Order sở hữu cờ và ghi chú CheckoutSession, cập nhật cùng audit trong một transaction. Order kiểm tra credential của Payment và Bearer Admin với `operations:annotate` hiện hành. Payment không tự thử lại lệnh ghi.
 
 **Request body (application/json)**
 
@@ -2466,19 +2377,24 @@ Idempotency-Key: 0e7d0a52-55b4-4d37-9c43-0a1d2f3b9e10
 
 200 → data: { collectedVnd, refundedVnd, pendingRefundVnd, pendingPaymentCount, failedRefundCount, isSimulated }
 
-#### 6.5.1 Bộ giả lập thanh toán nội bộ (thay cho Mock Provider)
+<a id="provider-demo"></a>
+#### 6.5.1 Hợp đồng với provider demo
 
-MVP không có cổng thanh toán ngoài/endpoint callback công khai. PaymentGateway charge/refund/query dùng SimulatedGateway; kết quả muộn lưu SimulatedTransaction và được J2/J5 tra cứu hoặc xử lý nội bộ Payment qua cùng handler idempotent providerTransactionId/providerRefundId. Admin chỉ xem dữ liệu đã lưu, không gọi gateway query/retry Refund. Sau MVP có thể thêm implementation cổng thật/callback xác thực chữ ký mà không thay DTO/trạng thái.
+Provider là ứng dụng HTTPS độc lập. Các API dưới đây yêu cầu credential riêng của Payment. Browser chỉ mở trang xác nhận bằng link có token khó đoán, có hạn và gắn với giao dịch. Trang quay về trang chi tiết phiên của sàn bằng base URL đã cấu hình và checkoutSessionId đã lưu. Dữ liệu browser gửi qua redirect không xác nhận thu.
 
-| Kịch bản | Kết quả | Giai đoạn | Cách chọn |
-| :---- | :---- | :---- | :---- |
-| SUCCESS | Thanh toán / hoàn tiền thành công ngay; POST /payments trả 201 SUCCESS | 1 (mặc định) | Mặc định mọi môi trường |
-| FAIL | Thanh toán bị từ chối rõ ràng → 201 FAILED; phiên và N đơn đóng ở PAYMENT\_FAILED | 2 | simulatorScenario (dev/staging) |
-| TIMEOUT | 202 PENDING, không bao giờ tự có kết quả → kiểm thử J2/J2b (P-02, P-04) | 2 | simulatorScenario (dev/staging) |
-| LATE\_SUCCESS | 202 PENDING, sau P-SIM-01 tự chuyển SUCCESS → nếu phiên đã đóng thì tạo Refund FULL\_CHECKOUT | 2 | simulatorScenario (dev/staging) |
-| REFUND\_FAIL | Refund FAILED → kiểm thử J5/P-RF-01 và Customer retry chu kỳ mới; Settlement giữ PENDING\_REFUND, pending chỉ giảm khi SUCCESS; Admin chỉ đọc | 2 | SIMULATOR\_REFUND\_SCENARIO, chỉ dev/staging |
+| API provider | Hợp đồng |
+| --- | --- |
+| `POST /v1/payments` | Nhận `paymentId, checkoutSessionId, amountVnd, currency, expiresAt`. Tạo một giao dịch duy nhất theo `paymentId`. Trả `providerTransactionId, status, expiresAt, paymentUrl`; giữ nguyên hạn và giao dịch khi replay cùng dữ liệu. Payload khác trên cùng mã → `409`. Từ `expiresAt` không tạo giao dịch mới. |
+| `GET /v1/payments/{paymentId}` | Tra cứu bằng mã Payment của sàn kể cả khi phản hồi tạo link bị mất. Trả ID, số tiền, loại tiền, trạng thái, hạn, mã lỗi và thời điểm có kết quả; link chỉ trả trong hạn khi còn có thể xác nhận. |
+| `GET /pay/{token}`, `POST /pay/{token}/confirm` | Hiển thị số tiền và hạn, sau đó xác nhận giả lập. Khóa giao dịch, kiểm tra hạn và chỉ ghi một khoản thu; gửi lại cùng xác nhận chỉ trả kết quả đã lưu. |
+| `POST /v1/refunds` | Nhận `refundId, attemptId, paymentId, providerTransactionId, amountVnd, currency`. Một nghĩa vụ `refundId` chỉ hoàn thành công một lần. Cùng `attemptId` và nội dung trả cùng kết quả; nội dung khác hoặc attempt đã bị đóng bởi GET trả `409`. Chỉ mở lần thử mới sau thất bại xác định của lần cũ. Khóa giao dịch gốc và kiểm tra tổng hoàn. Trả `providerRefundId, status, amountVnd, currency, completedAt, errorCode`. |
+| `GET /v1/refunds/{refundId}/attempts/{attemptId}` | Tra cứu cùng lần hoàn, kể cả sau khi phiên thu đóng. Attempt được nhận trả kết quả thực. Nếu xác nhận attempt chưa được nhận, provider ghi dấu đóng bền vững rồi trả HTTP 404 với JSON `{refundId, attemptId, providerRefundId, completedAt, errorCode: "REFUND_ATTEMPT_NOT_FOUND"}`. Dấu đóng dùng cùng khóa với POST và GET lặp lại trả cùng mã tham chiếu, cùng thời điểm đóng. |
 
-Giai đoạn 1 vẫn đi đủ trạng thái PENDING → SUCCESS/FAILED và phát đủ event như thiết kế đầy đủ, để giai đoạn 2 chỉ bật thêm nhánh mà không đổi API hay dữ liệu.
+`providerRefundId` trong 404 định danh bản ghi đóng attempt tại provider để đối soát. Payment chỉ dùng 404 nếu body khớp hai ID đã hỏi, có mã lỗi, mã tham chiếu và thời điểm đóng. Thuộc tính chưa rõ hoặc 404 chung tiếp tục query. `SUCCESS` mâu thuẫn với `FAILED` của cùng attempt dừng gửi hoàn cho Refund và chuyển đối soát theo ADR 0001. Webhook mâu thuẫn hợp lệ được ghi nhận và trả 204 để dừng giao lại.
+
+Cấu hình test provider cho phép từ chối, mất phản hồi, trì hoãn webhook và lỗi hoàn. Kịch bản thu muộn là đã xác nhận tại provider trước hạn nhưng kết quả tới Order muộn. Bộ demo không cho browser chọn kịch bản bằng API checkout.
+
+Khi nhận `checkout.closed`, Payment lưu dấu đóng theo checkout, dừng tạo giao dịch/cấp link/tự động tra cứu khoản thu. Nếu chưa có Payment thì dấu đóng vẫn được lưu để chặn tạo muộn. Nếu đã có `SUCCESS`, hoặc webhook hợp lệ đến sau xác nhận `SUCCESS`, cùng handler bảo đảm tạo một `FULL_CHECKOUT` và công việc gửi hoàn. Tiếp tục tra cứu **Refund** chưa rõ theo J5.
 
 ### 6.6 Finance Service
 
@@ -2666,11 +2582,14 @@ Idempotency-Key: 9a0b7f31-4f0e-4a6f-8f3e-6c1b2d4e5a77
 
 **Quyền: operations:read:any    UC: E02**
 
-* Finance lấy tổng thu/hoàn/chờ hoàn từ Payment (internal) rồi kiểm tra: tổng thu \= đã hoàn \+ Refund FULL\_CHECKOUT chưa thành công \+ Σ chờ quyết toán (gồm phần đơn đang chờ hoàn) \+ hoa hồng đã chốt \+ Σ khả dụng \+ Σ đã rút (DB 8.3), và WD-11 cho từng Seller.
+* Finance đọc tổng thu/hoàn/chờ hoàn từ Payment, số liệu checkout PAID từ Order và các ngăn tiền cục bộ. Số liệu Order dùng giải thích tiến độ. `differenceVnd` bằng tổng thu trừ tổng đã hoàn, nghĩa vụ FULL_CHECKOUT chưa thành công, pending mọi ví, hoa hồng đã chốt, available Seller và tổng đã rút Seller. ORDER đang chờ hoàn đã nằm trong pending. Kiểm WD-11 và ledger từng ví.
 
 **Response thành công**
 
-200 → data: { checkedAt, balanced: boolean, totals: { ... }, differenceVnd, inconsistentWallets: \[{ walletId, sellerId, differenceVnd }\] }
+200 → data: { status, checkedAt, sourceReadAt, missingSources, balanced, totals, differenceVnd, inconsistentWallets: [{ walletId, sellerId, differenceVnd }] }
+
+* `COMPLETE` khi đủ nguồn, tổng cân và các ví khớp. `DIFFERENCE` khi đủ nguồn và có chênh lệch tổng hoặc ví lệch. Ví lệch vẫn được báo khi `differenceVnd=0`.
+* `INCOMPLETE` khi nguồn thiếu, lỗi hoặc dữ liệu sai hợp đồng. Trả `balanced=false`, `differenceVnd=null` và danh sách nguồn thiếu. `sourceReadAt` và `totals` chỉ có khóa `ORDER`, `PAYMENT`, `FINANCE` tương ứng nguồn đọc được. Các lần đọc có thể quan sát chênh lệch tạm. Báo cáo chỉ đọc.
 
 ##### GET /finance/admin/wallets — Tra cứu ví (chỉ xem)
 
@@ -2735,7 +2654,7 @@ Idempotency-Key: 9a0b7f31-4f0e-4a6f-8f3e-6c1b2d4e5a77
 | Event | Người nhận | NotificationType |
 | :---- | :---- | :---- |
 | checkout.paid | Customer (1 thông báo gồm checkoutSessionId, tổng tiền và danh sách đơn theo cửa hàng); mỗi Seller (đơn mới của mình) | CHECKOUT\_PAID, NEW\_ORDER |
-| checkout.closed (FAILED / EXPIRED) | Customer | PAYMENT\_FAILED, CHECKOUT\_EXPIRED |
+| checkout.closed (closeReason: PAYMENT_FAILED / EXPIRED) | Customer | PAYMENT\_FAILED, CHECKOUT\_EXPIRED |
 | order.delivered | Customer | ORDER\_DELIVERED |
 | order.cancelled | Customer \+ Seller (theo cancelledBy, reason) | ORDER\_CANCELLED, ORDER\_REJECTED, ORDER\_AUTO\_CANCELLED |
 | order.confirmed / funds.available | order.confirmed thông báo trạng thái; funds.available thông báo tiền sau khi Finance commit | ORDER\_CONFIRMED / ORDER\_AUTO\_CONFIRMED / FUNDS\_AVAILABLE |
@@ -2828,21 +2747,26 @@ Base /internal/v1, chỉ gọi bởi service đã xác thực (mTLS hoặc token
 | Identity | GET /identity/sellers/status?ids= | Product, Cart, Order, Finance | \[{ sellerId, userId, userStatus, approvalStatus, status, sellerRoleActive, sellable }\]; no credential/PII; quyết định hiện hành không cache quyền. |
 | Identity | GET /identity/customers/{id}/checkout-eligibility | Order, Payment | { userId, userStatus, customerStatus, paymentBlocked, hasPhone, addressCount, canCheckout, authzVersion }; xác minh quyền và Customer. |
 | Identity | GET /identity/customers/{id}/addresses/{addressId} | Order | Snapshot recipientName, recipientPhone, provinceCode, provinceName, wardCode, wardName, addressDetail; mã/tên từ cùng danh mục seed DB Identity, 404 nếu không thuộc Customer. |
-| Identity | POST /identity/customers/{id}/addresses/{addressId}/touch | Order | { checkoutSessionId }; idempotent theo checkoutSessionId, cập nhật lastUsedAt sau checkout commit; địa chỉ đã bị xóa thì bỏ qua, không báo lỗi. |
+| Identity | POST /identity/customers/{id}/addresses/{addressId}/touch | Order | `{ checkoutSessionId }`; chỉ gọi sau commit và dùng lại cùng ID khi retry. Địa chỉ đã xác nhận xóa và thuộc đúng Customer trả `200` với `{ addressId, lastUsedAt: null, applied: false }`. Địa chỉ không rõ hoặc khác chủ trả `404`; lỗi touch giữ nguyên checkout đã commit. |
 | Identity | GET /identity/users/{userId}/contact | Notification | { userId, email, fullName }; service credential allowlist, bỏ contact theo actorType. |
-| Product | POST /products/batch | Cart, Order | { productIds } → productId, sellerId, giá, tên, media, sellable; không join DB. |
+| Product | POST /products/batch | Cart, Order | `{ productIds }` → productId, sellerId, giá, tên, media, sellable. Product kiểm tra service credential dành cho Cart hoặc Order. Lỗi nguồn xác minh Seller trả `503 SERVICE_UNAVAILABLE`. |
 | Product | POST /products/reviews/summary | Order | { customerId, productIds\[\] } ≤100 → \[{ productId, reviewId\|null, hasReviewed }\]; từ customerId của đơn đã xác minh, chỉ allow Order; không API public my-reviews. |
 | Order | GET /inventory/availability?productIds= | Product, Cart | \[{ productId, availableQuantity }\]. |
-| Order | POST /inventory | Product | { productId, sellerId, onHandQuantity }; UQ productId và request hash; lặp cùng payload trả kết quả cũ, khác payload 409\. |
+| Order | POST /inventory | Product | `{ productId, sellerId, onHandQuantity }`. Một dòng trên mỗi `productId`. Tạo mới trả `201` với `{"data":null}`. Đã tồn tại và đúng Seller trả `200` cùng body và giữ nguyên tồn, kể cả khi số lượng gửi lại khác. Cùng sản phẩm nhưng khác Seller trả `409 INVENTORY_PROVISION_CONFLICT`. Order chấp nhận thiếu `Idempotency-Key`; Product dùng lại cùng key khi retry. Thay đổi số lượng qua API Seller §6.4. |
 | Order | GET /inventory/details?productIds= | Product | Tồn thực/giữ/khả dụng/version; Product Service chỉ chuyển tiếp dữ liệu đúng quyền Seller/Admin. |
-| Order | GET /orders/checkout-sessions/{id}/payable | Payment | { customerId, status, expiresAt, totalAmountVnd, orders\[\] }; Payment đối chiếu customerId với sub. |
-| Order | GET /orders/accounts/{userId}/obligations?accountType=CUSTOMER\|SELLER | Identity | {hasOpenOrders,openOrderIds[],hasPendingPayment,hasUnresolvedRefund,evaluatedAt,orderStateVersion}; Order tổng hợp Order/CheckoutSession đúng owner và xác minh qua Payment internal API, không join DB; gồm FULL_CHECKOUT dù phiên đóng và SUCCESS chưa apply. |
+| Order | GET /orders/checkout-sessions/{id}/payable | Payment | { customerId, status, expiresAt, totalAmountVnd, orders\[{ orderId, status }\] }. Chỉ Payment gọi bằng service credential. Order đọc customerId từ checkout đã xác thực quyền sở hữu lúc tạo. Payment đối chiếu chủ phiên với bản ghi Payment đã có khi gọi lại. Trạng thái Order cho phép giới hạn tra cứu của Customer BANNED vào đúng nghĩa vụ. Relay dùng checkoutSessionId và service credential, không lưu hoặc chuyển tiếp Bearer của khách. |
+| Order | GET /orders/accounts/{userId}/obligations?accountType=CUSTOMER\|SELLER | Identity | {hasOpenOrders,openOrderIds[],hasPendingPayment,hasUnresolvedRefund,evaluatedAt,orderStateVersion}; xác minh Payment qua API nội bộ. Dấu đóng không kết luận hết nghĩa vụ. Payment PENDING, SUCCESS chưa áp dụng và Refund chưa giải quyết vẫn được đánh giá theo G-14, kể cả FULL_CHECKOUT. |
 | Order | GET /orders/order-items/{id}/review-eligibility?customerId= | Product | { eligible, productId, orderStatus }; xác minh chủ Order và CONFIRMED. |
-| Payment | GET /payments/by-checkout/{checkoutSessionId} | Order | Trạng thái Payment; Order đã kiểm tra chủ phiên. |
+| Payment | GET /payments/by-checkout/{checkoutSessionId} | Order | Trạng thái Payment và link có hạn nếu đủ điều kiện; Order đã kiểm tra chủ phiên. |
+| Payment | POST /payments/checkouts/{checkoutSessionId}/provider-session | Order | Chỉ Order gọi bằng service credential. Tạo hoặc lấy cùng link và kết quả theo checkoutSessionId. Kiểm tra payable, hạn và dấu đóng; Customer, số tiền và quy ước VND lấy từ checkout do Order sở hữu. |
 | Payment | GET /payments/refunds?orderIds= | Order | Trạng thái hoàn của các Order; Order cũng truy vấn theo checkoutSessionIds để lấy Refund FULL_CHECKOUT có orderId=null, kể cả CheckoutSession đã đóng. Đây là mở rộng contract tra cứu hiện có; không loại Refund PENDING/FAILED khỏi đánh giá nghĩa vụ. |
-| Payment | GET /payments/totals | Finance | Tổng thu/hoàn/chờ hoàn để đối soát. |
+| Payment | GET /payments/totals | Finance | { capturedVnd, refundedVnd, unsettledRefundVnd, unsettledFullCheckoutRefundVnd, readAt }; đọc cục bộ, phần chờ gồm PENDING và FAILED. |
+| Order | GET /orders/reconciliation-totals | Finance | { paidCheckoutCount, paidCheckoutTotalVnd, readAt }; mỗi checkout đã áp dụng PAID đếm một lần. |
+| Order | GET /orders/collection-reviews | Payment | Trả phiên còn cờ thu, phân trang theo since tăng dần rồi checkoutSessionId. Query checkoutSessionId cho phép đọc ghi chú của đúng phiên kể cả đã tắt cờ. Yêu cầu Bearer Admin có operations:read:any. |
+| Order | POST /orders/checkout-sessions/{checkoutSessionId}/mark-handled | Payment | { note } → { checkoutSessionId, manualNote, handledAt }; yêu cầu Bearer Admin có operations:annotate. |
 | Finance | GET /finance/commission-rate | Order | { commissionBps: 500 } = 5% chung mọi Seller/ngành hàng để snapshot từng Order; không tra Category. |
 | Finance | GET /finance/sellers/{sellerId}/obligations | Identity | {hasPendingFinance,pendingBalanceVnd,availableBalanceVnd,evaluatedAt,financeStateVersion}; gồm settlement/hiệu ứng pending chưa apply kể cả bằng 0, không chỉ wallet. |
+| Order | GET /orders/sellers/{sellerId}/open-orders | Identity | {hasOpenOrders,evaluatedAt}; chỉ đọc đơn đã thu còn PAID/PACKING/DELIVERED để phân quyền Seller BANNED trong authorization-context Phase 4. |
 | Notification | POST /notifications | Identity, Product, Order, Payment, Finance | Tạo thông báo từ service allowlist; hợp đồng chi tiết 7.1.1. Không lộ qua public Gateway. |
 
 #### 7.1.1 Tạo thông báo nội bộ
@@ -2863,6 +2787,19 @@ HTTP liên service nằm ngoài transaction giữ khóa. Trước commit Identit
 
 Điều phối giữa các service dùng outbox/inbox và retry; không join database chéo. Khi event cancel/confirm/refund tới Finance trước checkout.paid hoặc trước ví được tạo, consumer giữ bản ghi chờ phụ thuộc và retry; không đánh dấu đã áp dụng thành công hoặc ghi số dư âm. Event cùng aggregate phải kiểm tra version/state; event cũ không đảo trạng thái mới. Đối soát J5/Finance kiểm tra lại service sở hữu khi thiếu dữ kiện; không tự đoán số tiền từ notification.
 
+### Bằng chứng đủ điều kiện bán tại thời điểm thu (G3-A)
+
+Order gọi hai API nội bộ chỉ đọc qua OpenFeign, dùng `X-Service-Token` với quyền `order-service` ở service đích. `completedAt` là thời điểm UTC RFC 3339 do Payment đã xác minh và gửi trong `payment.succeeded`. Lấy các ID phân biệt từ snapshot checkout.
+
+| Service | HTTP | Request JSON | Phần tử trong `data.items` |
+| --- | --- | --- | --- |
+| Identity | `POST /internal/v1/identity/sellers/sale-evidence` | `{completedAt, sellerIds: UUID[]}` | `{sellerId, decision}` |
+| Product | `POST /internal/v1/products/sale-evidence` | `{completedAt, productIds: UUID[]}` | `{productId, sellerId, decision}` |
+
+HTTP 200 trả `{data:{completedAt,items:[...]}}`. Trả đúng thời điểm yêu cầu và đúng một mục cho mỗi ID. `ELIGIBLE` nghĩa là nguồn sở hữu xác nhận đủ điều kiện tại thời điểm đó. Identity xác minh quyền bán theo G-06. Product xác minh điều kiện bán và Seller sở hữu sản phẩm tại cùng thời điểm. `INELIGIBLE` cần bằng chứng xác định từ nguồn. `UNKNOWN` dùng khi chưa có lịch sử đáng tin cậy. Product có thể trả `sellerId: null` khi thiếu chủ sở hữu và chỉ được xác nhận `ELIGIBLE` khi có chủ sở hữu. Lỗi cú pháp trả 400, lỗi credential hoặc quyền trả 401 hoặc 403, lỗi nguồn tạm thời trả 503.
+
+Order gọi HTTP bên ngoài transaction khóa checkout và phân loại từng Order theo snapshot tại `completedAt`. Order hợp lệ khi cả hai nguồn xác nhận `ELIGIBLE` và Seller của từng sản phẩm khớp snapshot. Khi còn Order chưa kết luận do timeout, lỗi nguồn, phản hồi thiếu/sai hoặc `UNKNOWN`, Order giữ công việc xác minh bền vững đến hạn. Khi đủ kết luận và giờ DB sau khi lấy khóa vẫn trước hạn, Order áp dụng PAID, ghi SOLD và `checkout.paid`. Trong cùng transaction, hệ thống chỉ hủy các Order có bằng chứng không hợp lệ tại thời điểm thu, ghi RESTOCK và `order.cancelled` với `refundReason=SELLER_CANCEL` để Payment hoàn từng Order. Payment giữ SUCCESS. Nếu tới hạn mà checkout chưa áp dụng PAID, J1 đóng EXPIRED, nhả hàng và Payment dùng FULL_CHECKOUT khi xác nhận đã thu. HTTP mock theo hợp đồng dùng cho 4A. Nghiệm thu với Identity/Product thật được kiểm riêng.
+
 ### 7.2 Sự kiện (bất đồng bộ, qua Outbox)
 
 Event dùng Outbox, consumer Inbox chống lặp eventId; envelope thêm actor { userId\|null, kind: USER\|SERVICE, context: CUSTOMER\|SELLER\|ADMIN\|ACCOUNT\|null }. role/context trong event chỉ là dữ liệu audit, không cấp quyền gọi API. Mỗi aggregate có version tăng đơn điệu; consumer không áp dụng ngược trạng thái từ event cũ.
@@ -2877,8 +2814,8 @@ Event dùng Outbox, consumer Inbox chống lặp eventId; envelope thêm actor {
 | :---- | :---- | :---- | :---- |
 | payment.succeeded | Payment | paymentId, checkoutSessionId, amountVnd, completedAt | Order |
 | payment.failed | Payment | paymentId, checkoutSessionId, errorCode | Order |
-| checkout.paid | Order | checkoutSessionId, customerId, source, paidAt, cartItems\[{ cartItemId, quantity }\], orders\[{ orderId, sellerId, totalAmountVnd, commissionBps }\] | Cart, Finance, Notification |
-| checkout.closed | Order | checkoutSessionId, status (PAYMENT\_FAILED \| EXPIRED \| CANCELLED) | Notification |
+| checkout.paid | Order | checkoutSessionId, paymentId (UUID bắt buộc, từ Payment đã lưu trong checkout khi áp dụng PAID), customerId, source, paidAt, cartItems\[{ cartItemId, quantity }\], orders\[{ orderId, sellerId, totalAmountVnd, commissionBps }\] | Cart, Finance, Notification, Payment (snapshot kiểm tra Refund ORDER) |
+| checkout.closed | Order | checkoutSessionId, customerId, closeReason (PAYMENT_FAILED \| EXPIRED), closedAt | Payment đóng luồng thu; Notification báo theo lý do |
 | order.packing | Order | orderId, sellerId | (Notification — tùy chọn) |
 | order.delivered | Order | orderId, customerId, sellerId, deliveredAt, customerConfirmDueAt | Notification |
 | order.cancelled | Order | orderId, checkoutSessionId, customerId, sellerId, totalAmountVnd, wasPaid, cancelledBy, reasonCode, reasonNote, refundReason | Payment (nếu wasPaid), Finance, Notification |
@@ -2886,6 +2823,8 @@ Event dùng Outbox, consumer Inbox chống lặp eventId; envelope thêm actor {
 | refund.succeeded | Payment | refundId, paymentId, orderId, scope, amountVnd | Finance, Order, Notification |
 | refund.failed | Payment | refundId, paymentId, checkoutSessionId, customerId, orderId\|null, scope, amountVnd, errorCode, retryCycle, retryCount, retryExhausted | Notification chỉ gửi REFUND_RETRY_REQUIRED khi retryExhausted=true; dedupe refundId + retryCycle, hỗ trợ FULL_CHECKOUT không cần orderId. SUCCESS muộn vẫn áp dụng; link không tự retry |
 | funds.available | Finance | orderId, sellerId, sellerAmountVnd | Notification |
+
+Payment dùng snapshot `checkout.paid` để đối chiếu Payment SUCCESS, chủ checkout, Seller và số tiền từng Order trước khi tạo Refund ORDER từ `order.cancelled`. Khi lệnh hủy đến trước snapshot, Payment ghi Inbox chờ và xử lý tiếp khi nhận được snapshot. Các nghĩa vụ ORDER và FULL_CHECKOUT loại trừ nhau. Phát lại sự kiện hoặc nhận nhiều eventId cho cùng nghĩa vụ hợp lệ vẫn dùng một Refund.
 | withdrawal.completed | Finance | withdrawalId, sellerId, amountVnd, availableAfterVnd | Notification |
 | seller.registered / approved / rejected | Identity | userId, sellerId (=userId), approvalStatus, authzVersion, reason? | Finance (approved), Notification |
 | seller.banned / seller.unbanned | Identity | userId,sellerId,status,accountStatus,accessMode,bannedAt,disabledAt,restoreUntil,authzVersion,reason | Order không tự hủy; J4 giữ nguyên. Finance không đóng băng available vì ban; Notification phân biệt quyền giới hạn/unban, nêu deadline nếu có. |
@@ -2899,37 +2838,38 @@ Event dùng Outbox, consumer Inbox chống lặp eventId; envelope thêm actor {
 
 | Job | Service | Việc làm | Tham số |
 | :---- | :---- | :---- | :---- |
-| J1 | Order | Phiên AWAITING\_PAYMENT quá expiresAt và không có Payment PENDING → EXPIRED cho phiên \+ N đơn, nhả giữ hàng | P-01 |
-| J2 / J2b | Payment | Tra cứu Payment PENDING; quá P-04 vẫn chưa có kết quả → báo Order đóng phiên, tiếp tục theo dõi để hoàn toàn bộ nếu tiền đến muộn | P-02, P-03, P-04 |
+| J1 | Order | Consumer SQS Standard nhận `ExpireCheckout` (`commandId`, `checkoutSessionId`, `expiresAt`), khóa phiên và kiểm tra hạn từ DB. Đến hạn thì đóng, nhả hàng và ghi Outbox `checkout.closed` cùng transaction. Xóa message sau commit; lệnh đến sớm dời visibility đến hạn. | P-01 |
+| J2 | Payment | Tra cứu khoản thu chưa rõ bằng cùng paymentId khi luồng còn mở. Timeout HTTP mặc định 2 giây; khoảng chờ 5/15/30/60 giây, sau đó lặp mốc 60 giây. Timeout giữ kết quả chưa rõ. Dừng khi có kết quả xác định hoặc nhận `checkout.closed`. Khi đã đóng, SUCCESS đã lưu hoặc webhook SUCCESS đến sau đi theo luồng hoàn toàn bộ. | P-02, P-03 |
 | J3 (Must) | Order | Đơn DELIVERED quá customerConfirmDueAt → CONFIRMED (confirmedBy \= SYSTEM) | S-RECEIPT-07 |
 | J4 (Must) | Order | Đơn PAID/PACKING quá sellerActionDueAt → CANCELLED (refundReason \= SELLER\_TIMEOUT) | S-DELIVERY-07 |
-| J5 | Payment | Query kết quả chưa rõ; chỉ retry FAILED xác định, cùng Refund/key. Một lần đầu + tối đa 3 retry mỗi chu kỳ, chờ 1/5/15 phút từ lỗi trước; query không tính retry. Hết lượt FAILED + customerRetryRequired=true, thông báo một lần/refundId/retryCycle, chờ Customer, vẫn query/áp SUCCESS muộn; không Admin | P-RF-01 |
+| J5 | Payment | Query kết quả chưa rõ; chỉ retry FAILED xác định, gồm 404 đủ điều kiện theo hợp đồng provider. Một lần đầu + tối đa 3 retry mỗi chu kỳ, chờ 1/5/15 phút từ lỗi trước với cùng Refund/key và attempt mới. Query không tính lượt. Hết lượt FAILED, thông báo Customer theo mỗi chu kỳ. SUCCESS muộn áp dụng nếu attempt còn chưa rõ. Nếu mâu thuẫn với FAILED, giữ để đối soát và dừng gửi tiếp. | P-RF-01 |
 | J6 | Notification | Một lần gửi đầu + tối đa 3 retry email sau 1/5/15 phút từ lỗi trước, chỉ lỗi tạm thời, tôn trọng Retry-After. Lỗi vĩnh viễn/token hết hạn dừng ngay; hết lượt FAILED, cùng thông báo/key, không đổi nghiệp vụ | P-19 |
 | J7 — Đối soát trạng thái tài khoản bị cấm | Identity | Định kỳ đánh giá BANNED/DISABLED trong đợt cấm; hết nghĩa vụ đã xác minh → DISABLED, nghĩa vụ muộn → BANNED giới hạn. Không chuyển ACTIVE/không tự unban, không reset mốc/phát duplicate; kiểm tra version/đợt cấm trước commit | Retry an toàn, không đặt chu kỳ/backoff hoặc SLA mới |
 
-Chu kỳ J1–J6 thuộc N-06 (chưa chốt). Mọi job kiểm tra trạng thái hiện tại tránh chạy chồng với thao tác người dùng. J7 là job Identity nêu trên, không phải payout lịch sử; không áp giá trị dev N-06 thành SLA J7. J2/J2b/J5 giữ lộ trình simulator hiện có.
+J1 theo lịch từng message SQS. Retry relay, DLQ và phát lại dùng expiresAt gốc. Chu kỳ job khác thuộc N-06; J5 tiếp tục tra cứu Refund chưa rõ sau khi luồng thu đóng.
 
 ## 8. Luồng tích hợp tiêu biểu
 
 ### 8.1 Checkout nhiều cửa hàng và thanh toán
 
-| \# | Bên gọi → Bên nhận | Hành động | Kết quả |
-| :---- | :---- | :---- | :---- |
-| 1 | FE → Order | POST /orders/checkout/preview | Order đọc giá/Seller (Product), tồn kho, địa chỉ (Identity) → 200 CheckoutPreview |
-| 2 | FE → Order | POST /orders/checkout-sessions \+ Idempotency-Key | Một transaction: CheckoutSession \+ N Order \+ OrderItem \+ Reservation → 201 (AWAITING\_PAYMENT) |
-| 3 | FE → Payment | POST /payments \+ Idempotency-Key | Payment gọi GET /internal/v1/orders/checkout-sessions/{id}/payable, gọi bộ giả lập (PaymentGateway.charge) → 201 SUCCESS (hoặc 202 PENDING, FE poll) |
-| 4 | Payment → Order | event payment.succeeded | Một transaction: N Order → PAID, Reservation COMMITTED, StockMovement SOLD, outbox checkout.paid |
-| 5 | Order → Cart, Finance, Notification | event checkout.paid | Cart giảm dòng đã mua (nếu CART); Finance tạo Settlement \+ bút toán PAYMENT\_RECEIVED; Notification gửi email khách và từng Seller |
-| 6 | FE → Order | GET /orders/me | Các đơn hiển thị "Chờ xử lý" |
+| Bên gửi → Bên nhận | Xử lý |
+| --- | --- |
+| FE → Order | Preview rồi pay với quote và Idempotency-Key. Tạo phiên, N đơn, giữ hàng và lưu công việc tạo link + lệnh hết hạn cùng transaction. |
+| Order → Payment → provider | Tạo một giao dịch, lấy link có cùng expiresAt. Khách mở link và xác nhận tại provider. |
+| Provider → Payment → Kafka → Order | Webhook có chữ ký. Order chỉ áp dụng PAID trước hạn dưới khóa, rồi trừ kho và phát checkout.paid. |
+| SQS → Order → Kafka → Payment | ExpireCheckout đến hạn đóng phiên và nhả hàng. checkout.closed chặn thu và query thu. SUCCESS đã có hoặc webhook SUCCESS đến sau tạo đúng một FULL_CHECKOUT. |
+| Order → Cart, Finance, Notification | checkout.paid giảm hàng đã mua khỏi giỏ khi CART, tạo tiền chờ từng đơn và gửi thông báo. |
 
-Order Service là owner/trigger khi apply Payment SUCCESS qua payment.succeeded hoặc đường đối soát dùng chung handler ([SAD §5.1](software-architecture.md)). Xác minh điều kiện giao dịch qua Identity/Product ngoài transaction giữ khóa; invalid được chứng minh thì hủy/hoàn riêng Order đủ điều kiện PAID/PACKING, giữ Payment SUCCESS, đủ checkout.paid/order.cancelled. Payment tạo Refund ORDER; Finance giữ pending/PENDING_REFUND đến Refund SUCCESS. Seller ban sau capture không là lý do hủy; event trễ không suy invalid từ status hiện tại, thiếu bằng chứng tại capture phải xác minh/retry. Lỗi nguồn không là invalid; giữ retry bền vững, replay không nhân đôi SOLD/RESTOCK/Refund/ledger. Không quét hủy mọi đơn Seller, không hủy DELIVERED/CONFIRMED, không giao quyết định cho J7/J2/J5; late-payment FULL_CHECKOUT giữ nguyên.
+Order xác minh điều kiện giao dịch qua Identity/Product ngoài transaction giữ khóa. Với phiên đã được áp dụng PAID trước hạn, đơn invalid được chứng minh tại thời điểm giao dịch bị hủy/hoàn riêng, đơn hợp lệ tiếp tục. Lỗi nguồn giữ công việc để xác minh lại, ban sau capture không tự hủy. Phiên CLOSED dùng nhánh FULL_CHECKOUT, không phát checkout.paid.
+
+Phân kỳ đã duyệt: Phase 2 giữ xác minh và công việc retry bền vững khi nguồn thiếu bằng chứng tại thời điểm thu. Nếu tới hạn mà Order chưa áp dụng PAID, dùng luồng EXPIRED và FULL_CHECKOUT khi xác nhận đã thu. Hủy và hoàn theo từng Order đã PAID thuộc ORD-08 ở Phase 3. Kiểm thử dùng bằng chứng thật tiếp tục phụ thuộc nguồn Identity/Product tương thích.
 
 ### 8.2 Seller từ chối giao hàng
 
 | \# | Bên gọi → Bên nhận | Hành động | Kết quả |
 | :---- | :---- | :---- | :---- |
 | 1 | Seller FE → Order | POST /orders/seller/orders/{id}/reject | Order → CANCELLED, StockMovement RESTOCK, outbox order.cancelled |
-| 2 | Order → Payment | event order.cancelled | Tạo Refund (ORDER, SELLER\_REJECT) bằng tổng đơn, gọi PaymentGateway.refund (bộ giả lập) |
+| 2 | Order → Payment | event order.cancelled | Tạo Refund (ORDER, SELLER\_REJECT) bằng tổng đơn, gọi API hoàn tiền của provider |
 | 3 | Order → Finance | event order.cancelled | Settlement PENDING\_REFUND (chưa trừ số dư chờ) |
 | 4 | Order → Notification | event order.cancelled | Báo khách và Seller |
 | 5 | Payment → Finance, Order, Notification | event refund.succeeded | Settlement REFUNDED \+ bút toán REFUND\_DEBIT (trừ pending của Seller và nền tảng); đơn hiển thị "Đã hoàn"; báo khách |
@@ -2970,8 +2910,8 @@ Các quyết định tiền/tồn còn hiệu lực từ bản trước. Bản v
 
 | Tham số | Quy tắc / trạng thái |
 | :---- | :---- |
-| P-01 | TTL giữ hàng tạm 15 phút, chưa chốt |
-| P-02 / P-04 | Đề xuất dev 15 giây / 30 phút, chưa chốt |
+| P-01 | Chốt 15 phút từ lúc tạo checkout; link và Reservation có cùng expiresAt |
+| P-02 / P-03 | Timeout HTTP mặc định 2 giây. J2 chờ 5/15/30/60 giây giữa các lần tra cứu khi chưa rõ kết quả, rồi giữ khoảng chờ 60 giây. Dừng khi có kết quả xác định hoặc nhận checkout.closed. P-04 không còn đóng phiên. |
 | P-05 | Reset link 30 phút từ tạo, một lần |
 | P-06 | Đề xuất access/refresh 15 phút / 7 ngày, chưa chốt |
 | P-08.3 / P-08.5 | Product ≤9 tệp/2 video, mô tả ≤5.000 ký tự; Review Should ≤5 tệp/1 video, nội dung ≤1.000; định dạng/dung lượng/thời lượng chưa chốt riêng |
@@ -2985,7 +2925,7 @@ Các quyết định tiền/tồn còn hiệu lực từ bản trước. Bản v
 | P-21e | Seed đúng 10 ngành hàng và ví dụ [parameters.md](parameters.md#danh-mục-ban-đầu--p-21e), UUID; bắt buộc có dù màn quản trị Should chưa làm; Category không có hoa hồng riêng |
 | P-22 / P-26 | In-app Should 50 gần nhất/30 ngày không mất dedupe/email; địa giới seed DB Identity hai cấp, nguồn/phiên bản ghi rõ khi chuẩn bị, chưa chọn dataset |
 | P-COM-01 | 500 bps = 5% đã chốt, không chỉ dùng test; snapshot Order |
-| P-SIM-01 / N-06 | LATE_SUCCESS dev P-04 +5 phút và job dev mỗi 1 phút vẫn đề xuất, chưa chốt lịch cloud/backoff |
+| N-06 | Chu kỳ đối soát còn mở; SQS đặt lịch từng ExpireCheckout theo P-01 |
 
 ### 9.2 Giới hạn của tài liệu này
 
@@ -2993,7 +2933,7 @@ Các quyết định tiền/tồn còn hiệu lực từ bản trước. Bản v
 
 * FE/BE cập nhật login accountType, các phiên giới hạn, SellerApplication mới, avatarObjectKey và quyền Wallet.canWithdraw; ba web app dùng Auth API chung nhưng tài khoản riêng. Giữ UUID cho Order/CheckoutSession theo conflict \#15.
 
-* TTL P-01 vẫn tạm 15 phút chưa chốt; dung lượng/định dạng/thời lượng upload và rate limit còn trạng thái riêng. P-26 đã chốt seed DB Identity thay provider ngoài, nhưng nguồn/phiên bản dataset phải ghi rõ khi chuẩn bị. Không khẳng định đã kiểm thử service thật hoặc Google OAuth trong lần sửa tài liệu này.
+* P-01 chốt 15 phút; dung lượng/định dạng/thời lượng upload và rate limit còn trạng thái riêng. P-26 đã chốt seed DB Identity thay provider ngoài, nhưng nguồn/phiên bản dataset phải ghi rõ khi chuẩn bị. Không khẳng định đã kiểm thử service thật hoặc Google OAuth trong lần sửa tài liệu này.
 
 ## 10. Quy trình sử dụng và nhật ký thay đổi
 

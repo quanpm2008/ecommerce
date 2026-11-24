@@ -18,6 +18,12 @@ public class CheckoutEvent {
 	@Column(name = "checkout_session_id", nullable = false)
 	private UUID checkoutSessionId;
 
+	@Column(name = "order_id")
+	private UUID orderId;
+
+	@Column(name = "order_version")
+	private Long orderVersion;
+
 	@Column(name = "envelope", nullable = false, columnDefinition = "text")
 	private String envelope;
 
@@ -31,6 +37,16 @@ public class CheckoutEvent {
 		this.checkoutSessionId = checkoutSessionId;
 		this.envelope = envelope;
 		this.createdAt = createdAt;
+	}
+
+	public CheckoutEvent(UUID eventId, Order order, String envelope, Instant createdAt) {
+		this(eventId, order.getCheckoutSessionId(), envelope, createdAt);
+		this.orderId = order.getOrderId();
+		this.orderVersion = order.getLifecycleVersion();
+	}
+
+	public UUID aggregateId() {
+		return orderId == null ? checkoutSessionId : orderId;
 	}
 
 	public UUID getEventId() {

@@ -9,7 +9,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Clock;
 import java.util.List;
 import java.util.UUID;
 
@@ -28,8 +27,6 @@ public class AddressService {
 	private final RegionCatalog regions;
 
 	private final AddressProperties properties;
-
-	private final Clock clock;
 
 	@Transactional(readOnly = true)
 	public List<Address> list(Caller caller) {
@@ -71,18 +68,15 @@ public class AddressService {
 		return view(address, defaultIdOf(customer.getCustomerId()));
 	}
 
-	/** Deleting the last address is allowed. An address already used by a checkout is only hidden (G-13). */
+	/** Order keeps a shipping snapshot, so deleting an address does not affect its checkout. */
 	@Transactional
 	public void delete(Caller caller, UUID addressId) {
 		Customer customer = customers.findLockedById(caller.userId()).orElseThrow(AddressService::noCustomer);
 		requireActive(customer);
-		CustomerAddress address = owned(caller, addressId);
-		if (address.mustBeKept()) {
-			address.markDeleted(clock.instant());
-		}
-		else {
-			addresses.delete(address);
-		}
+		CustomerAddress address = addresses.lockOwnedAddress(addressId, customer.getCustomerId())
+				.orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+		addresses.recordDeletion(addressId, customer.getCustomerId());
+		addresses.delete(address);
 	}
 
 	private CustomerAddress owned(Caller caller, UUID addressId) {

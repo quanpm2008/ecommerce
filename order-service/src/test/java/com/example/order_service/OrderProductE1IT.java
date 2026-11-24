@@ -73,9 +73,19 @@ class OrderProductE1IT {
 			assertTrue(payload.isObject() && initial > 0 && "SELLING".equals(payload.path("status").asString()),
 					"Use a disposable SELLING Product fixture with positive initial stock");
 			try (var database = openOrderInventoryReader()) {
+				var key = Map.of("Idempotency-Key", UUID.randomUUID().toString());
 				var created = evidence.request("E1_PRODUCT_PUBLIC_URL", "POST", "/api/v1/seller/products",
-						sellerBearer, null, payload, 201).path("data");
+						sellerBearer, null, payload, 201, key).path("data");
 				UUID productId = UUID.fromString(created.path("productId").asString());
+				var replay = evidence.request("E1_PRODUCT_PUBLIC_URL", "POST", "/api/v1/seller/products",
+						sellerBearer, null, payload, 201, key).path("data");
+				assertTrue(productId.toString().equals(replay.path("productId").asString()), "Create replay changed Product ID");
+				for (int retry = 0; !"SELLING".equals(replay.path("status").asString()) && retry < 40; retry++) {
+					Thread.sleep(250);
+					replay = evidence.request("E1_PRODUCT_PUBLIC_URL", "GET", "/api/v1/seller/products/" + productId,
+							sellerBearer, null, null, 200).path("data");
+				}
+				assertTrue("SELLING".equals(replay.path("status").asString()), "Provisioned Product must become SELLING");
 				long version;
 				try (var query = database.prepareStatement("""
 						select seller_id, on_hand_quantity, reserved_quantity, row_version
@@ -107,7 +117,6 @@ class OrderProductE1IT {
 						&& sellerDetail.path("inventoryVersion").asLong() == version,
 						"Seller Product detail must agree with the committed Order stock and version");
 				evidence.note("Product → Order inventory details verified via Seller detail");
-				evidence.note("No Product provision retry or intermediate HIDDEN transition observed by this fixture");
 			} catch (SQLException unavailable) {
 				throw new IllegalStateException("Order inventory reader failed with SQL state " + unavailable.getSQLState());
 			}

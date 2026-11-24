@@ -105,7 +105,13 @@ public class InternalQueries {
 	/** After a checkout commits: {@code lastUsedAt} = now, once per checkout session; retries change nothing. */
 	@Transactional
 	public AddressTouch touch(UUID customerId, UUID addressId, String checkoutSessionId) {
-		CustomerAddress address = ownedAddress(customerId, addressId);
+		CustomerAddress address = addresses.lockOwnedAddress(addressId, customerId).orElse(null);
+		if (address == null) {
+			if (addresses.wasDeleted(addressId, customerId)) {
+				return new AddressTouch(addressId, null, false);
+			}
+			throw new ApiException(ErrorCode.NOT_FOUND, "Address not found");
+		}
 		boolean first = addresses.recordTouch(addressId, checkoutSessionId) == 1;
 		if (first) {
 			address.markUsed(clock.instant());

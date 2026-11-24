@@ -30,7 +30,7 @@ import static com.example.identity_service.common.error.ErrorCode.INVALID_REGION
 import static com.example.identity_service.common.error.ErrorCode.NOT_FOUND;
 import static com.example.identity_service.common.error.ErrorCode.REGION_SOURCE_UNAVAILABLE;
 
-@Tag(name = "Addresses", description = "The caller's address book, at most 5 addresses (UC-A06, DB §3.1.4)")
+@Tag(name = "Addresses", description = "The caller's address book, at most 3 addresses (UC-A06, DB §3.1.4)")
 @RestController
 @RequestMapping("/api/v1/identity/customers/me/addresses")
 @PreAuthorize("hasAuthority('customer:profile:own')")
@@ -64,8 +64,8 @@ public class AddressController {
 		return ApiResponse.of(addresses.update(Caller.of(jwt), addressId, body));
 	}
 
-	@Operation(summary = "Delete an address", description = "An address already used by a checkout is only hidden, so "
-			+ "orders keep their reference. The last address may be deleted too.")
+	@Operation(summary = "Delete an address", description = "Deletes the address, including the last one. "
+			+ "Committed orders retain their shipping snapshot.")
 	@ErrorCodes(NOT_FOUND)
 	@DeleteMapping("/{addressId}")
 	@ResponseStatus(HttpStatus.NO_CONTENT)

@@ -4,6 +4,7 @@ import com.example.finance_service.entity.Settlement;
 import com.example.finance_service.entity.Wallet;
 import com.example.finance_service.entity.WalletTransaction;
 import com.example.finance_service.messaging.FinanceEvent.Approved;
+import com.example.finance_service.messaging.FinanceEvent.Lifecycle;
 import com.example.finance_service.messaging.FinanceEvent.Paid;
 import com.example.finance_service.messaging.FinanceEvent.PaidOrder;
 import com.example.finance_service.repository.SettlementInboxRepository;
@@ -14,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -87,8 +89,86 @@ public class PendingSettlementService {
 	}
 
 	@Transactional
+	public void lifecycle(Lifecycle event, String raw) {
+		inbox.receive(event.eventId(), event.type(), raw);
+		if (!inbox.isWaiting(event.eventId(), event.type(), raw)) {
+			return;
+		}
+		var settlement = settlements.findByOrderId(event.orderId()).orElse(null);
+		if (settlement == null) {
+			return;
+		}
+		boolean refund = "refund.succeeded".equals(event.type());
+		boolean cancellation = "order.cancelled".equals(event.type());
+		if (refund && (!settlement.getPaymentId().equals(event.paymentId())
+				|| settlement.getGrossAmountVnd() != event.amountVnd())
+				|| !refund && !settlement.getSellerId().equals(event.sellerId())
+				|| cancellation && settlement.getGrossAmountVnd() != event.amountVnd()) {
+			inbox.finish(event.eventId(), "FAILED_REVIEW");
+			return;
+		}
+		var status = settlement.getStatus();
+		if (cancellation) {
+			if (status == Settlement.Status.PENDING) {
+				settlement.markPendingRefund();
+			}
+			inbox.finish(event.eventId(), status == Settlement.Status.SETTLED ? "FAILED_REVIEW" : "APPLIED");
+			return;
+		}
+		var target = refund ? Settlement.Status.REFUNDED : Settlement.Status.SETTLED;
+		if (status == target) {
+			boolean duplicate = !refund || ledger.existsBySettlementIdAndTransactionTypeAndReferenceId(
+					settlement.getSettlementId(), WalletTransaction.TransactionType.REFUND_DEBIT, event.aggregateId());
+			inbox.finish(event.eventId(), duplicate ? "APPLIED" : "FAILED_REVIEW");
+			return;
+		}
+		if (refund && status == Settlement.Status.PENDING) {
+			return;
+		}
+		var expected = refund ? Settlement.Status.PENDING_REFUND : Settlement.Status.PENDING;
+		if (status != expected) {
+			inbox.finish(event.eventId(), "FAILED_REVIEW");
+			return;
+		}
+		var platform = wallets.findByOwnerTypeAndCurrency(Wallet.OwnerType.PLATFORM, "VND").orElse(null);
+		var seller = wallets.findByOwnerTypeAndCurrencyAndOwnerIdInOrderByOwnerId(
+				Wallet.OwnerType.SELLER, "VND", List.of(settlement.getSellerId())).stream().findFirst().orElse(null);
+		if (platform == null || seller == null) {
+			return;
+		}
+		Instant now = Instant.now();
+		debit(platform, settlement, event, settlement.getCommissionAmountVnd(), refund, now);
+		debit(seller, settlement, event, settlement.getSellerAmountVnd(), refund, now);
+		if (refund) {
+			settlement.markRefunded();
+		} else {
+			settlement.markSettled(now);
+			inbox.enqueueFundsAvailable(settlement, now);
+		}
+		inbox.finish(event.eventId(), "APPLIED");
+	}
+
+	private void debit(Wallet wallet, Settlement settlement, Lifecycle event, long amount, boolean refund, Instant now) {
+		if (amount == 0) {
+			return;
+		}
+		wallet.debitPending(amount, !refund, now);
+		var type = refund ? WalletTransaction.TransactionType.REFUND_DEBIT
+				: WalletTransaction.TransactionType.SETTLEMENT_RELEASED;
+		var reference = refund ? WalletTransaction.ReferenceType.REFUND : WalletTransaction.ReferenceType.ORDER;
+		ledger.save(new WalletTransaction(UUID.randomUUID(), wallet.getWalletId(), settlement.getSettlementId(), null,
+				reference, event.aggregateId(), type, -amount, refund ? 0 : amount, 0,
+				type.name() + ":" + settlement.getOrderId() + ":" + wallet.getWalletId(), now));
+	}
+
+	@Transactional
 	public void retainInvalid(UUID id, String type, String raw) {
 		inbox.retainInvalid(id, type, raw);
+	}
+
+	@Transactional
+	public void fundsAvailablePublished(UUID eventId) {
+		inbox.markFundsAvailablePublished(eventId);
 	}
 
 	private void credit(Wallet wallet, Settlement settlement, long amountVnd, Instant now) {

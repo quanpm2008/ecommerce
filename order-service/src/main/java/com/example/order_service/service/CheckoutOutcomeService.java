@@ -13,7 +13,6 @@ import com.example.order_service.repository.CheckoutSaleEvidenceRepository.Work;
 import com.example.order_service.repository.CheckoutSessionJpaRepository;
 import com.example.order_service.repository.InventoryStockRepository;
 import com.example.order_service.repository.OrderItemRepository;
-import com.example.order_service.service.CheckoutSaleEvidenceWorker.Decision;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.json.JsonMapper;
@@ -25,6 +24,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.TreeMap;
 import java.util.UUID;
 
@@ -37,10 +39,11 @@ public class CheckoutOutcomeService {
 	private final CheckoutSaleEvidenceRepository evidence;
 	private final OrderItemRepository items;
 	private final JsonMapper json;
+	private final OrderLifecycleService lifecycle;
 
 	CheckoutOutcomeService(CheckoutSessionJpaRepository sessions, CheckoutOrderRepository orders,
 			InventoryStockRepository inventory, CheckoutOutcomeRepository outcomes, CheckoutSaleEvidenceRepository evidence,
-			OrderItemRepository items, JsonMapper json) {
+			OrderItemRepository items, JsonMapper json, OrderLifecycleService lifecycle) {
 		this.sessions = sessions;
 		this.orders = orders;
 		this.inventory = inventory;
@@ -48,6 +51,7 @@ public class CheckoutOutcomeService {
 		this.evidence = evidence;
 		this.items = items;
 		this.json = json;
+		this.lifecycle = lifecycle;
 	}
 
 	@Transactional
@@ -112,7 +116,7 @@ public class CheckoutOutcomeService {
 	}
 
 	@Transactional
-	public void applyEvidence(Work work, Decision decision) {
+	public void applyEvidence(Work work, Set<UUID> invalidProducts) {
 		var checkout = sessions.lock(work.checkoutId()).orElse(null);
 		if (checkout == null || checkout.getStatus() != CheckoutSession.Status.AWAITING_PAYMENT
 				|| !work.paymentId().equals(checkout.getPaymentId()) || !evidence.lockClaim(work)) {
@@ -121,12 +125,10 @@ public class CheckoutOutcomeService {
 		Instant now = inventory.databaseNow();
 		if (!now.isBefore(checkout.getExpiresAt())) {
 			close(checkout, CloseReason.EXPIRED, now);
+		} else if (invalidProducts == null) {
+			evidence.postpone(work.checkoutId(), "HISTORICAL_SALE_EVIDENCE_UNAVAILABLE");
 		} else {
-			switch (decision) {
-				case UNKNOWN -> evidence.postpone(work.checkoutId(), "HISTORICAL_SALE_EVIDENCE_UNAVAILABLE");
-				case INELIGIBLE -> evidence.stop(work.checkoutId(), "HISTORICAL_SALE_INELIGIBLE");
-				case ELIGIBLE -> pay(checkout, work.completedAt(), now);
-			}
+			pay(checkout, work.completedAt(), now, invalidProducts);
 		}
 	}
 
@@ -179,7 +181,7 @@ public class CheckoutOutcomeService {
 		enqueue(checkoutId, "checkout.closed", new Closed(checkoutId, checkout.getCustomerId(), reason, now.toString()), now);
 	}
 
-	private void pay(CheckoutSession checkout, Instant completedAt, Instant now) {
+	private void pay(CheckoutSession checkout, Instant completedAt, Instant now, Set<UUID> invalidProducts) {
 		UUID checkoutId = checkout.getCheckoutSessionId();
 		var quantities = new TreeMap<UUID, Integer>();
 		for (var reservation : outcomes.reservations(checkoutId)) {
@@ -207,6 +209,15 @@ public class CheckoutOutcomeService {
 						.map(item -> new CartItem(Objects.requireNonNull(item.getSourceCartItemId()), item.getQuantity())).toList();
 		enqueue(checkoutId, "checkout.paid", new Paid(checkoutId, checkout.getPaymentId(), checkout.getCustomerId(),
 				checkout.getCheckoutSource(), completedAt.toString(), cartItems, paidOrders), now);
+		if (!invalidProducts.isEmpty()) {
+			var byId = savedOrders.stream().collect(Collectors.toMap(Order::getOrderId, Function.identity()));
+			var invalidOrders = items.findByOrderIdInOrderByProductId(byId.keySet()).stream()
+					.filter(line -> invalidProducts.contains(line.getProductId()))
+					.map(OrderItem::getOrderId).distinct().sorted().toList();
+			for (UUID invalidOrder : invalidOrders) {
+				lifecycle.cancel(byId.get(invalidOrder), Order.CancelledByType.SYSTEM, null, null, null, "SELLER_CANCEL", now);
+			}
+		}
 	}
 
 	private void enqueue(UUID checkoutId, String eventType, Object payload, Instant now) {

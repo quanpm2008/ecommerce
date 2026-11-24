@@ -50,6 +50,12 @@ public class User {
 
 	private String disabledReason;
 
+	private Instant bannedAt;
+
+	private Instant disabledAt;
+
+	private Instant restoreUntil;
+
 	private long authzVersion;
 
 	@CreationTimestamp
@@ -99,6 +105,15 @@ public class User {
 		status = UserStatus.DISABLED;
 		disabledReason = Objects.requireNonNull(reason);
 		bumpAuthzVersion();
+	}
+
+	public void recordBanTime(Instant at) {
+		bannedAt = at;
+	}
+
+	public void recordDisableTime(Instant at) {
+		disabledAt = at;
+		restoreUntil = at == null ? null : at.plus(java.time.Duration.ofDays(30));
 	}
 
 	public void enable() {

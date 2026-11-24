@@ -1,6 +1,8 @@
 package com.example.identity_service.customer;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
@@ -22,6 +24,19 @@ public interface CustomerAddressRepository extends JpaRepository<CustomerAddress
 	List<CustomerAddress> findBook(UUID customerId);
 
 	Optional<CustomerAddress> findByAddressIdAndCustomerIdAndDeletedAtIsNull(UUID addressId, UUID customerId);
+
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select a from CustomerAddress a where a.addressId = :addressId and a.customerId = :customerId and a.deletedAt is null")
+	Optional<CustomerAddress> lockOwnedAddress(UUID addressId, UUID customerId);
+
+	@Modifying
+	@Query(value = "insert into address_deletion_receipts (address_id, customer_id) values (:addressId, :customerId)",
+			nativeQuery = true)
+	void recordDeletion(UUID addressId, UUID customerId);
+
+	@Query(value = "select exists (select 1 from address_deletion_receipts where address_id = :addressId and customer_id = :customerId)",
+			nativeQuery = true)
+	boolean wasDeleted(UUID addressId, UUID customerId);
 
 	/** Records a checkout's use of an address once; 0 means this checkout session already touched it. */
 	@Modifying

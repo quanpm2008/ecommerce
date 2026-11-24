@@ -3,7 +3,7 @@ package com.example.order_service;
 import com.example.order_service.security.OrderAuthorization.CurrentUser;
 import com.example.order_service.security.OrderAuthorization;
 import com.example.order_service.security.OrderSecurityConfig;
-import com.example.order_service.web.OrderApiExceptionHandler;
+import com.example.order_service.exception.OrderApiExceptionHandler;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.crypto.RSASSASigner;

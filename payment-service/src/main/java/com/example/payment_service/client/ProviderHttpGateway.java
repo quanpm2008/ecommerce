@@ -1,5 +1,7 @@
 package com.example.payment_service.client;
 
+import static com.example.payment_service.client.ProviderContracts.REFUND_ATTEMPT_NOT_FOUND;
+
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.time.Duration;
@@ -17,6 +19,7 @@ import com.example.payment_service.client.ProviderContracts.CreatePaymentRequest
 import com.example.payment_service.client.ProviderContracts.CreatePaymentResponse;
 import com.example.payment_service.client.ProviderContracts.CreateRefundRequest;
 import com.example.payment_service.client.ProviderContracts.PaymentQueryResponse;
+import com.example.payment_service.client.ProviderContracts.RefundAttemptAbsence;
 import com.example.payment_service.client.ProviderContracts.RefundResponse;
 
 public final class ProviderHttpGateway implements PaymentGateway {
@@ -66,7 +69,8 @@ public final class ProviderHttpGateway implements PaymentGateway {
 
     @Override
     public RefundResponse createRefund(CreateRefundRequest request) {
-        var result = refundResult(provider.post().uri("/v1/refunds").contentType(MediaType.APPLICATION_JSON).body(request));
+        var result = validateRefund(exchange(provider.post().uri("/v1/refunds")
+                .contentType(MediaType.APPLICATION_JSON).body(request), RefundResponse.class));
         if (result.amountVnd() != request.amountVnd() || !request.currency().equals(result.currency())) {
             throw new UncertainResultException();
         }
@@ -75,17 +79,42 @@ public final class ProviderHttpGateway implements PaymentGateway {
 
     @Override
     public RefundResponse queryRefund(UUID refundId, UUID attemptId) {
-        return refundResult(provider.get().uri("/v1/refunds/{refundId}/attempts/{attemptId}", refundId, attemptId));
+        try {
+            return validateRefund(provider.get().uri("/v1/refunds/{refundId}/attempts/{attemptId}", refundId, attemptId)
+                    .accept(MediaType.APPLICATION_JSON).retrieve()
+                    .onStatus(status -> !status.is2xxSuccessful() && !status.isError(), (sent, response) -> {
+                        throw new ProviderHttpException(response.getStatusCode().value());
+                    }).body(RefundResponse.class));
+        } catch (RestClientResponseException failure) {
+            if (failure.getStatusCode().value() == 404) {
+                var absence = readAbsence(failure);
+                if (absence != null && REFUND_ATTEMPT_NOT_FOUND.equals(absence.errorCode())
+                        && refundId.equals(absence.refundId()) && attemptId.equals(absence.attemptId())
+                        && !missing(absence.providerRefundId()) && absence.completedAt() != null) {
+                    throw new RefundAttemptNotFound(absence);
+                }
+            }
+            throw new ProviderHttpException(failure.getStatusCode().value());
+        } catch (RestClientException failure) {
+            throw new UncertainResultException();
+        }
     }
 
-    private static RefundResponse refundResult(RestClient.RequestHeadersSpec<?> request) {
-        var result = exchange(request, RefundResponse.class);
-        if (missing(result.providerRefundId())
+    private static RefundResponse validateRefund(RefundResponse result) {
+        if (result == null || missing(result.providerRefundId())
                 || !validResult(result.status(), result.amountVnd(), result.currency(),
                         result.completedAt(), result.errorCode())) {
             throw new UncertainResultException();
         }
         return result;
+    }
+
+    private static RefundAttemptAbsence readAbsence(RestClientResponseException failure) {
+        try {
+            return failure.getResponseBodyAs(RefundAttemptAbsence.class);
+        } catch (RestClientException invalidBody) {
+            return null;
+        }
     }
 
     private static <T> T exchange(RestClient.RequestHeadersSpec<?> request, Class<T> responseType) {
@@ -138,6 +167,18 @@ public final class ProviderHttpGateway implements PaymentGateway {
 
         public int statusCode() {
             return statusCode;
+        }
+    }
+
+    public static final class RefundAttemptNotFound extends RuntimeException {
+        private final RefundAttemptAbsence absence;
+
+        private RefundAttemptNotFound(RefundAttemptAbsence absence) {
+            this.absence = absence;
+        }
+
+        public RefundAttemptAbsence absence() {
+            return absence;
         }
     }
 

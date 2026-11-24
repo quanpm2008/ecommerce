@@ -1,7 +1,7 @@
 package com.example.order_service;
 
-import com.example.order_service.checkout.CheckoutQuote;
-import com.example.order_service.checkout.CheckoutQuote.Claims;
+import com.example.order_service.service.CheckoutQuote;
+import com.example.order_service.service.CheckoutQuote.Claims;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 

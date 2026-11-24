@@ -95,7 +95,8 @@ public class InternalController {
 	}
 
 	@Operation(summary = "Mark an address used by a checkout", description = "Call after the checkout commits. Once "
-			+ "per `checkoutSessionId`: retries return `applied: false` and change nothing.")
+			+ "per `checkoutSessionId`: retries return `applied: false` and change nothing. "
+			+ "A known deleted address belonging to the customer returns `applied: false, lastUsedAt: null`.")
 	@ErrorCodes(NOT_FOUND)
 	@PostMapping("/customers/{customerId}/addresses/{addressId}/touch")
 	@PreAuthorize("hasAuthority('service:order-service')")

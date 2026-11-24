@@ -40,9 +40,13 @@ final class Phase2LocalBrokerSupport implements AutoCloseable {
 	private static final String KAFKA = "127.0.0.1:55990";
 	private static final URI SQS = URI.create("http://127.0.0.1:55991");
 	private static final String DB = "jdbc:postgresql://127.0.0.1:55989/";
+	private static final String DB_USER = System.getenv().getOrDefault("PHASE2_4A_DB_USER", "ecommerce");
+	private static final String DB_PASSWORD = System.getenv().getOrDefault("PHASE2_4A_DB_PASSWORD", "ecommerce");
 	static final String ORDER_TO_PAYMENT = "phase2-4a-order-payment";
 	static final String PAYMENT_TO_ORDER = "phase2-4a-payment-order";
 	static final String ORDER_TO_FINANCE = "phase2-4a-order-finance";
+	static final String FINANCE_TO_ORDER = "phase4-finance-order";
+	static final String FINANCE_TO_PAYMENT = "phase4-finance-payment";
 	static final String ORDER_TO_IDENTITY = "phase2-4a-order-identity";
 	static final String ORDER_TO_PRODUCT = "phase2-4a-order-product";
 	static final String PRODUCT_TO_ORDER = "phase2-4a-product-order";
@@ -52,6 +56,7 @@ final class Phase2LocalBrokerSupport implements AutoCloseable {
 	final String orderTopic = name + "-order";
 	final String paymentTopic = name + "-payment";
 	final String identityTopic = name + "-identity";
+	final String financeTopic = name + "-finance";
 	final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
 	final URI provider;
 	final Admin kafka = Admin.create(Map.of("bootstrap.servers", KAFKA, "request.timeout.ms", "4000"));
@@ -81,7 +86,8 @@ final class Phase2LocalBrokerSupport implements AutoCloseable {
 		assertThat(Runtime.version().feature()).isEqualTo(21);
 		assertThat(kafka.describeCluster().nodes().get(8, TimeUnit.SECONDS)).isNotEmpty();
 		kafka.createTopics(List.of(new NewTopic(orderTopic, 1, (short) 1),
-				new NewTopic(paymentTopic, 1, (short) 1), new NewTopic(identityTopic, 1, (short) 1)))
+				new NewTopic(paymentTopic, 1, (short) 1), new NewTopic(identityTopic, 1, (short) 1),
+				new NewTopic(financeTopic, 1, (short) 1)))
 				.all().get(10, TimeUnit.SECONDS);
 		queue = sqs.createQueue(request -> request.queueName(name)).queueUrl();
 		assertThat(queue).endsWith("/" + name);
@@ -187,7 +193,7 @@ final class Phase2LocalBrokerSupport implements AutoCloseable {
 	}
 
 	String db(String service, String sql, Object... args) throws Exception {
-		try (var connection = DriverManager.getConnection(DB + service + "_test_4a", "ecommerce", "ecommerce");
+		try (var connection = DriverManager.getConnection(DB + service + "_test_4a", DB_USER, DB_PASSWORD);
 			 var statement = connection.prepareStatement(sql)) {
 			for (int i = 0; i < args.length; i++) statement.setObject(i + 1, args[i]);
 			try (var result = statement.executeQuery()) {
@@ -196,8 +202,8 @@ final class Phase2LocalBrokerSupport implements AutoCloseable {
 		}
 	}
 
-	private void execute(String service, String sql, Object... args) throws Exception {
-		try (var connection = DriverManager.getConnection(DB + service + "_test_4a", "ecommerce", "ecommerce");
+	void execute(String service, String sql, Object... args) throws Exception {
+		try (var connection = DriverManager.getConnection(DB + service + "_test_4a", DB_USER, DB_PASSWORD);
 			 var statement = connection.prepareStatement(sql)) {
 			for (int i = 0; i < args.length; i++) statement.setObject(i + 1, args[i]);
 			statement.executeUpdate();
@@ -248,7 +254,7 @@ final class Phase2LocalBrokerSupport implements AutoCloseable {
 				"--server.address=127.0.0.1", "--server.port=" + ports.get(service), "--eureka.client.enabled=false",
 				"--logging.level.root=WARN", "--spring.datasource.url=" + DB + service + "_test_4a"
 				+ ("order".equals(service) ? "?currentSchema=phase2_test_clock,pg_catalog,orders" : ""),
-				"--spring.datasource.username=ecommerce", "--spring.datasource.password=ecommerce"));
+				"--spring.datasource.username=" + DB_USER, "--spring.datasource.password=" + DB_PASSWORD));
 		if ("order".equals(service)) {
 			command.addAll(List.of("--order.identity.base-url=" + fixture,
 					"--order.product.base-url=" + fixture, "--order.payment.base-url=" + origin("payment"),
@@ -256,6 +262,7 @@ final class Phase2LocalBrokerSupport implements AutoCloseable {
 					"--order.product.service-token=" + ORDER_TO_PRODUCT, "--order.payment.service-token=" + ORDER_TO_PAYMENT,
 					"--order.finance.service-token=" + ORDER_TO_FINANCE, "--order.internal.tokens.product=" + PRODUCT_TO_ORDER,
 					"--order.internal.tokens.payment=" + PAYMENT_TO_ORDER,
+					"--order.internal.tokens.finance=" + FINANCE_TO_ORDER,
 					"--order.checkout.quote-key=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
 					"--order.checkout.delivery.enabled=true", "--order.checkout.delivery.region=us-east-1",
 					"--order.checkout.delivery.endpoint=" + SQS, "--order.checkout.delivery.queue-url=" + queue,
@@ -263,6 +270,8 @@ final class Phase2LocalBrokerSupport implements AutoCloseable {
 					"--order.kafka.payment-topic=" + paymentTopic, "--order.kafka.payment-group=" + name + "-order"));
 		} else if ("payment".equals(service)) {
 			command.addAll(List.of("--payment.internal.order-token=" + ORDER_TO_PAYMENT,
+					"--payment.internal.finance-token=" + FINANCE_TO_PAYMENT,
+					"--payment.identity.base-url=" + fixture, "--payment.identity.service-token=" + ORDER_TO_IDENTITY,
 					"--payment.order.credential=" + PAYMENT_TO_ORDER, "--payment.order.base-url=" + origin("order"),
 					"--payment.provider.base-url=" + provider,
 					"--payment.provider.credential-header=X-Provider-Test-Key",
@@ -273,7 +282,11 @@ final class Phase2LocalBrokerSupport implements AutoCloseable {
 					"--payment.collection.initial-delay=600000", "--payment.refund.query-interval=2s"));
 		} else {
 			command.addAll(List.of("--finance.internal.tokens.order=" + ORDER_TO_FINANCE,
+					"--finance.identity.base-url=" + fixture, "--finance.identity.service-token=" + ORDER_TO_IDENTITY,
+					"--finance.order.base-url=" + origin("order"), "--finance.order.credential=" + FINANCE_TO_ORDER,
+					"--finance.payment.base-url=" + origin("payment"), "--finance.payment.credential=" + FINANCE_TO_PAYMENT,
 					"--finance.kafka.bootstrap-servers=" + KAFKA, "--finance.kafka.order-topic=" + orderTopic,
+					"--finance.kafka.payment-topic=" + paymentTopic, "--finance.kafka.result-topic=" + financeTopic,
 					"--finance.kafka.identity-topic=" + identityTopic, "--finance.kafka.group=" + name + "-finance"));
 		}
 		var builder = new ProcessBuilder(command).redirectErrorStream(true).directory(root.toFile());

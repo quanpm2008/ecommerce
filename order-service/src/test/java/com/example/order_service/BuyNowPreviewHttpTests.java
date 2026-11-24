@@ -1,6 +1,6 @@
 package com.example.order_service;
 
-import com.example.order_service.checkout.CheckoutQuote;
+import com.example.order_service.service.CheckoutQuote;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.crypto.RSASSASigner;

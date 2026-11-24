@@ -27,6 +27,9 @@ class AuthorizationContextTests extends EndpointTestSupport {
 		context(customer.accessToken()).andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.userId").value(customer.userId().toString()))
 				.andExpect(jsonPath("$.data.userStatus").value("ACTIVE"))
+				.andExpect(jsonPath("$.data.accountType").value("CUSTOMER"))
+				.andExpect(jsonPath("$.data.accountStatus").value("ACTIVE"))
+				.andExpect(jsonPath("$.data.accessMode").value("FULL"))
 				.andExpect(jsonPath("$.data.authzVersion").value(2))
 				.andExpect(jsonPath("$.data.sessionActive").value(true))
 				.andExpect(jsonPath("$.data.roles", contains("CUSTOMER")))
@@ -39,6 +42,7 @@ class AuthorizationContextTests extends EndpointTestSupport {
 	@Test
 	void sellerProfileSaysWhetherTheShopCanOperate() throws Exception {
 		context(approvedSeller().accessToken()).andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.accountType").value("SELLER"))
 				.andExpect(jsonPath("$.data.roles", contains("SELLER")))
 				.andExpect(jsonPath("$.data.sellerProfile.approvalStatus").value("APPROVED"))
 				.andExpect(jsonPath("$.data.sellerProfile.canOperate").value(true));

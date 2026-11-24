@@ -165,32 +165,74 @@ class CheckoutOutcomePostgresTests extends PayHttpTestSupport {
 	}
 
 	@Test
-	void leavesAuthoritativeIneligibilityForTheCheckoutDeadlineWithoutPayingOrFailingEarly() throws Exception {
+	void appliesPaidThenCancelsOnlyTheOrderWithHistoricalIneligibility() throws Exception {
 		var fixture = checkout();
+		UUID otherOrder = UUID.randomUUID(), otherItem = UUID.randomUUID(), otherSeller = UUID.randomUUID();
+		UUID otherProduct = UUID.randomUUID();
+		jdbc.update("insert into orders.inventory(product_id,seller_id,on_hand_quantity,reserved_quantity) values (?,?,8,2)",
+				otherProduct, otherSeller);
+		jdbc.update("""
+				update orders.checkout_session set checkout_source='CART', source_cart_id=gen_random_uuid(),
+					cart_snapshot='{}'::jsonb, total_amount_vnd=4000 where checkout_session_id=?
+				""", fixture.id());
+		jdbc.update("""
+				insert into orders.purchase_order(order_id,checkout_session_id,seller_id,seller_name_snapshot,customer_id,
+					total_amount_vnd,currency,commission_bps_snapshot,recipient_name,recipient_phone,province_code,province_name,
+					ward_code,ward_name,address_detail,status,created_at,updated_at)
+				select ?,checkout_session_id,?,'Other seller',customer_id,total_amount_vnd,currency,commission_bps_snapshot,
+					recipient_name,recipient_phone,province_code,province_name,ward_code,ward_name,address_detail,status,created_at,updated_at
+				from orders.purchase_order where checkout_session_id=?
+				""", otherOrder, otherSeller, fixture.id());
+		jdbc.update("""
+				insert into orders.order_item(order_item_id,order_id,product_id,product_name_snapshot,cover_media_snapshot,
+					unit_price_vnd_snapshot,quantity,source_cart_item_id)
+				values (?,?,?,'Other item','cover',1000,2,gen_random_uuid())
+				""", otherItem, otherOrder, otherProduct);
+		jdbc.update("""
+				update orders.order_item set source_cart_item_id=gen_random_uuid() where product_id=?
+				""", fixture.sample().product());
+		jdbc.update("""
+				insert into orders.reservation(reservation_id,order_item_id,product_id,quantity,status,expires_at,created_at)
+				select gen_random_uuid(),?,?,2,'HELD',expires_at,created_at from orders.checkout_session where checkout_session_id=?
+				""", otherItem, otherProduct, fixture.id());
 		UUID payment = UUID.randomUUID();
 		UUID event = UUID.randomUUID();
-		send(payment, success(event, payment, fixture.id(), 2000));
+		send(payment, success(event, payment, fixture.id(), 4000));
 		await(() -> "WAITING_DEPENDENCY".equals(inbox(event)));
 		identityEvidence.set(exchange -> {
 			var request = JSON.readTree(exchange.getRequestBody());
 			data(exchange, Map.of("completedAt", request.path("completedAt").asString(),
-					"items", List.of(Map.of("sellerId", SELLER, "decision", "ELIGIBLE"))));
+					"items", List.of(Map.of("sellerId", SELLER, "decision", "ELIGIBLE"),
+							Map.of("sellerId", otherSeller, "decision", "ELIGIBLE"))));
 		});
 		productEvidence.set(exchange -> {
 			var request = JSON.readTree(exchange.getRequestBody());
 			data(exchange, Map.of("completedAt", request.path("completedAt").asString(),
 					"items", List.of(JSON.createObjectNode().put("productId", fixture.sample().product().toString())
-							.putNull("sellerId").put("decision", "INELIGIBLE"))));
+							.putNull("sellerId").put("decision", "INELIGIBLE"),
+							Map.of("productId", otherProduct, "sellerId", otherSeller, "decision", "ELIGIBLE"))));
 		});
 		runEvidenceFor(fixture.id());
-		assertThat(state(fixture.id())).isEqualTo("AWAITING_PAYMENT");
-		assertThat(inbox(event)).isEqualTo("WAITING_DEPENDENCY");
-		assertThat(stock(fixture)).isEqualTo(2);
-		assertThat(eventCount(fixture.id())).isZero();
+		assertThat(state(fixture.id())).isEqualTo("PAID");
+		assertThat(inbox(event)).isEqualTo("APPLIED");
+		assertThat(stock(fixture)).isZero();
+		assertThat(eventCount(fixture.id())).isEqualTo(2);
 		assertThat(jdbc.queryForObject("""
-				select next_attempt_at is null and last_error = 'HISTORICAL_SALE_INELIGIBLE'
+				select next_attempt_at is null and lease_token is null and last_error is null
 				from orders.checkout_sale_evidence where checkout_session_id = ?
 				""", Boolean.class, fixture.id())).isTrue();
+		assertThat(jdbc.queryForList("select status from orders.purchase_order where checkout_session_id=?", String.class, fixture.id()))
+				.containsExactlyInAnyOrder("PAID", "CANCELLED");
+		assertThat(jdbc.queryForObject("select status from orders.purchase_order where order_id=?", String.class, otherOrder))
+				.isEqualTo("PAID");
+		assertThat(jdbc.queryForObject("select on_hand_quantity from orders.inventory where product_id=?", Integer.class,
+				fixture.sample().product())).isEqualTo(8);
+		assertThat(jdbc.queryForObject("select on_hand_quantity from orders.inventory where product_id=?", Integer.class,
+				otherProduct)).isEqualTo(6);
+		assertThat(jdbc.queryForObject("""
+				select envelope::jsonb #>> '{payload,refundReason}' from orders.checkout_event_outbox
+				where checkout_session_id=? and order_id is not null
+				""", String.class, fixture.id())).isEqualTo("SELLER_CANCEL");
 	}
 
 	private void runEvidenceFor(UUID id) {

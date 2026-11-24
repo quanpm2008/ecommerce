@@ -56,83 +56,88 @@ public class CheckoutSaleEvidenceWorker {
 		}
 		var claim = next.orElseThrow();
 		var products = outcomes.evidenceSnapshot(claim.checkoutId());
-		var decision = products.isEmpty() ? Decision.UNKNOWN : readEvidence(claim, products);
-		outcomes.applyEvidence(claim, decision);
+		var invalidProducts = products.isEmpty() ? null : invalidProducts(claim, products);
+		outcomes.applyEvidence(claim, invalidProducts);
 		return true;
 	}
 
-	private Decision readEvidence(Work claim, Map<UUID, UUID> products) {
+	// A null result leaves the checkout waiting for complete historical evidence.
+	private Set<UUID> invalidProducts(Work claim, Map<UUID, UUID> products) {
 		if (identityCredential.isBlank() || productCredential.isBlank()) {
-			return Decision.UNKNOWN;
+			return null;
 		}
 		var sellers = Set.copyOf(products.values());
 		var completedAt = claim.completedAt().toString();
 		try {
 			var identityEnvelope = identity.read(identityCredential, new IdentitySaleEvidenceClient.Request(
 					completedAt, sellers.stream().sorted().toList()));
-			var sellerDecision = sellerDecision(identityEnvelope, sellers, claim.completedAt());
-			if (sellerDecision == Decision.UNKNOWN) {
-				return Decision.UNKNOWN;
+			var invalidSellers = invalidSellers(identityEnvelope, sellers, claim.completedAt());
+			if (invalidSellers == null) {
+				return null;
 			}
 			var productEnvelope = product.read(productCredential, new ProductSaleEvidenceClient.Request(
 					completedAt, products.keySet().stream().sorted().toList()));
-			var productDecision = productDecision(productEnvelope, products, claim.completedAt());
-			if (productDecision == Decision.UNKNOWN) {
-				return Decision.UNKNOWN;
+			var invalidProducts = invalidProducts(productEnvelope, products, claim.completedAt());
+			if (invalidProducts == null) {
+				return null;
 			}
-			return sellerDecision == Decision.INELIGIBLE || productDecision == Decision.INELIGIBLE
-					? Decision.INELIGIBLE : Decision.ELIGIBLE;
+			products.forEach((productId, sellerId) -> {
+				if (invalidSellers.contains(sellerId)) {
+					invalidProducts.add(productId);
+				}
+			});
+			return invalidProducts;
 		} catch (FeignException | IllegalArgumentException | DateTimeParseException malformedOrUnavailable) {
-			return Decision.UNKNOWN;
+			return null;
 		}
 	}
 
-	private static Decision sellerDecision(IdentitySaleEvidenceClient.Envelope envelope, Set<UUID> expected, Instant at) {
+	private static Set<UUID> invalidSellers(IdentitySaleEvidenceClient.Envelope envelope, Set<UUID> expected, Instant at) {
 		var data = envelope == null ? null : envelope.data();
 		if (data == null || !sameTimestamp(data.completedAt(), at) || data.items() == null
 				|| data.items().size() != expected.size()) {
-			return Decision.UNKNOWN;
+			return null;
 		}
 		var seen = new HashSet<UUID>();
-		Decision result = Decision.ELIGIBLE;
+		var invalid = new HashSet<UUID>();
 		for (var item : data.items()) {
 			if (item == null || item.sellerId() == null || !expected.contains(item.sellerId()) || !seen.add(item.sellerId())) {
-				return Decision.UNKNOWN;
+				return null;
 			}
 			var decision = parseDecision(item.decision());
 			if (decision == Decision.UNKNOWN) {
-				return Decision.UNKNOWN;
+				return null;
 			}
 			if (decision == Decision.INELIGIBLE) {
-				result = Decision.INELIGIBLE;
+				invalid.add(item.sellerId());
 			}
 		}
-		return result;
+		return invalid;
 	}
 
-	private static Decision productDecision(ProductSaleEvidenceClient.Envelope envelope, Map<UUID, UUID> expected, Instant at) {
+	private static Set<UUID> invalidProducts(ProductSaleEvidenceClient.Envelope envelope, Map<UUID, UUID> expected, Instant at) {
 		var data = envelope == null ? null : envelope.data();
 		if (data == null || !sameTimestamp(data.completedAt(), at) || data.items() == null
 				|| data.items().size() != expected.size()) {
-			return Decision.UNKNOWN;
+			return null;
 		}
 		var seen = new HashSet<UUID>();
-		Decision result = Decision.ELIGIBLE;
+		var invalid = new HashSet<UUID>();
 		for (var item : data.items()) {
 			if (item == null || item.productId() == null || !expected.containsKey(item.productId()) || !seen.add(item.productId())) {
-				return Decision.UNKNOWN;
+				return null;
 			}
 			var decision = parseDecision(item.decision());
 			UUID seller = expected.get(item.productId());
 			if (decision == Decision.UNKNOWN || (item.sellerId() == null && decision == Decision.ELIGIBLE)
 					|| (item.sellerId() != null && !seller.equals(item.sellerId()))) {
-				return Decision.UNKNOWN;
+				return null;
 			}
 			if (decision == Decision.INELIGIBLE) {
-				result = Decision.INELIGIBLE;
+				invalid.add(item.productId());
 			}
 		}
-		return result;
+		return invalid;
 	}
 
 	private static Decision parseDecision(String decision) {

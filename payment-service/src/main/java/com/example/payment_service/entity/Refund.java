@@ -52,11 +52,11 @@ public class Refund {
     @Column(name = "retry_count", nullable = false)
     private int retryCount = 0;
 
-    @Column(name = "needs_manual_review", nullable = false)
-    private boolean needsManualReview = false;
+    @Column(name = "retry_cycle", nullable = false)
+    private int retryCycle;
 
-    @Column(name = "manual_note")
-    private String manualNote;
+    @Column(name = "customer_retry_required", nullable = false)
+    private boolean customerRetryRequired;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -94,7 +94,7 @@ public class Refund {
         this.idempotencyKey = Objects.requireNonNull(idempotencyKey, "idempotencyKey is required");
         this.status = RefundStatus.PENDING;
         this.retryCount = 0;
-        this.needsManualReview = false;
+        this.customerRetryRequired = false;
     }
 
     /**
@@ -104,7 +104,7 @@ public class Refund {
         this.status = RefundStatus.SUCCESS;
         this.providerRefundId = providerRefundId;
         this.completedAt = completedAt != null ? completedAt : Instant.now();
-        this.needsManualReview = false;
+        this.customerRetryRequired = false;
     }
 
     /**
@@ -114,25 +114,29 @@ public class Refund {
         this.status = RefundStatus.FAILED;
         this.providerRefundId = providerRefundId;
         this.completedAt = completedAt != null ? completedAt : Instant.now();
+        this.customerRetryRequired = retryCount >= 3;
     }
 
     public void retry() {
         if (this.status != RefundStatus.FAILED) {
             throw new IllegalStateException("Only FAILED refund can be retried (current status: " + this.status + ")");
         }
+        if (this.retryCount >= 3 || this.customerRetryRequired) {
+            throw new IllegalStateException("Automatic refund retries are exhausted");
+        }
         this.status = RefundStatus.PENDING;
         this.retryCount++;
         this.completedAt = null;
     }
 
-    public void flagForManualReview(String note) {
-        this.needsManualReview = true;
-        this.manualNote = note;
-    }
-
-    public void markHandled(String note) {
-        this.needsManualReview = false;
-        this.manualNote = (this.manualNote != null ? this.manualNote + "; " : "") + "Handled: " + note;
+    public void openNextCycle() {
+        if (status != RefundStatus.FAILED || !customerRetryRequired) {
+            throw new IllegalStateException("Only an exhausted failed refund can open a new cycle");
+        }
+        retryCycle = Math.incrementExact(retryCycle);
+        retryCount = 0;
+        customerRetryRequired = false;
+        status = RefundStatus.PENDING;
+        completedAt = null;
     }
 }
-

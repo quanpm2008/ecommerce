@@ -3,6 +3,7 @@ package com.example.payment_service;
 import static com.example.payment_service.client.GatewayStatus.FAILED;
 import static com.example.payment_service.client.GatewayStatus.PENDING;
 import static com.example.payment_service.client.GatewayStatus.SUCCESS;
+import static com.example.payment_service.client.ProviderContracts.REFUND_ATTEMPT_NOT_FOUND;
 
 import java.io.IOException;
 import java.net.InetAddress;
@@ -33,6 +34,7 @@ import com.example.payment_service.client.ProviderContracts.CreatePaymentRequest
 import com.example.payment_service.client.ProviderContracts.CreatePaymentResponse;
 import com.example.payment_service.client.ProviderContracts.CreateRefundRequest;
 import com.example.payment_service.client.ProviderContracts.PaymentQueryResponse;
+import com.example.payment_service.client.ProviderContracts.RefundAttemptAbsence;
 import com.example.payment_service.client.ProviderContracts.RefundResponse;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -53,11 +55,13 @@ final class ProviderMockFixture implements AutoCloseable {
     private final HttpClient webhook = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
     private final Map<UUID, Payment> payments = new HashMap<>();
     private final Map<UUID, Map<UUID, Attempt>> refunds = new HashMap<>();
+    private final Map<RefundAttemptKey, RefundAttemptAbsence> closedMissingAttempts = new HashMap<>();
     private final Map<UUID, byte[]> events = new HashMap<>();
     private final URI origin;
     private volatile URI instantCallback;
     private Fault paymentFault = Fault.NONE;
     private Fault refundFault = Fault.NONE;
+    private boolean genericRefund404;
     private final Map<UUID, Integer> refundPosts = new HashMap<>();
     private final Map<UUID, Integer> refundQueries = new HashMap<>();
     private final AtomicReference<CountDownLatch> nextRefundQueryGate = new AtomicReference<>();
@@ -95,6 +99,10 @@ final class ProviderMockFixture implements AutoCloseable {
 
     synchronized void nextRefundFault(Fault fault) {
         refundFault = fault;
+    }
+
+    synchronized void nextRefundQueryReturnsGeneric404() {
+        genericRefund404 = true;
     }
 
     void useInstantCallback(URI callback) {
@@ -200,7 +208,7 @@ final class ProviderMockFixture implements AutoCloseable {
                     if (release != null) {
                         release.await(5, java.util.concurrent.TimeUnit.SECONDS);
                     }
-                    write(exchange, 200, response);
+                    write(exchange, response instanceof RefundAttemptAbsence ? 404 : 200, response);
                 } else {
                     throw new Rejected(404);
                 }
@@ -295,6 +303,9 @@ final class ProviderMockFixture implements AutoCloseable {
 
     private synchronized Reply createRefund(CreateRefundRequest request) {
         refundPosts.merge(request.refundId(), 1, Integer::sum);
+        if (closedMissingAttempts.containsKey(new RefundAttemptKey(request.refundId(), request.attemptId()))) {
+            throw new Rejected(409);
+        }
         var attempts = refunds.computeIfAbsent(request.refundId(), ignored -> new LinkedHashMap<>());
         Attempt existing = attempts.get(request.attemptId());
         if (existing != null) {
@@ -338,13 +349,19 @@ final class ProviderMockFixture implements AutoCloseable {
         return new Reply(response, fault, eventId);
     }
 
-    private synchronized RefundResponse queryRefund(UUID refundId, UUID attemptId) {
+    private synchronized Object queryRefund(UUID refundId, UUID attemptId) {
         refundQueries.merge(refundId, 1, Integer::sum);
-        Attempt result = refunds.getOrDefault(refundId, Map.of()).get(attemptId);
-        if (result == null) {
+        if (genericRefund404) {
+            genericRefund404 = false;
             throw new Rejected(404);
         }
-        return result.response();
+        Attempt result = refunds.getOrDefault(refundId, Map.of()).get(attemptId);
+        if (result != null) {
+            return result.response();
+        }
+        return closedMissingAttempts.computeIfAbsent(new RefundAttemptKey(refundId, attemptId),
+                key -> new RefundAttemptAbsence(refundId, attemptId, "refund-" + attemptId,
+                        clock.instant(), REFUND_ATTEMPT_NOT_FOUND));
     }
 
     synchronized UUID refundEvent(UUID refundId, UUID attemptId) {
@@ -458,6 +475,7 @@ final class ProviderMockFixture implements AutoCloseable {
             URI callback, Instant signedAt) { }
     private record Reply(Object body, Fault fault, UUID eventId) { }
     private record Attempt(CreateRefundRequest request, RefundResponse response, UUID eventId) { }
+    private record RefundAttemptKey(UUID refundId, UUID attemptId) { }
 
     private static final class Payment {
         private final CreatePaymentRequest request;

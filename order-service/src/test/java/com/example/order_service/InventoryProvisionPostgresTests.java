@@ -1,7 +1,7 @@
 package com.example.order_service;
 
-import com.example.order_service.inventory.InventoryProvisionService;
-import com.example.order_service.inventory.InventoryProvisionService.Result;
+import com.example.order_service.service.InventoryProvisionService;
+import com.example.order_service.service.InventoryProvisionService.Result;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

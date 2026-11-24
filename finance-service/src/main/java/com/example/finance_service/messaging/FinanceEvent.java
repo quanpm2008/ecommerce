@@ -22,6 +22,53 @@ public final class FinanceEvent {
 	public record Approved(UUID eventId, UUID sellerId) {
 	}
 
+	public record Lifecycle(UUID eventId, String type, UUID aggregateId, UUID orderId, UUID sellerId,
+			UUID paymentId, long amountVnd) {
+	}
+
+	static Lifecycle lifecycle(JsonMapper json, String raw) {
+		var root = json.readTree(raw);
+		String type = root.path("eventType").asString("");
+		var payload = root.path("payload");
+		if ("refund.succeeded".equals(type)) {
+			UUID refundId = uuid(payload, "refundId");
+			UUID id = envelope(root, "payment-service", refundId);
+			if ("FULL_CHECKOUT".equals(payload.path("scope").asString(null)) && payload.path("orderId").isNull()) {
+				return null;
+			}
+			if (!"ORDER".equals(payload.path("scope").asString(null))) {
+				throw new IllegalArgumentException("Invalid refund scope");
+			}
+			return new Lifecycle(id, type, refundId, uuid(payload, "orderId"), null, uuid(payload, "paymentId"),
+					integer(payload, "amountVnd", 1, Long.MAX_VALUE));
+		}
+		if (!("order.cancelled".equals(type) || "order.confirmed".equals(type))) {
+			return null;
+		}
+		UUID orderId = uuid(payload, "orderId");
+		UUID id = envelope(root, "order-service", orderId);
+		UUID sellerId = uuid(payload, "sellerId");
+		uuid(payload, "customerId");
+		long amount = 0;
+		if ("order.cancelled".equals(type)) {
+			uuid(payload, "checkoutSessionId");
+			if (!payload.path("wasPaid").isBoolean()) {
+				throw new IllegalArgumentException("Missing wasPaid");
+			}
+			if (!payload.path("wasPaid").asBoolean()) {
+				return null;
+			}
+			amount = integer(payload, "totalAmountVnd", 1, Long.MAX_VALUE);
+		} else {
+			instant(payload, "confirmedAt");
+			String confirmedBy = payload.path("confirmedBy").asString(null);
+			if (!("SYSTEM".equals(confirmedBy) || "CUSTOMER".equals(confirmedBy))) {
+				throw new IllegalArgumentException("Invalid confirmation source");
+			}
+		}
+		return new Lifecycle(id, type, orderId, orderId, sellerId, null, amount);
+	}
+
 	public static Paid checkoutPaid(JsonMapper json, String raw) {
 		var root = json.readTree(raw);
 		if (!"checkout.paid".equals(root.path("eventType").asString(null))) {

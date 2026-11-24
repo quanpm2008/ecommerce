@@ -23,7 +23,7 @@ public class ProductBatchClient {
 		requests.setConnectTimeout(Duration.ofSeconds(2));
 		requests.setReadTimeout(Duration.ofSeconds(2));
 		this.product = RestClient.builder().baseUrl(baseUrl).requestFactory(requests).build();
-		this.serviceToken = serviceToken;
+		this.serviceToken = serviceToken;	
 	}
 
 	public List<ProductInfo> getProducts(List<UUID> productIds) {

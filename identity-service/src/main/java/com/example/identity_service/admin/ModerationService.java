@@ -27,6 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.LinkedHashMap;
+import java.time.Clock;
 import java.util.Map;
 import java.util.UUID;
 
@@ -60,6 +61,7 @@ public class ModerationService {
 	private final OutboxWriter outbox;
 
 	private final TransactionTemplate tx;
+	private final Clock clock;
 
 	public BanResult ban(UUID adminId, UUID userId, ModerationScope scope, String reason) {
 		String banReason = reason.strip();
@@ -91,6 +93,7 @@ public class ModerationService {
 					return unchangedBan(target, scope, user.getDisabledReason(), reason, UserStatus.DISABLED);
 				}
 				user.disable(reason);
+				user.recordDisableTime(clock.instant());
 				sessions.revokeAllOf(userId);
 				record(adminId, AuditAction.DISABLE, AuditTargetType.USER, target, reason, before);
 				outbox.write("user.disabled", userId, actor(adminId), userEvent(target, reason));
@@ -104,6 +107,7 @@ public class ModerationService {
 					return null;
 				}
 				customer.ban(reason, hasPaidOrder);
+				user.recordBanTime(clock.instant());
 				user.bumpAuthzVersion();
 				record(adminId, AuditAction.BAN, AuditTargetType.CUSTOMER, target, reason, before);
 				outbox.write("customer.banned", userId, actor(adminId), customerEvent(target));
@@ -114,6 +118,7 @@ public class ModerationService {
 					return unchangedBan(target, scope, seller.getBanReason(), reason, SellerStatus.BANNED);
 				}
 				seller.ban(reason);
+				user.recordBanTime(clock.instant());
 				user.bumpAuthzVersion();
 				record(adminId, AuditAction.BAN, AuditTargetType.SELLER, target, reason, before);
 				outbox.write("seller.banned", userId, actor(adminId), sellerEvent(target, reason));
@@ -132,6 +137,7 @@ public class ModerationService {
 					return UnbanResult.of(target, scope);
 				}
 				user.enable();
+				user.recordDisableTime(null);
 				record(adminId, AuditAction.ENABLE, AuditTargetType.USER, target, reason, before);
 				outbox.write("user.enabled", userId, actor(adminId), userEvent(target, reason));
 			}
@@ -141,6 +147,7 @@ public class ModerationService {
 					return UnbanResult.of(target, scope);
 				}
 				customer.unban();
+				user.recordBanTime(null);
 				user.bumpAuthzVersion();
 				record(adminId, AuditAction.UNBAN, AuditTargetType.CUSTOMER, target, reason, before);
 				outbox.write("customer.unbanned", userId, actor(adminId), customerEvent(target));
@@ -153,6 +160,7 @@ public class ModerationService {
 					return UnbanResult.of(target, scope);
 				}
 				seller.unban();
+				user.recordBanTime(null);
 				user.bumpAuthzVersion();
 				record(adminId, AuditAction.UNBAN, AuditTargetType.SELLER, target, reason, before);
 				outbox.write("seller.unbanned", userId, actor(adminId), sellerEvent(target, reason));

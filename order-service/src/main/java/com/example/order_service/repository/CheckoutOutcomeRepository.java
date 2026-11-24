@@ -106,7 +106,7 @@ public class CheckoutOutcomeRepository {
 				)
 				update orders.checkout_event_outbox o set lease_token = :token, lease_until = statement_timestamp() + interval '30 seconds'
 				from next_event n where o.event_id = n.event_id
-				returning o.event_id, o.checkout_session_id, o.envelope, o.created_at
+				returning o.event_id, o.checkout_session_id, o.order_id, o.order_version, o.envelope, o.created_at
 				""", CheckoutEvent.class).setParameter("token", token).getResultList().stream()
 				.map(CheckoutEvent.class::cast).findFirst();
 	}

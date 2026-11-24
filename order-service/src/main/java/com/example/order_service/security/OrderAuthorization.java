@@ -27,9 +27,14 @@ import java.util.UUID;
 
 @Component
 public class OrderAuthorization {
+	static final String OPERATIONS_READ = "operations:read:any";
+	static final String OPERATIONS_ANNOTATE = "operations:annotate";
 
 	static final String CHECKOUT = "checkout:create:own";
 	static final String CHECKOUT_READ = "order:read:own";
+	static final String ORDER_CANCEL = "order:cancel:own";
+	static final String ORDER_CONFIRM = "order:confirm:own";
+	static final String FULFILL = "order:fulfill:own";
 	static final String INVENTORY = "inventory:manage:own";
 	private static final String UNAUTHENTICATED = "UNAUTHENTICATED";
 	private static final String TOKEN_EXPIRED = "TOKEN_EXPIRED";
@@ -71,6 +76,10 @@ public class OrderAuthorization {
 	}
 
 	CurrentUser authorize(String token, String permission) {
+		return authorize(token, permission, false, false);
+	}
+
+	CurrentUser authorize(String token, String permission, boolean lifecycle, boolean detail) {
 		Jwt jwt = verifiedToken(token);
 		UUID user = uuidClaim(jwt.getSubject());
 		UUID session = uuidClaim(jwt.getClaimAsString("sessionId"));
@@ -93,17 +102,52 @@ public class OrderAuthorization {
 			throw new Rejected(403, "ACCOUNT_DISABLED");
 		}
 		if ("BANNED".equals(current.accountStatus())) {
+			if (lifecycle && limitedAllows(current, permission, detail)) {
+				return user(user, session, version, current, true);
+			}
 			throw new Rejected(403, "ACCOUNT_BANNED");
 		}
 		if (!"ACTIVE".equals(current.userStatus()) || !"ACTIVE".equals(current.accountStatus())
 				|| !"FULL".equals(current.accessMode()) || !current.permissions().contains(permission)
-				|| !profileAllows(current, permission)) {
+				|| !(lifecycle ? profileAllowsLifecycle(current, permission, false) : profileAllows(current, permission))) {
 			throw new Rejected(403, "FORBIDDEN");
 		}
-		return new CurrentUser(user, session, version);
+		return user(user, session, version, current, false);
+	}
+
+	private static CurrentUser user(UUID user, UUID session, long version, IdentityContext current, boolean limited) {
+		return new CurrentUser(user, session, version, limited, "OBLIGATIONS_READ_ONLY".equals(current.accessMode()),
+				List.copyOf(current.permissions()));
+	}
+
+	private static boolean limitedAllows(IdentityContext current, String permission, boolean detail) {
+		if (!"ACTIVE".equals(current.userStatus()) || !current.permissions().contains(permission)
+				|| !profileAllowsLifecycle(current, permission, true)) {
+			return false;
+		}
+		return switch (current.accessMode()) {
+			case "OPEN_ORDERS_ONLY" -> true;
+			case "ORDERS_AND_WITHDRAWAL" -> FULFILL.equals(permission);
+			case "OBLIGATIONS_READ_ONLY" -> detail && CHECKOUT_READ.equals(permission);
+			default -> false;
+		};
+	}
+
+	private static boolean profileAllowsLifecycle(IdentityContext current, String permission, boolean limited) {
+		String status = limited ? "BANNED" : "ACTIVE";
+		if (FULFILL.equals(permission)) {
+			return "SELLER".equals(current.accountType()) && current.roles().contains("SELLER")
+					&& current.sellerProfile() != null && "APPROVED".equals(current.sellerProfile().approvalStatus())
+					&& status.equals(current.sellerProfile().status());
+		}
+		return "CUSTOMER".equals(current.accountType()) && current.roles().contains("CUSTOMER")
+				&& current.customerProfile() != null && status.equals(current.customerProfile().status());
 	}
 
 	private static boolean profileAllows(IdentityContext current, String permission) {
+		if (OPERATIONS_READ.equals(permission) || OPERATIONS_ANNOTATE.equals(permission)) {
+			return "ADMIN".equals(current.accountType()) && current.roles().contains("ADMIN");
+		}
 		if ((CHECKOUT.equals(permission) || CHECKOUT_READ.equals(permission))
 				&& "CUSTOMER".equals(current.accountType()) && current.roles().contains("CUSTOMER")) {
 			if (current.customerProfile() == null || current.customerProfile().status() == null) {
@@ -120,6 +164,10 @@ public class OrderAuthorization {
 					&& "APPROVED".equals(current.sellerProfile().approvalStatus());
 		}
 		return false;
+	}
+
+	public CurrentUser authorizeAdmin(String token, boolean annotate) {
+		return authorize(token, annotate ? OPERATIONS_ANNOTATE : OPERATIONS_READ);
 	}
 
 	private Jwt verifiedToken(String token) {
@@ -188,7 +236,8 @@ public class OrderAuthorization {
 		return new Rejected(503, "SERVICE_UNAVAILABLE");
 	}
 
-	public record CurrentUser(UUID userId, UUID sessionId, long authzVersion) {
+	public record CurrentUser(UUID userId, UUID sessionId, long authzVersion, boolean limited, boolean readOnly,
+			List<String> permissions) {
 	}
 
 	private record CustomerProfile(String status) {
@@ -211,7 +260,7 @@ public class OrderAuthorization {
 	private record ErrorCode(String code) {
 	}
 
-	static final class Rejected extends RuntimeException {
+	public static final class Rejected extends RuntimeException {
 		private final int status;
 
 		Rejected(int status, String code) {
@@ -219,7 +268,7 @@ public class OrderAuthorization {
 			this.status = status;
 		}
 
-		int status() {
+		public int status() {
 			return status;
 		}
 	}

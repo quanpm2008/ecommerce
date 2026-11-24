@@ -139,6 +139,7 @@ class PaymentCollectionPostgresTests {
         jdbc.sql("DELETE FROM payment_refund_work").update();
         jdbc.sql("DELETE FROM payment_refund_attempt_queries").update();
         jdbc.sql("DELETE FROM payment_refund_attempts").update();
+        jdbc.sql("DELETE FROM payment_refund_retry_request").update();
         jdbc.sql("DELETE FROM refunds").update();
         jdbc.sql("DELETE FROM payment_collection_observation").update();
         jdbc.sql("DELETE FROM payment_collection_work").update();

@@ -53,17 +53,17 @@ class AddressEndpointsTests extends EndpointTestSupport {
 		call(HttpMethod.GET, PATH, null, customer.accessToken()).andExpect(status().isOk())
 				.andExpect(jsonPath("$.data[*].addressId", contains(second, first, third)))
 				.andExpect(jsonPath("$.data[*].isDefault", contains(true, false, false)))
-				.andExpect(jsonPath("$.meta.maxAddresses").value(5));
+				.andExpect(jsonPath("$.meta.maxAddresses").value(3));
 	}
 
 	@Test
-	void theAddressBookHoldsAtMostFiveAddresses() throws Exception {
+	void theAddressBookHoldsAtMostThreeAddresses() throws Exception {
 		Session customer = customer();
-		for (int i = 1; i <= 5; i++) {
+		for (int i = 1; i <= 3; i++) {
 			create(customer, "Recipient " + i, HANOI, BA_DINH);
 		}
 
-		call(HttpMethod.POST, PATH, address("Sixth", uniquePhone(), HANOI, BA_DINH), customer.accessToken())
+		call(HttpMethod.POST, PATH, address("Fourth", uniquePhone(), HANOI, BA_DINH), customer.accessToken())
 				.andExpect(status().isUnprocessableContent())
 				.andExpect(jsonPath("$.error.code").value("ADDRESS_LIMIT_EXCEEDED"));
 	}
@@ -120,7 +120,7 @@ class AddressEndpointsTests extends EndpointTestSupport {
 	}
 
 	@Test
-	void unusedAddressIsDeletedAndAUsedOneIsOnlyHidden() throws Exception {
+	void unusedAndUsedAddressesAreDeletedAndLeaveMinimalReceipts() throws Exception {
 		Session customer = customer();
 		String unused = create(customer, "Unused", HANOI, BA_DINH);
 		String used = create(customer, "Used", HANOI, NGOC_HA);
@@ -131,8 +131,10 @@ class AddressEndpointsTests extends EndpointTestSupport {
 
 		assertThat(jdbc.queryForObject("select count(*) from customer_addresses where address_id = ?", Integer.class,
 				UUID.fromString(unused))).isZero();
-		assertThat(jdbc.queryForObject("select deleted_at is not null from customer_addresses where address_id = ?",
-				Boolean.class, UUID.fromString(used))).isTrue();
+		assertThat(jdbc.queryForObject("select count(*) from customer_addresses where address_id = ?",
+				Integer.class, UUID.fromString(used))).isZero();
+		assertThat(jdbc.queryForObject("select count(*) from address_deletion_receipts where address_id = ?",
+				Integer.class, UUID.fromString(used))).isEqualTo(1);
 		call(HttpMethod.GET, PATH, null, customer.accessToken()).andExpect(jsonPath("$.data", hasSize(0)));
 		call(HttpMethod.DELETE, PATH + "/" + used, null, customer.accessToken()).andExpect(status().isNotFound());
 	}

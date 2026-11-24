@@ -19,5 +19,9 @@ public interface OrderCheckoutPayableClient {
 
     record Payable(UUID customerId, String status, Instant expiresAt, Long totalAmountVnd, List<Order> orders) { }
 
-    record Order(UUID orderId) { }
+    record Order(UUID orderId, String status) {
+        public Order(UUID orderId) {
+            this(orderId, null);
+        }
+    }
 }

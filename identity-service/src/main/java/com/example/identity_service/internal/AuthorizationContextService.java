@@ -27,6 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -51,16 +52,18 @@ public class AuthorizationContextService {
 	private final SellerRepository sellers;
 
 	private final PermissionResolver permissions;
+	private final SellerObligations obligations;
 
 	AuthorizationContextService(RSAKey signingKey, TokenProperties tokenProperties, Clock clock, UserRepository users,
 			AuthSessionRepository sessions, CustomerRepository customers, SellerRepository sellers,
-			PermissionResolver permissions) throws JOSEException {
+			PermissionResolver permissions, SellerObligations obligations) throws JOSEException {
 		this.tokens = AccessTokenDecoderConfig.decoder(signingKey, tokenProperties, clock);
 		this.users = users;
 		this.sessions = sessions;
 		this.customers = customers;
 		this.sellers = sellers;
 		this.permissions = permissions;
+		this.obligations = obligations;
 	}
 
 	@Transactional(readOnly = true)
@@ -88,9 +91,26 @@ public class AuthorizationContextService {
 		SellerAccess seller = sellers.findById(userId)
 				.map(s -> new SellerAccess(s.getApprovalStatus(), s.getStatus(), s.canOperate()))
 				.orElse(null);
-		return new AuthorizationContext(userId, user.getStatus(), user.getAuthzVersion(),
-				usable ? permissions.activeRolesOf(user).stream().map(Enum::name).sorted().toList() : List.of(),
-				usable ? List.copyOf(permissions.permissionsOf(user)) : List.of(), customer, seller, sessionActive);
+		var roles = permissions.activeRolesOf(user).stream().map(Enum::name).sorted().toList();
+		String accountType = customer != null ? "CUSTOMER" : seller != null ? "SELLER"
+				: roles.size() == 1 && roles.contains("ADMIN") ? "ADMIN" : null;
+		boolean banned = (customer != null && customer.status() == CustomerStatus.BANNED)
+				|| (seller != null && seller.status() == SellerStatus.BANNED);
+		String accountStatus = !user.isActive() ? "DISABLED" : banned ? "BANNED" : "ACTIVE";
+		String accessMode = !usable || accountType == null || (seller != null && seller.approvalStatus() != SellerApprovalStatus.APPROVED)
+				? "LOGIN_BLOCKED" : banned ? "OBLIGATIONS_READ_ONLY" : "FULL";
+		List<String> granted = "FULL".equals(accessMode) ? List.copyOf(permissions.permissionsOf(user)) : List.of();
+		if (usable && "SELLER".equals(accountType) && seller.status() == SellerStatus.BANNED
+				&& seller.approvalStatus() == SellerApprovalStatus.APPROVED && roles.contains("SELLER")) {
+			var access = obligations.read(userId);
+			accessMode = access.mode();
+			granted = permissions.permissionsOf(user).stream().filter(access.allowed()::contains).toList();
+		}
+		return new AuthorizationContext(userId, accountType, accountStatus, user.getStatus(), accessMode,
+				user.getBannedAt(), user.getDisabledAt(), user.getRestoreUntil(), user.getAuthzVersion(),
+				usable ? roles : List.of(),
+				granted,
+				customer, seller, sessionActive);
 	}
 
 	private Jwt decode(String accessToken) {
@@ -123,7 +143,8 @@ public class AuthorizationContextService {
 	 * {@code roles} and {@code permissions} are empty unless the session is active and the user ACTIVE. Profile
 	 * statuses are always reported; ownership checks stay with the calling service.
 	 */
-	public record AuthorizationContext(UUID userId, UserStatus userStatus, long authzVersion, List<String> roles,
+	public record AuthorizationContext(UUID userId, String accountType, String accountStatus, UserStatus userStatus,
+			String accessMode, Instant bannedAt, Instant disabledAt, Instant restoreUntil, long authzVersion, List<String> roles,
 			List<String> permissions, CustomerAccess customerProfile, SellerAccess sellerProfile,
 			boolean sessionActive) {
 	}

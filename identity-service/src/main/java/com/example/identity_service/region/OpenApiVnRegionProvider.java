@@ -5,7 +5,6 @@ import com.example.identity_service.common.error.ErrorCode;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
-import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -20,7 +19,6 @@ import java.util.function.Supplier;
  * strings (province {@code 01}, ward {@code 00004}). No caching here: {@link RegionCatalog} caches.
  */
 @Slf4j
-@Component
 class OpenApiVnRegionProvider implements RegionProvider {
 
 	private final RegionProperties properties;

@@ -1,6 +1,6 @@
 package com.example.order_service;
 
-import com.example.order_service.checkout.CheckoutQuote;
+import com.example.order_service.service.CheckoutQuote;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.crypto.RSASSASigner;
@@ -10,6 +10,7 @@ import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,6 +48,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -104,12 +106,16 @@ class BuyNowPayPostgresTests extends PayHttpTestSupport {
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
 		"eureka.client.enabled=false", "logging.level.root=WARN", "order.identity.service-token=test-order-pay",
-		"order.product.service-token=test-order-pay", "order.finance.service-token=test-order-pay"
+		"order.product.service-token=test-order-pay", "order.finance.service-token=test-order-pay",
+		"order.payment.service-token=test-order-to-payment", "order.internal.tokens.payment=test-payment-to-order",
+		"order.internal.tokens.product=test-product"
 })
 @Import(PayHttpTestSupport.ClockConfiguration.class)
 abstract class PayHttpTestSupport extends OrderPostgresTestSupport {
 	static final JsonMapper JSON = JsonMapper.builder().build();
 	static final UUID SELLER = UUID.randomUUID();
+	static final UUID ADMIN = UUID.randomUUID();
+	static final UUID READ_ADMIN = UUID.randomUUID();
 	static final Map<UUID, Long> PRICES = new ConcurrentHashMap<>();
 	static final Map<UUID, UUID> ADDRESSES = new ConcurrentHashMap<>();
 	static final AtomicReference<UUID> lastTouch = new AtomicReference<>();
@@ -119,6 +125,14 @@ abstract class PayHttpTestSupport extends OrderPostgresTestSupport {
 	static final AtomicInteger checkoutSourceCalls = new AtomicInteger();
 	static final AtomicInteger authCalls = new AtomicInteger();
 	static final AtomicReference<UUID> revokedCustomer = new AtomicReference<>();
+	static final AtomicReference<UUID> noReadPermission = new AtomicReference<>();
+	static final AtomicReference<UUID> inactiveCustomer = new AtomicReference<>();
+	static final AtomicReference<UUID> limitedCustomer = new AtomicReference<>();
+	static final Map<UUID, PaymentReply> PAYMENT_READS = new ConcurrentHashMap<>();
+	static final Map<UUID, PaymentReply> PAYMENT_WRITES = new ConcurrentHashMap<>();
+	static final AtomicInteger paymentReadCalls = new AtomicInteger();
+	static final AtomicReference<HttpHandler> identityEvidence = new AtomicReference<>();
+	static final AtomicReference<HttpHandler> productEvidence = new AtomicReference<>();
 	static final FixtureClock CLOCK = new FixtureClock();
 	private static final RSAKey KEY = signingKey();
 	private static final HttpServer SERVER = startServer();
@@ -136,6 +150,7 @@ abstract class PayHttpTestSupport extends OrderPostgresTestSupport {
 		config.add("order.identity.base-url", () -> endpoint);
 		config.add("order.product.base-url", () -> endpoint);
 		config.add("order.finance.base-url", () -> endpoint);
+		config.add("order.payment.base-url", () -> endpoint);
 		config.add("order.checkout.quote-key", () -> Base64.getEncoder().encodeToString(new byte[32]));
 	}
 
@@ -149,6 +164,14 @@ abstract class PayHttpTestSupport extends OrderPostgresTestSupport {
 		checkoutSourceCalls.set(0);
 		authCalls.set(0);
 		revokedCustomer.set(null);
+		noReadPermission.set(null);
+		inactiveCustomer.set(null);
+		limitedCustomer.set(null);
+		PAYMENT_READS.clear();
+		PAYMENT_WRITES.clear();
+		paymentReadCalls.set(0);
+		identityEvidence.set(null);
+		productEvidence.set(null);
 	}
 
 	Sample sample(int stock, int quantity) {
@@ -206,10 +229,41 @@ abstract class PayHttpTestSupport extends OrderPostgresTestSupport {
 			var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
 			server.createContext("/.well-known/jwks.json", x -> respond(x, 200, new JWKSet(KEY.toPublicJWK()).toJSONObject()));
 			server.createContext("/internal/v1/identity/auth/authorization-context", PayHttpTestSupport::authorize);
+			server.createContext("/api/v1/identity/admin/customers/", x -> {
+				String path = x.getRequestURI().getPath();
+				data(x, Map.of("user", Map.of("userId", path.substring(path.lastIndexOf('/') + 1),
+						"fullName", "Buyer Profile", "email", "buyer@example.test")));
+			});
 			server.createContext("/internal/v1/identity/customers/", PayHttpTestSupport::customerData);
 			server.createContext("/internal/v1/identity/sellers/status", x -> data(x, List.of(Map.of("sellerId", SELLER, "sellable", true))));
 			server.createContext("/api/v1/identity/sellers/", x -> data(x, Map.of("sellerId", SELLER, "sellerName", "Shop test")));
 			server.createContext("/internal/v1/products/batch", PayHttpTestSupport::productData);
+			server.createContext("/internal/v1/identity/sellers/sale-evidence", x -> saleEvidence(x, identityEvidence));
+			server.createContext("/internal/v1/products/sale-evidence", x -> saleEvidence(x, productEvidence));
+			server.createContext("/internal/v1/products/reviews/summary", x -> {
+				var request = JSON.readTree(x.getRequestBody());
+				var summaries = new java.util.ArrayList<Map<String, Object>>();
+				for (var product : request.path("productIds")) {
+					var summary = new java.util.LinkedHashMap<String, Object>();
+					summary.put("productId", product.asString());
+					summary.put("hasReviewed", false);
+					summary.put("reviewId", null);
+					summaries.add(summary);
+				}
+				data(x, summaries);
+			});
+			server.createContext("/internal/v1/payments/refunds", x -> data(x, List.of()));
+			server.createContext("/internal/v1/payments/by-checkout/", x -> {
+				paymentReadCalls.incrementAndGet();
+				payment(x, "GET", PAYMENT_READS);
+			});
+			server.createContext("/internal/v1/payments/checkouts/", x -> {
+				if (!x.getRequestURI().getPath().endsWith("/provider-session")) {
+					respond(x, 404, Map.of());
+				} else {
+					payment(x, "POST", PAYMENT_WRITES);
+				}
+			});
 			server.createContext("/internal/v1/finance/commission-rate", x -> {
 				if (financeStatus.get() == 200) {
 					data(x, Map.of("commissionBps", 500));
@@ -230,17 +284,32 @@ abstract class PayHttpTestSupport extends OrderPostgresTestSupport {
 		try {
 			String userId = SignedJWT.parse(exchange.getRequestHeaders().getFirst("Authorization").substring(7))
 					.getJWTClaimsSet().getSubject();
+			if (ADMIN.toString().equals(userId) || READ_ADMIN.toString().equals(userId)) {
+				var permissions = ADMIN.toString().equals(userId) ? List.of("operations:read:any", "operations:annotate")
+						: List.of("operations:read:any");
+				data(exchange, Map.of("userId", userId, "accountType", "ADMIN", "accountStatus", "ACTIVE",
+						"userStatus", "ACTIVE", "accessMode", "FULL", "authzVersion", 1, "sessionActive", true,
+						"roles", List.of("ADMIN"), "permissions", permissions));
+				return;
+			}
 			if (SELLER.toString().equals(userId)) {
 				respond(exchange, 200, Map.of("data", Map.of("userId", userId, "accountType", "SELLER", "accountStatus",
 						"ACTIVE", "userStatus", "ACTIVE", "accessMode", "FULL", "authzVersion", 1, "roles", List.of("SELLER"),
-						"permissions", List.of("inventory:manage:own"), "sessionActive", true,
+						"permissions", List.of("inventory:manage:own", "order:fulfill:own"), "sessionActive", true,
 						"sellerProfile", Map.of("approvalStatus", "APPROVED", "status", "ACTIVE"))));
 				return;
 			}
+			boolean limited = UUID.fromString(userId).equals(limitedCustomer.get());
 			respond(exchange, 200, Map.of("data", Map.of("userId", userId, "accountType", "CUSTOMER", "accountStatus",
-					"ACTIVE", "userStatus", "ACTIVE", "accessMode", "FULL", "authzVersion", 1, "roles", List.of("CUSTOMER"),
-					"permissions", List.of("checkout:create:own"), "sessionActive", !UUID.fromString(userId).equals(revokedCustomer.get()),
-					"customerProfile", Map.of("status", "ACTIVE"))));
+					limited ? "BANNED" : "ACTIVE", "userStatus", "ACTIVE", "accessMode", limited ? "OPEN_ORDERS_ONLY" : "FULL",
+					"authzVersion", 1, "roles", List.of("CUSTOMER"),
+					"permissions", UUID.fromString(userId).equals(noReadPermission.get()) ? List.of("checkout:create:own")
+							: limited ? List.of("order:read:own", "order:cancel:own", "order:confirm:own")
+									: List.of("checkout:create:own", "order:read:own", "order:cancel:own",
+											"order:confirm:own", "review:write:own"),
+					"sessionActive", !UUID.fromString(userId).equals(revokedCustomer.get()),
+					"customerProfile", Map.of("status", limited || UUID.fromString(userId).equals(inactiveCustomer.get())
+							? "BANNED" : "ACTIVE"))));
 		} catch (java.text.ParseException failure) {
 			throw new IOException(failure);
 		}
@@ -287,12 +356,12 @@ abstract class PayHttpTestSupport extends OrderPostgresTestSupport {
 		data(x, output);
 	}
 
-	private static void data(HttpExchange x, Object body) throws IOException {
+	static void data(HttpExchange x, Object body) throws IOException {
 		checkoutSourceCalls.incrementAndGet();
 		respond(x, 200, Map.of("data", body));
 	}
 
-	private static void respond(HttpExchange x, int status, Object body) throws IOException {
+	static void respond(HttpExchange x, int status, Object body) throws IOException {
 		try (x) {
 			byte[] bytes = JSON.writeValueAsString(body).getBytes(StandardCharsets.UTF_8);
 			x.getResponseHeaders().set("Content-Type", "application/json");
@@ -301,7 +370,7 @@ abstract class PayHttpTestSupport extends OrderPostgresTestSupport {
 		}
 	}
 
-	private static String token(UUID user) throws Exception {
+	static String token(UUID user) throws Exception {
 		var claims = new JWTClaimsSet.Builder().subject(user.toString()).issuer("ecommerce-identity")
 				.audience("ecommerce-api").expirationTime(Date.from(Instant.now().plusSeconds(120)))
 				.claim("sessionId", UUID.randomUUID().toString()).claim("authzVersion", 1).build();
@@ -319,6 +388,47 @@ abstract class PayHttpTestSupport extends OrderPostgresTestSupport {
 	}
 
 	record Sample(UUID customer, UUID product, UUID address, int quantity) {
+	}
+
+	private static void payment(HttpExchange exchange, String method, Map<UUID, PaymentReply> replies)
+			throws IOException {
+		var headers = exchange.getRequestHeaders();
+		if (!method.equals(exchange.getRequestMethod())
+				|| !List.of("test-order-to-payment").equals(headers.get("X-Service-Token"))
+				|| headers.containsKey("Authorization")) {
+			respond(exchange, 401, Map.of());
+			return;
+		}
+		UUID checkoutId = UUID.fromString(exchange.getRequestURI().getPath().split("/")[5]);
+		var reply = replies.get(checkoutId);
+		if (reply == null) {
+			respond(exchange, 200, java.util.Collections.singletonMap("data", null));
+		} else {
+			reply.beforeResponse().accept(exchange);
+			respond(exchange, reply.status(), reply.body());
+		}
+	}
+
+	private static void saleEvidence(HttpExchange exchange, AtomicReference<HttpHandler> handler) throws IOException {
+		var headers = exchange.getRequestHeaders();
+		if (!"POST".equals(exchange.getRequestMethod())
+				|| !List.of("test-order-pay").equals(headers.get("X-Service-Token"))
+				|| headers.containsKey("Authorization")) {
+			respond(exchange, 401, Map.of());
+			return;
+		}
+		var current = handler.get();
+		if (current == null) {
+			respond(exchange, 503, Map.of());
+		} else {
+			current.handle(exchange);
+		}
+	}
+
+	record PaymentReply(int status, Object body, Consumer<HttpExchange> beforeResponse) {
+		PaymentReply(int status, Object body) {
+			this(status, body, ignored -> {});
+		}
 	}
 
 	@TestConfiguration(proxyBeanMethods = false)

@@ -76,8 +76,18 @@ services:
     build: ./finance-service
     volumes:
       - ./finance-service/src:/app/src:ro
+    environment:
+      <<: *eureka-client-env
+      FINANCE_INTERNAL_TOKENS_ORDER: ${E1_ORDER_TO_FINANCE_TOKEN:-}
+      FINANCE_IDENTITY_BASE_URL: http://identity-service:8083
+      FINANCE_IDENTITY_SERVICE_TOKEN: ${PHASE4_FINANCE_TO_IDENTITY_TOKEN:-}
+      FINANCE_ORDER_BASE_URL: http://order-service:8085
+      FINANCE_ORDER_CREDENTIAL: ${PHASE4_FINANCE_TO_ORDER_TOKEN:-}
+      FINANCE_PAYMENT_BASE_URL: http://payment-service:8086
+      FINANCE_PAYMENT_CREDENTIAL: ${PHASE4_FINANCE_TO_PAYMENT_TOKEN:-}
+      FINANCE_INTERNAL_TOKENS_IDENTITY: ${PHASE4_IDENTITY_TO_FINANCE_TOKEN:-}
     ports:
-      - "8082:8082"
+      - "18082:8082"
 
   identity-service:
     <<: *eureka-client
@@ -90,8 +100,15 @@ services:
       IDENTITY_MEDIA_ENDPOINT: http://object-storage:8333
       IDENTITY_MEDIA_PUBLIC_ENDPOINT: http://localhost:${S3_HOST_PORT:-8333}
       IDENTITY_ORDER_BASE_URL: http://order-service:8085
+      IDENTITY_INTERNAL_TOKEN_ORDER: ${E1_ORDER_TO_IDENTITY_TOKEN:-}
+      IDENTITY_INTERNAL_TOKEN_PRODUCT: ${E1_PRODUCT_TO_IDENTITY_TOKEN:-}
+      IDENTITY_INTERNAL_TOKEN_FINANCE: ${PHASE4_FINANCE_TO_IDENTITY_TOKEN:-}
+      IDENTITY_INTERNAL_TOKEN_PAYMENT: ${PHASE4_PAYMENT_TO_IDENTITY_TOKEN:-}
+      IDENTITY_ORDER_SERVICE_TOKEN: ${PHASE4_IDENTITY_TO_ORDER_TOKEN:-}
+      IDENTITY_FINANCE_BASE_URL: http://finance-service:8082
+      IDENTITY_FINANCE_SERVICE_TOKEN: ${PHASE4_IDENTITY_TO_FINANCE_TOKEN:-}
     ports:
-      - "8083:8083"
+      - "18083:8083"
 
   notification-service:
     <<: *eureka-client
@@ -106,6 +123,20 @@ services:
     build: ./order-service
     volumes:
       - ./order-service/src:/app/src:ro
+    environment:
+      <<: *eureka-client-env
+      ORDER_IDENTITY_BASE_URL: http://identity-service:8083
+      ORDER_IDENTITY_SERVICE_TOKEN: ${E1_ORDER_TO_IDENTITY_TOKEN:-}
+      ORDER_PRODUCT_BASE_URL: http://product-service:8087
+      ORDER_PRODUCT_SERVICE_TOKEN: ${E1_ORDER_TO_PRODUCT_TOKEN:-}
+      ORDER_INTERNAL_TOKEN_PRODUCT: ${E1_PRODUCT_TO_ORDER_TOKEN:-}
+      ORDER_PAYMENT_BASE_URL: http://payment-service:8086
+      ORDER_PAYMENT_SERVICE_TOKEN: ${E1_ORDER_TO_PAYMENT_TOKEN:-}
+      ORDER_INTERNAL_TOKEN_PAYMENT: ${E1_PAYMENT_TO_ORDER_TOKEN:-}
+      ORDER_INTERNAL_TOKEN_FINANCE: ${PHASE4_FINANCE_TO_ORDER_TOKEN:-}
+      ORDER_INTERNAL_TOKENS_IDENTITY: ${PHASE4_IDENTITY_TO_ORDER_TOKEN:-}
+      ORDER_FINANCE_BASE_URL: http://finance-service:8082
+      ORDER_FINANCE_SERVICE_TOKEN: ${E1_ORDER_TO_FINANCE_TOKEN:-}
     ports:
       - "8085:8085"
 
@@ -114,6 +145,14 @@ services:
     build: ./payment-service
     volumes:
       - ./payment-service/src:/app/src:ro
+    environment:
+      <<: *eureka-client-env
+      PAYMENT_ORDER_BASE_URL: http://order-service:8085
+      PAYMENT_ORDER_CREDENTIAL: ${E1_PAYMENT_TO_ORDER_TOKEN:-}
+      PAYMENT_INTERNAL_ORDER_TOKEN: ${E1_ORDER_TO_PAYMENT_TOKEN:-}
+      PAYMENT_INTERNAL_FINANCE_TOKEN: ${PHASE4_FINANCE_TO_PAYMENT_TOKEN:-}
+      PAYMENT_IDENTITY_BASE_URL: http://identity-service:8083
+      PAYMENT_IDENTITY_SERVICE_TOKEN: ${PHASE4_PAYMENT_TO_IDENTITY_TOKEN:-}
     ports:
       - "8086:8086"
 
@@ -122,9 +161,28 @@ services:
     build: ./product-service
     volumes:
       - ./product-service/src:/app/src:ro
+    environment:
+      <<: *eureka-client-env
+      PRODUCT_IDENTITY_BASE_URL: http://identity-service:8083
+      IDENTITY_INTERNAL_TOKEN_PRODUCT: ${E1_PRODUCT_TO_IDENTITY_TOKEN:-}
+      PRODUCT_ORDER_BASE_URL: http://order-service:8085
+      PRODUCT_ORDER_SERVICE_TOKEN: ${E1_PRODUCT_TO_ORDER_TOKEN:-}
+      PRODUCT_INTERNAL_TOKENS_ORDER: ${E1_ORDER_TO_PRODUCT_TOKEN:-}
+      PRODUCT_INTERNAL_TOKENS_CART: ${E1_CART_TO_PRODUCT_TOKEN:-}
     ports:
       - "8087:8087"
 
+  kafka:
+    image: apache/kafka:4.4.0
+    container_name: ecom-kafka
+    ports:
+      - "9092:9092"
+
+  sqs:
+    image: softwaremill/elasticmq-native:1.7.1
+    container_name: ecom-sqs
+    ports:
+      - "9324:9324"
 volumes:
   postgres-data:
   object-storage-data:

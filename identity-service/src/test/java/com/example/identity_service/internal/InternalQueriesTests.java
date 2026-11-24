@@ -119,12 +119,16 @@ class InternalQueriesTests extends EndpointTestSupport {
 				.andExpect(jsonPath("$.data.applied").value(true))
 				.andExpect(jsonPath("$.data.lastUsedAt").value(not(first)));
 
-		// A used address is only hidden on delete (G-13).
 		call(HttpMethod.DELETE, "/customers/me/addresses/" + addressId, null, customer.accessToken())
 				.andExpect(status().isNoContent());
-		assertThat(jdbc.queryForObject("select deleted_at is not null from customer_addresses where address_id = ?",
-				Boolean.class, UUID.fromString(addressId))).isTrue();
+		assertThat(jdbc.queryForObject("select count(*) from customer_addresses where address_id = ?",
+				Integer.class, UUID.fromString(addressId))).isZero();
 		internal(HttpMethod.POST, touch, json("checkoutSessionId", "cs-3"), ORDER_TOKEN, null)
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.applied").value(false))
+				.andExpect(jsonPath("$.data.lastUsedAt").isEmpty());
+		internal(HttpMethod.POST, "/customers/" + customer().userId() + "/addresses/" + addressId + "/touch",
+				json("checkoutSessionId", "cs-3"), ORDER_TOKEN, null)
 				.andExpect(status().isNotFound());
 	}
 

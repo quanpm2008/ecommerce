@@ -1,8 +1,8 @@
 package com.example.order_service;
 
-import com.example.order_service.checkout.CheckoutCommitRepository;
-import com.example.order_service.checkout.CheckoutCommitRepository.Line;
-import com.example.order_service.checkout.CheckoutCommitRepository.NewCheckout;
+import com.example.order_service.repository.CheckoutCommitRepository;
+import com.example.order_service.repository.CheckoutCommitRepository.Line;
+import com.example.order_service.repository.CheckoutCommitRepository.NewCheckout;
 import com.example.order_service.client.PayIdentityClient.ShippingAddress;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

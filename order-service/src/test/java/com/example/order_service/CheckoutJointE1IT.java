@@ -12,11 +12,16 @@ class CheckoutJointE1IT {
 	@Test
 	void reachesCommittedBuyNowWithRealIdentityAndProduct() throws Exception {
 		try (var e1 = new OrderRealServiceE1Support("checkout-joint")) {
-			e1.note("joint Identity=real Product=real Finance=contract-mock");
 			e1.requireInputs("E1_ORDER_URL", "E1_IDENTITY_URL", "E1_PRODUCT_URL", "E1_IDENTITY_KIND",
-					"E1_PRODUCT_KIND", "E1_CUSTOMER_BEARER", "E1_PRODUCT_ID", "E1_ADDRESS_ID");
+					"E1_PRODUCT_KIND", "E1_FINANCE_KIND", "E1_CUSTOMER_BEARER", "E1_PRODUCT_ID", "E1_ADDRESS_ID");
 			assertThat("real".equals(required("E1_IDENTITY_KIND")) && "real".equals(required("E1_PRODUCT_KIND")))
 					.as("Joint E1 requires both real providers").isTrue();
+			String finance = required("E1_FINANCE_KIND");
+			assertThat(finance).isIn("real", "contract-mock");
+			e1.note("joint Identity=real Product=real Finance=" + finance);
+			if ("real".equals(finance)) {
+				e1.revision("E1_FINANCE_REVISION");
+			}
 			e1.revision("E1_ORDER_REVISION");
 			e1.revision("E1_IDENTITY_REVISION");
 			e1.revision("E1_PRODUCT_REVISION");

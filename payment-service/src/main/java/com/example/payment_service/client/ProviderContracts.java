@@ -5,6 +5,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 public final class ProviderContracts {
+    public static final String REFUND_ATTEMPT_NOT_FOUND = "REFUND_ATTEMPT_NOT_FOUND";
     private ProviderContracts() {
     }
 
@@ -49,6 +50,9 @@ public final class ProviderContracts {
             Instant completedAt, String errorCode
     ) {
     }
+
+    public record RefundAttemptAbsence(UUID refundId, UUID attemptId, String providerRefundId,
+            Instant completedAt, String errorCode) { }
 
     private static void requireVnd(long amountVnd, String currency) {
         if (amountVnd <= 0 || !"VND".equals(currency)) {

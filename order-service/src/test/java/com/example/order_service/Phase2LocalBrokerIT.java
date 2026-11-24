@@ -155,7 +155,7 @@ class Phase2LocalBrokerIT {
 				"GET", null, Map.of("Authorization", session.authorization()), 200).path("data").path("paymentUrl").isNull()).isTrue();
 	}
 
-	private static Checkout checkout(Phase2LocalBrokerSupport stack, SaleFixture mock, boolean shortExpiry) throws Exception {
+	static Checkout checkout(Phase2LocalBrokerSupport stack, SaleFixture mock, boolean shortExpiry) throws Exception {
 		UUID product = UUID.randomUUID();
 		UUID customer = UUID.randomUUID();
 		mock.register(product, customer);
@@ -199,7 +199,7 @@ class Phase2LocalBrokerIT {
 		return new Checkout(id, order, product, payment, authorization, session.path("expiresAt").asString());
 	}
 
-	private static void approveSeller(Phase2LocalBrokerSupport stack, UUID seller) throws Exception {
+	static void approveSeller(Phase2LocalBrokerSupport stack, UUID seller) throws Exception {
 		stack.send(stack.identityTopic, seller.toString(), Map.of("eventId", UUID.randomUUID(),
 				"eventType", "seller.approved", "occurredAt", Instant.now().toString(), "producer", "identity-service",
 				"aggregateId", seller, "version", 1,
@@ -209,12 +209,12 @@ class Phase2LocalBrokerIT {
 				"select count(*) from finance.wallet where owner_type='SELLER' and owner_id=?", seller)));
 	}
 
-	private static UUID capture(Phase2LocalBrokerSupport stack, UUID payment) throws Exception {
+	static UUID capture(Phase2LocalBrokerSupport stack, UUID payment) throws Exception {
 		return id(stack.call(stack.provider.resolve("/__fixture/confirm"), "POST", Map.of("paymentId", payment),
 				providerHeaders(), 200), "eventId");
 	}
 
-	private static void deliverWebhook(Phase2LocalBrokerSupport stack, UUID event) throws Exception {
+	static void deliverWebhook(Phase2LocalBrokerSupport stack, UUID event) throws Exception {
 		URI callback = stack.origin("payment").resolve("/api/v1/payments/webhooks/demo-provider");
 		assertThat(stack.call(stack.provider.resolve("/__fixture/send-event"), "POST",
 				Map.of("eventId", event, "callback", callback.toString()), providerHeaders(), 200)
@@ -226,7 +226,7 @@ class Phase2LocalBrokerIT {
 				session.checkout()));
 	}
 
-	private static String event(Phase2LocalBrokerSupport stack, String topic, UUID key, String type) throws Exception {
+	static String event(Phase2LocalBrokerSupport stack, String topic, UUID key, String type) throws Exception {
 		try (var observer = stack.observer(topic)) {
 			return waitFor(type, 18, () -> {
 				for (var record : observer.poll(Duration.ofMillis(500))) {
@@ -243,20 +243,27 @@ class Phase2LocalBrokerIT {
 		return UUID.fromString(object.path(name).asString());
 	}
 
-	private record Checkout(UUID checkout, UUID order, UUID product, UUID payment, String authorization, String expiresAt) {}
+	record Checkout(UUID checkout, UUID order, UUID product, UUID payment, String authorization, String expiresAt) {}
 
-	private static final class SaleFixture implements AutoCloseable {
+	static final class SaleFixture implements AutoCloseable {
 		private final HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
 		private final RSAKey signingKey = new RSAKeyGenerator(2048).keyID("phase2-4a").generate();
 		private final java.util.Set<UUID> products = java.util.concurrent.ConcurrentHashMap.newKeySet();
 		private final java.util.Set<UUID> customers = java.util.concurrent.ConcurrentHashMap.newKeySet();
+		private final Map<UUID, UUID> productSellers = new java.util.concurrent.ConcurrentHashMap<>();
+		private final java.util.Set<UUID> sellers = java.util.concurrent.ConcurrentHashMap.newKeySet();
+		final java.util.Set<UUID> invalidProducts = java.util.concurrent.ConcurrentHashMap.newKeySet();
 		private final List<String> observedCaptures = new java.util.concurrent.CopyOnWriteArrayList<>();
 		private final AtomicReference<Boolean> evidence = new AtomicReference<>(Boolean.TRUE);
-		private final UUID seller = UUID.randomUUID();
+		final UUID seller = UUID.randomUUID();
+		final UUID admin = UUID.randomUUID();
+		final UUID readAdmin = UUID.randomUUID();
+		final java.util.Set<UUID> bannedForWithdrawal = java.util.concurrent.ConcurrentHashMap.newKeySet();
 		private final UUID address = UUID.randomUUID();
 		private final java.util.concurrent.ExecutorService requests = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
 
 		SaleFixture() throws Exception {
+			sellers.add(seller);
 			server.setExecutor(requests);
 			server.createContext("/", this::serve);
 			server.start();
@@ -267,7 +274,13 @@ class Phase2LocalBrokerIT {
 		}
 
 		void register(UUID product, UUID customer) {
+			register(product, customer, seller);
+		}
+
+		void register(UUID product, UUID customer, UUID productSeller) {
 			products.add(product);
+			productSellers.put(product, productSeller);
+			sellers.add(productSeller);
 			customers.add(customer);
 		}
 
@@ -308,16 +321,44 @@ class Phase2LocalBrokerIT {
 					writeData(exchange, items);
 					return;
 				}
+				if (path.equals("/internal/v1/products/reviews/summary")) {
+					var items = new ArrayList<JsonNode>();
+					for (JsonNode product : JSON.readTree(exchange.getRequestBody()).path("productIds")) {
+						items.add(JSON.createObjectNode().put("productId", product.asString())
+								.put("hasReviewed", false).putNull("reviewId"));
+					}
+					writeData(exchange, items);
+					return;
+				}
 				if (path.endsWith("/authorization-context")) {
 					String bearer = exchange.getRequestHeaders().getFirst("Authorization");
 					UUID user = UUID.fromString(SignedJWT.parse(bearer.substring(7)).getJWTClaimsSet().getSubject());
+					if (admin.equals(user) || readAdmin.equals(user)) {
+						writeData(exchange, Map.of("userId", user, "accountType", "ADMIN", "accountStatus", "ACTIVE",
+								"userStatus", "ACTIVE", "accessMode", "FULL", "authzVersion", 1, "roles", List.of("ADMIN"),
+								"permissions", admin.equals(user) ? List.of("operations:read:any", "operations:annotate")
+										: List.of("operations:read:any"), "sessionActive", true));
+						return;
+					}
+					if (sellers.contains(user)) {
+						boolean banned = bannedForWithdrawal.contains(user);
+						String status = banned ? "BANNED" : "ACTIVE";
+						writeData(exchange, Map.of("userId", user, "accountType", "SELLER", "accountStatus", status,
+								"userStatus", "ACTIVE", "accessMode", banned ? "WITHDRAWAL_ONLY" : "FULL",
+								"authzVersion", 1, "roles", List.of("SELLER"), "permissions", banned
+										? List.of("wallet:read:own", "withdrawal:create:own")
+										: List.of("order:fulfill:own", "wallet:read:own", "withdrawal:create:own"),
+								"sessionActive", true, "sellerProfile", Map.of("status", status, "approvalStatus", "APPROVED")));
+						return;
+					}
 					if (!customers.contains(user)) {
 						write(exchange, 401, Map.of());
 						return;
 					}
 					writeData(exchange, Map.of("userId", user, "accountType", "CUSTOMER", "accountStatus", "ACTIVE",
 							"userStatus", "ACTIVE", "accessMode", "FULL", "authzVersion", 1, "roles", List.of("CUSTOMER"),
-							"permissions", List.of("checkout:create:own", "order:read:own"), "sessionActive", true,
+							"permissions", List.of("checkout:create:own", "order:read:own", "order:cancel:own",
+									"order:confirm:own", "review:write:own", "refund:retry:own"), "sessionActive", true,
 							"customerProfile", Map.of("status", "ACTIVE")));
 				} else if (path.endsWith("/checkout-eligibility")) {
 					writeData(exchange, Map.of("userId", path.split("/")[5], "userStatus", "ACTIVE", "customerStatus", "ACTIVE",
@@ -359,8 +400,11 @@ class Phase2LocalBrokerIT {
 			var items = new ArrayList<Map<String, Object>>();
 			for (JsonNode requested : body.path(product ? "productIds" : "sellerIds")) {
 				UUID id = UUID.fromString(requested.asString());
-				if (product && products.contains(id)) items.add(Map.of("productId", id, "sellerId", seller, "decision", decision));
-				if (!product && seller.equals(id)) items.add(Map.of("sellerId", seller, "decision", decision));
+				if (product && productSellers.containsKey(id)) {
+					String verdict = available && invalidProducts.contains(id) ? "INELIGIBLE" : decision;
+					items.add(Map.of("productId", id, "sellerId", productSellers.get(id), "decision", verdict));
+				}
+				if (!product && sellers.contains(id)) items.add(Map.of("sellerId", id, "decision", decision));
 			}
 			observedCaptures.add(completedAt);
 			writeData(exchange, Map.of("completedAt", completedAt, "items", items));

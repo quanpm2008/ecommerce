@@ -157,6 +157,7 @@ class ProviderHttpContractTests {
             assertStatus(409, () -> provider.createRefund(new CreateRefundRequest(first.refundId(), UUID.randomUUID(),
                     first.paymentId(), first.providerTransactionId(), first.amountVnd(), "VND")));
             assertStatus(409, () -> provider.createRefund(refund(payment, created.providerTransactionId())));
+            fixture.nextRefundQueryReturnsGeneric404();
             assertStatus(404, () -> provider.queryRefund(first.refundId(), UUID.randomUUID()));
             assertThat(fixture.refundSuccessCount(first.refundId())).isOne();
         }

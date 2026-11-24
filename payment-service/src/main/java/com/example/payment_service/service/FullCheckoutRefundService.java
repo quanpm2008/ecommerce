@@ -14,6 +14,7 @@ import com.example.payment_service.client.PaymentGateway;
 import com.example.payment_service.client.ProviderContracts.CreateRefundRequest;
 import com.example.payment_service.client.ProviderContracts.RefundResponse;
 import com.example.payment_service.client.ProviderHttpGateway.ProviderHttpException;
+import com.example.payment_service.client.ProviderHttpGateway.RefundAttemptNotFound;
 import com.example.payment_service.client.ProviderHttpGateway.UncertainResultException;
 import com.example.payment_service.controller.ProviderWebhookController.RefundReferences;
 import com.example.payment_service.controller.ProviderWebhookController.RefundWebhookHandler;
@@ -85,12 +86,12 @@ public class FullCheckoutRefundService implements RefundWebhookHandler {
             return;
         }
         Dispatch dispatch = transactions.execute(tx -> claim(refundId));
-        if (dispatch == null) {
+        if (dispatch == null || work.isHeldForReview(refundId)) {
             return;
         }
         var response = send(gateway, dispatch);
         Dispatch retry = transactions.execute(tx -> finish(dispatch, response));
-        if (retry != null) {
+        if (retry != null && !work.isHeldForReview(refundId)) {
             var retried = send(gateway, retry);
             transactions.executeWithoutResult(tx -> finish(retry, retried));
         }
@@ -98,7 +99,7 @@ public class FullCheckoutRefundService implements RefundWebhookHandler {
 
     private Dispatch claim(UUID refundId) {
         Refund refund = refunds.findByIdForUpdate(refundId).orElse(null);
-        if (refund == null || refund.getScope() != RefundScope.FULL_CHECKOUT || refund.getStatus() == RefundStatus.SUCCESS
+        if (refund == null || refund.getStatus() == RefundStatus.SUCCESS
                 || refund.isCustomerRetryRequired()) {
             return null;
         }
@@ -122,6 +123,10 @@ public class FullCheckoutRefundService implements RefundWebhookHandler {
         Refund refund = refunds.findByIdForUpdate(refundId).orElseThrow();
         RefundAttempt attempt = attempts.findByAttemptIdAndRefundId(dispatch.command().attemptId(), refundId).orElseThrow();
         Instant now = clock.instant();
+        if (contradictsFailure(refund, attempt, response)) {
+            work.holdForReview(refundId, attempt.getAttemptId(), now);
+            return null;
+        }
         boolean matches = response != null && matches(refund, attempt, response);
         if (dispatch.action() != Action.POST) {
             String outcome = response == null ? "UNKNOWN" : matches ? response.status().name() : "CONFLICT";
@@ -137,7 +142,9 @@ public class FullCheckoutRefundService implements RefundWebhookHandler {
         }
         if (dispatch.action() == Action.VERIFY_FAILURE) {
             // Query the previous attempt again before authorizing another provider POST.
-            refund.retry();
+            if (attempt.getRetryCycle() == refund.getRetryCycle()) {
+                refund.retry();
+            }
             var next = attempts.saveAndFlush(new RefundAttempt(refund, now));
             return dispatch(refund, paymentFor(refund), next, dispatch.lease(), Action.POST);
         }
@@ -161,10 +168,17 @@ public class FullCheckoutRefundService implements RefundWebhookHandler {
         }
         var response = new RefundResponse(references.providerRefundId(), common.status(), common.amountVnd(),
                 common.currency(), common.completedAt(), common.errorCode());
+        Instant now = clock.instant();
+        if (contradictsFailure(refund, attempt, response)) {
+            work.holdForReview(refund.getRefundId(), attempt.getAttemptId(), now);
+            return;
+        }
         if (!matches(refund, attempt, response)) {
             throw new OutcomeConflict();
         }
-        apply(refund, payment, attempt, response, clock.instant());
+        if (!work.isHeldForReview(refund.getRefundId())) {
+            apply(refund, payment, attempt, response, now);
+        }
     }
 
     private void apply(Refund refund, Payment payment, RefundAttempt attempt, RefundResponse response, Instant now) {
@@ -225,11 +239,21 @@ public class FullCheckoutRefundService implements RefundWebhookHandler {
         return attempt.isPending() || attempt.matchesTerminal(result);
     }
 
+    private static boolean contradictsFailure(Refund refund, RefundAttempt attempt, RefundResponse result) {
+        return attempt.getStatus() == GatewayStatus.FAILED && result != null && result.status() == GatewayStatus.SUCCESS
+                && refund.getAmountVnd() == result.amountVnd() && "VND".equals(result.currency())
+                && result.completedAt() != null && result.errorCode() == null
+                && result.providerRefundId() != null && !result.providerRefundId().isBlank()
+                && result.providerRefundId().length() <= 255;
+    }
+
     private Payment paymentFor(Refund refund) {
         Payment payment = payments.findById(refund.getPaymentId()).orElseThrow(OutcomeConflict::new);
-        if (refund.getScope() != RefundScope.FULL_CHECKOUT || !payment.isSuccess()
+        if (!payment.isSuccess()
                 || !"DEMO_PROVIDER".equals(payment.getProvider()) || !"VND".equals(payment.getCurrency())
-                || payment.getProviderTransactionId() == null || !Objects.equals(refund.getAmountVnd(), payment.getAmountVnd())) {
+                || payment.getProviderTransactionId() == null || refund.getAmountVnd() > payment.getAmountVnd()
+                || (refund.getScope() == RefundScope.FULL_CHECKOUT
+                    && !Objects.equals(refund.getAmountVnd(), payment.getAmountVnd()))) {
             throw new OutcomeConflict();
         }
         return payment;
@@ -240,6 +264,10 @@ public class FullCheckoutRefundService implements RefundWebhookHandler {
         try {
             return dispatch.action() == Action.POST ? gateway.createRefund(request)
                     : gateway.queryRefund(request.refundId(), request.attemptId());
+        } catch (RefundAttemptNotFound missing) {
+            var absence = missing.absence();
+            return new RefundResponse(absence.providerRefundId(), GatewayStatus.FAILED, request.amountVnd(),
+                    request.currency(), absence.completedAt(), absence.errorCode());
         } catch (ProviderHttpException | UncertainResultException unavailable) {
             // The provider has not confirmed a terminal result for this attempt.
             return null;

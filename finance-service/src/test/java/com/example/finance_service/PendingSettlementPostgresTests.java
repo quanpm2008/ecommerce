@@ -34,19 +34,25 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class PendingSettlementPostgresTests {
 	private static final String ORDER_CREDENTIAL = "phase2-finance-order";
-	private static final String TOPIC_PREFIX = "phase2-finance-" + UUID.randomUUID();
-	private static final String ORDER_TOPIC = TOPIC_PREFIX + "-order";
-	private static final String IDENTITY_TOPIC = TOPIC_PREFIX + "-identity";
-	private static final String GROUP = TOPIC_PREFIX;
+	static String ORDER_TOPIC;
+	static String PAYMENT_TOPIC;
+	private static String IDENTITY_TOPIC;
+	private static String FINANCE_TOPIC;
+	private static String GROUP;
 	private static final JsonMapper JSON = new JsonMapper();
-	private static ConfigurableApplicationContext finance;
+	static ConfigurableApplicationContext finance;
 	private static KafkaProducer<String, String> producer;
 	private static Admin broker;
-	private static JdbcTemplate db;
+	static JdbcTemplate db;
 	private static String bootstrap;
 
 	@BeforeAll
 	static void start() throws Exception {
+		GROUP = "finance-it-" + UUID.randomUUID();
+		ORDER_TOPIC = GROUP + "-order";
+		PAYMENT_TOPIC = GROUP + "-payment";
+		IDENTITY_TOPIC = GROUP + "-identity";
+		FINANCE_TOPIC = GROUP + "-finance";
 		var url = required("SPRING_DATASOURCE_URL");
 		if (!url.startsWith("jdbc:postgresql://") || !url.matches(".*/finance_test_[A-Za-z0-9_]+")) {
 			throw new IllegalStateException("Use a dedicated finance_test_* PostgreSQL database");
@@ -55,7 +61,8 @@ class PendingSettlementPostgresTests {
 				required("SPRING_DATASOURCE_PASSWORD")));
 		bootstrap = required("FINANCE_TEST_KAFKA_BOOTSTRAP");
 		broker = Admin.create(Map.of("bootstrap.servers", bootstrap));
-		broker.createTopics(List.of(new NewTopic(ORDER_TOPIC, 1, (short) 1), new NewTopic(IDENTITY_TOPIC, 1, (short) 1)))
+		broker.createTopics(List.of(ORDER_TOPIC, PAYMENT_TOPIC, IDENTITY_TOPIC, FINANCE_TOPIC).stream()
+				.map(topic -> new NewTopic(topic, 1, (short) 1)).toList())
 				.all().get(10, TimeUnit.SECONDS);
 		producer = new KafkaProducer<>(Map.of("bootstrap.servers", bootstrap, "acks", "all"),
 				new StringSerializer(), new StringSerializer());
@@ -215,16 +222,17 @@ class PendingSettlementPostgresTests {
 		assertThat(platformPending()).isEqualTo(platformBefore);
 	}
 
-	private static void startFinance() {
+	static void startFinance() {
 		finance = new SpringApplicationBuilder(FinanceServiceApplication.class).run(
 				"--server.port=0", "--eureka.client.enabled=false", "--logging.level.root=WARN",
 				"--finance.internal.tokens.order=" + ORDER_CREDENTIAL,
 				"--finance.kafka.bootstrap-servers=" + bootstrap, "--finance.kafka.group=" + GROUP,
 				"--finance.kafka.order-topic=" + ORDER_TOPIC, "--finance.kafka.identity-topic=" + IDENTITY_TOPIC,
+				"--finance.kafka.payment-topic=" + PAYMENT_TOPIC, "--finance.kafka.result-topic=" + FINANCE_TOPIC,
 				"--finance.settlement.sweep-delay-ms=100");
 	}
 
-	private static void approve(UUID seller) throws Exception {
+	static void approve(UUID seller) throws Exception {
 		UUID event = UUID.randomUUID();
 		publish(IDENTITY_TOPIC, seller, approved(event, seller, "identity-service"));
 		await(() -> "APPLIED".equals(state(event)));
@@ -236,27 +244,27 @@ class PendingSettlementPostgresTests {
 				Map.of("kind", "USER", "context", "ADMIN", "userId", UUID.randomUUID()));
 	}
 
-	private static String paid(UUID event, UUID checkout, UUID payment, List<Map<String, Object>> orders) {
+	static String paid(UUID event, UUID checkout, UUID payment, List<Map<String, Object>> orders) {
 		return envelope(event, "checkout.paid", "order-service", checkout, Map.of("paymentId", payment,
 				"checkoutSessionId", checkout, "customerId", UUID.randomUUID(), "paidAt", Instant.now().toString(),
 				"source", "BUY_NOW", "cartItems", List.of(), "orders", orders), Map.of("kind", "SERVICE"));
 	}
 
-	private static Map<String, Object> line(UUID order, UUID seller, long amount, int rate) {
+	static Map<String, Object> line(UUID order, UUID seller, long amount, int rate) {
 		return Map.of("orderId", order, "sellerId", seller, "totalAmountVnd", amount, "commissionBps", rate);
 	}
 
-	private static String envelope(UUID event, String type, String source, UUID aggregate, Map<String, Object> payload,
+	static String envelope(UUID event, String type, String source, UUID aggregate, Map<String, Object> payload,
 			Map<String, Object> actor) {
 		return JSON.writeValueAsString(Map.of("eventId", event, "eventType", type, "occurredAt", Instant.now().toString(),
 				"producer", source, "aggregateId", aggregate, "version", 1, "payload", payload, "actor", actor));
 	}
 
-	private static long publish(String topic, UUID key, String payload) throws Exception {
+	static long publish(String topic, UUID key, String payload) throws Exception {
 		return producer.send(new ProducerRecord<>(topic, key.toString(), payload)).get(10, TimeUnit.SECONDS).offset();
 	}
 
-	private static boolean committed(String topic, long offset) {
+	static boolean committed(String topic, long offset) {
 		try {
 			OffsetAndMetadata result = broker.listConsumerGroupOffsets(GROUP).partitionsToOffsetAndMetadata()
 					.get(3, TimeUnit.SECONDS).get(new TopicPartition(topic, 0));
@@ -269,7 +277,7 @@ class PendingSettlementPostgresTests {
 		}
 	}
 
-	private static void await(BooleanSupplier condition) throws InterruptedException {
+	static void await(BooleanSupplier condition) throws InterruptedException {
 		long limit = System.nanoTime() + Duration.ofSeconds(18).toNanos();
 		while (!condition.getAsBoolean()) {
 			if (System.nanoTime() >= limit) {
@@ -279,7 +287,7 @@ class PendingSettlementPostgresTests {
 		}
 	}
 
-	private static String state(UUID event) {
+	static String state(UUID event) {
 		return db.queryForList("select status from finance.settlement_inbox where event_id = ?", String.class, event)
 				.stream().findFirst().orElse(null);
 	}

@@ -60,7 +60,7 @@ public class OrderCheckoutEventRelay {
 		}
 		var event = next.orElseThrow();
 		try {
-			producer.send(new ProducerRecord<>(topic, event.getCheckoutSessionId().toString(), event.getEnvelope()))
+			producer.send(new ProducerRecord<>(topic, event.aggregateId().toString(), event.getEnvelope()))
 					.get(6, TimeUnit.SECONDS);
 		} catch (InterruptedException interrupted) {
 			Thread.currentThread().interrupt();

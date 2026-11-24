@@ -5,6 +5,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.util.Objects;
@@ -31,11 +33,12 @@ public class Payment {
     @Column(name = "amount_vnd", nullable = false)
     private Long amountVnd;
 
+    @JdbcTypeCode(SqlTypes.CHAR)
     @Column(name = "currency", nullable = false, length = 3)
     private String currency = "VND";
 
     @Column(name = "provider", nullable = false)
-    private String provider = "SIMULATOR";
+    private String provider = "DEMO_PROVIDER";
 
     @Column(name = "environment", nullable = false)
     private String environment = "DEV";
@@ -60,6 +63,12 @@ public class Payment {
     @Column(name = "completed_at")
     private Instant completedAt;
 
+    @Column(name = "expires_at")
+    private Instant expiresAt;
+
+    @Column(name = "payment_url", columnDefinition = "text")
+    private String paymentUrl;
+
     //Khởi tạo Payment ở trạng thái PENDING trước khi gọi Gateway ngoài transaction
     public Payment(UUID checkoutSessionId, UUID customerId, Long amountVnd, String currency, String provider, String environment, String idempotencyKey) {
         if (amountVnd == null || amountVnd <= 0) {
@@ -70,9 +79,12 @@ public class Payment {
         this.amountVnd = amountVnd;
         this.idempotencyKey = Objects.requireNonNull(idempotencyKey, "idempotencyKey is required");
         this.status = PaymentStatus.PENDING;
-        this.currency = "VND";
-        this.provider = "SIMULATOR";
-        this.environment = "DEV";
+        if (!"VND".equals(currency)) {
+            throw new IllegalArgumentException("Payment currency must be VND");
+        }
+        this.currency = currency;
+        this.provider = Objects.requireNonNull(provider, "provider is required");
+        this.environment = Objects.requireNonNull(environment, "environment is required");
     }
 
     //Chuyển trạng thái sang SUCCESS khi Gateway xác nhận thanh toán thành công
