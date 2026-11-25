@@ -1275,7 +1275,7 @@ Do UC-C02 bị loại bỏ, Admin không còn danh sách “Báo cáo vi phạm�
 
 #### UC-G01 | Thông báo
 
-*Vai trò: Hệ thống → Khách hàng, Người bán · Ưu tiên: M (email) / S (in-app)*
+*Vai trò: Hệ thống → Khách hàng, Người bán · Ưu tiên: M (in-app); email nghiệp vụ tùy chọn, triển khai sau theo [quyết định 25/11/2026](coverage.md#notification-channels). Không thay luồng email xác minh/đặt lại mật khẩu của Identity.*
 
 **Mục tiêu:** Thông báo về lần thanh toán chung, các sự kiện riêng của từng đơn và các sự kiện ví/rút tiền của Seller.
 
@@ -1291,11 +1291,11 @@ Do UC-C02 bị loại bỏ, Admin không còn danh sách “Báo cáo vi phạm�
 
 4. Khi Seller rút tiền thành công, hệ thống gửi biên nhận gồm mã giao dịch rút, số tiền và số dư khả dụng còn lại.
 
-5. Email bất đồng bộ là Must, in-app Should. Khi một chu kỳ Refund hết lượt vẫn FAILED, gửi Customer chủ Payment thông báo REFUND_RETRY_REQUIRED gồm số tiền, đơn hoặc phiên FULL_CHECKOUT và link “Thử lại hoàn tiền”. Dedupe theo refundId + retryCycle + người nhận + kênh; mỗi chu kỳ mới hết lượt có thông báo riêng. Link chỉ mở trang đăng nhập/đọc trạng thái/xác nhận, không tự gọi retry.
+5. In-app là Must, email nghiệp vụ không bắt buộc và triển khai sau. Người nhận xem danh sách/số chưa đọc, đánh dấu đã đọc từng bản/tất cả và xóa thông báo của mình. Khi một chu kỳ Refund hết lượt vẫn FAILED, gửi Customer chủ Payment thông báo in-app REFUND_RETRY_REQUIRED gồm số tiền, đơn hoặc phiên FULL_CHECKOUT và link “Thử lại hoàn tiền”. Dedupe theo refundId + retryCycle + người nhận + kênh; mỗi chu kỳ mới hết lượt có thông báo riêng. Link chỉ mở trang đăng nhập/đọc trạng thái/xác nhận, không tự gọi retry.
 
 **LUỒNG THAY THẾ / NGOẠI LỆ**
 
-* P-19: mỗi email có lần gửi đầu và tối đa 3 retry, chờ 1/5/15 phút từ lần thất bại trước. Chỉ retry lỗi tạm thời (timeout, mất kết nối, lỗi nhà cung cấp, rate limit), tôn trọng Retry-After. Lỗi vĩnh viễn hoặc token/link đã hết hạn dừng ngay; hết lượt ghi FAILED, không đổi trạng thái nghiệp vụ. Dùng cùng thông báo và khóa chống trùng.
+* Khi triển khai email, giữ P-19: mỗi email có lần gửi đầu và tối đa 3 retry, chờ 1/5/15 phút từ lần thất bại trước. Chỉ retry lỗi tạm thời (timeout, mất kết nối, lỗi nhà cung cấp, rate limit), tôn trọng Retry-After. Lỗi vĩnh viễn hoặc token/link đã hết hạn dừng ngay; hết lượt ghi FAILED, không đổi trạng thái nghiệp vụ hay làm mất in-app. Dùng cùng thông báo và khóa chống trùng.
 
 * P-22: in-app giữ nội dung 30 ngày, chỉ hiển thị tối đa 50 gần nhất của người nhận. Không xóa email/cắt lịch retry/làm mất dedupe; replay không tạo lại thông báo đã xóa/hết hạn hiển thị.
 
@@ -1357,7 +1357,7 @@ Do UC-C02 bị loại bỏ, Admin không còn danh sách “Báo cáo vi phạm�
 
 4. J3 (Must): Order đã\_giao nhưng khách không chọn “Đã nhận hàng” trong 7 ngày kể từ lúc Seller xác nhận đã giao → tự chuyển sang “Đã xác nhận” và quyết toán đơn (UC-G04), tiền Seller chuyển sang khả dụng.
 
-5. J5 query Refund chưa rõ, retry FAILED theo P-RF-01 và dừng phát lệnh sau 3 retry/chu kỳ để chờ Customer; vẫn query/áp kết quả muộn. J6 gửi lại email theo P-19 độc lập lịch J5; chu kỳ chạy job không phải khoảng chờ retry.
+5. J5 query Refund chưa rõ, retry FAILED theo P-RF-01 và dừng phát lệnh sau 3 retry/chu kỳ để chờ Customer; vẫn query/áp kết quả muộn. Khi triển khai email nghiệp vụ, J6 gửi lại email theo P-19 độc lập lịch J5; không bắt buộc J6 email nghiệp vụ để hoàn thành in-app. Chu kỳ chạy job không phải khoảng chờ retry; luồng email bảo mật của Identity giữ nguyên.
 
 6. J7 — Đối soát trạng thái tài khoản bị cấm, owner Identity: định kỳ xử lý BANNED↔DISABLED theo nghĩa vụ UC-E03; không tự unban/đụng ACTIVE. Retry an toàn, không reset deadline, kiểm tra version/đợt cấm trước commit; nguồn lỗi giữ trạng thái. Login/refresh/request dùng cùng policy, không cam kết SLA hay chu kỳ mới.
 

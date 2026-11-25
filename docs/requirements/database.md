@@ -667,11 +667,11 @@ Nhật ký thay đổi on\_hand để kiểm tra lệch và chống trừ hoặc
 
 ### 3.7 Notification
 
-Gửi email bất đồng bộ, tùy chọn in-app; không nằm trên đường xử lý đồng bộ của checkout. Data store queue và PostgreSQL log hoặc tương đương.
+Thông báo in-app là Must theo [quyết định 25/11/2026](coverage.md#notification-channels); email nghiệp vụ tùy chọn triển khai sau, không nằm trên đường xử lý đồng bộ của checkout. Lưu thông báo và khóa chống trùng trong database do Notification sở hữu. Email xác minh/đặt lại mật khẩu của Identity giữ luồng riêng, không đưa secret vào in-app.
 
 #### 3.7.1 Notification
 
-Một thông báo cho một người nhận theo sự kiện, có chống gửi trùng và retry.
+Một thông báo cho một người nhận theo sự kiện, có chống trùng; retry email chỉ áp dụng khi triển khai kênh email.
 
 | FIELD | TYPE | REQ | KEY | GIẢI THÍCH VÀ NGHIỆP VỤ |
 | :---- | :---- | :---- | :---- | :---- |
@@ -679,17 +679,17 @@ Một thông báo cho một người nhận theo sự kiện, có chống gửi 
 | recipient\_user\_id | UUID | Có | Ref | User.user\_id duy nhất của người nhận; không định tuyến bằng loại tài khoản. |
 | audience\_context | ENUM | Có | CHECK | CUSTOMER / SELLER / ACCOUNT; ngữ cảnh nội dung, không là bằng chứng cấp quyền. |
 | notification\_type | VARCHAR(70) | Có | — | Payment, Order, Refund gồm REFUND_RETRY_REQUIRED, funds available, withdrawal, Seller approval/ban; enum theo API §4.2. |
-| channel | ENUM | Có | CHECK | EMAIL (Must), IN\_APP (Should). |
+| channel | ENUM | Có | CHECK | IN\_APP (Must cho thông báo nghiệp vụ), EMAIL (tùy chọn triển khai sau; email bảo mật của Identity giữ riêng). |
 | subject | VARCHAR(255) | Không | — | Tiêu đề email nếu có. |
 | content | TEXT | Có | — | Nội dung hiển thị/gửi; tiền giả lập cần có nhãn rõ. |
 | business\_reference\_id | UUID | Không | Ref | CheckoutSession, Order, Payment hoặc Withdrawal liên quan. |
 | dedupe\_key | VARCHAR(160) | Có | UQ | Một event/kênh/người nhận chỉ gửi một lần logic. |
 | status | ENUM | Có | CHECK | PENDING / SENT / FAILED. |
 | retry\_count, sent\_at | INTEGER/TIMESTAMPTZ | ĐK | CHECK | EMAIL retry_count DEFAULT 0, 0..3 retry sau lần gửi đầu; query/delivery tracking không tự tạo email mới. |
-| is\_read | BOOLEAN | ĐK | — | Chỉ dùng cho IN\_APP nếu Should được triển khai. |
+| is\_read | BOOLEAN | ĐK | — | Bắt buộc cho IN\_APP; người nhận quản lý trạng thái đọc của chính mình. |
 | created\_at | TIMESTAMPTZ | Có | — | Ngày ghi nhận yêu cầu gửi. |
 
-**Ràng buộc:** dedupe\_key theo event/kênh/recipient\_user\_id/audience\_context; mỗi User một account\_type, chỉ trả recipient=sub. REFUND_RETRY_REQUIRED từ Payment refund.failed có retryExhausted=true, gửi Customer chủ Payment với refundId/paymentId/checkoutSessionId/orderId|null/scope/amountVnd/retryCycle; dedupe refundId+retryCycle+recipient+kênh, email Must/in-app Should. Link chỉ mở đăng nhập/trạng thái/xác nhận, không tự retry. P-19: một lần gửi đầu + tối đa 3 retry, chờ 1/5/15 phút từ lỗi trước, chỉ lỗi tạm thời (timeout/mất kết nối/lỗi nhà cung cấp/rate limit), tôn trọng Retry-After. Lỗi vĩnh viễn/token hết hạn dừng ngay, hết lượt FAILED không đổi nghiệp vụ; dùng cùng thông báo/key. P-22: in-app giữ nội dung 30 ngày, chỉ 50 gần nhất; không xóa email/cắt retry/mất dedupe hoặc tạo lại thông báo đã xóa/hết hạn khi replay. Không lưu token/mật khẩu.
+**Ràng buộc:** dedupe\_key theo event/kênh/recipient\_user\_id/audience\_context; mỗi User một account\_type, chỉ trả recipient=sub. REFUND_RETRY_REQUIRED từ Payment refund.failed có retryExhausted=true, gửi Customer chủ Payment với refundId/paymentId/checkoutSessionId/orderId|null/scope/amountVnd/retryCycle; dedupe refundId+retryCycle+recipient+kênh, in-app Must/email tùy chọn triển khai sau. Link chỉ mở đăng nhập/trạng thái/xác nhận, không tự retry. Khi triển khai email, giữ P-19: một lần gửi đầu + tối đa 3 retry, chờ 1/5/15 phút từ lỗi trước, chỉ lỗi tạm thời (timeout/mất kết nối/lỗi nhà cung cấp/rate limit), tôn trọng Retry-After. Lỗi vĩnh viễn/token hết hạn dừng ngay, hết lượt FAILED không đổi nghiệp vụ; dùng cùng thông báo/key. P-22: in-app giữ nội dung 30 ngày, chỉ 50 gần nhất; không mất dedupe hoặc tạo lại thông báo đã xóa/hết hạn khi replay. Nếu có email, không xóa email/cắt retry theo retention in-app. Không lưu token/mật khẩu.
 
 **Đối chiếu:** UC-G01 kế thừa; thêm sự kiện tiền vào khả dụng và biên nhận rút tiền thành công (gồm mã giao dịch, số tiền, số dư khả dụng còn lại).
 

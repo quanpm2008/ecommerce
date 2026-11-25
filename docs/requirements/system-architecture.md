@@ -39,7 +39,7 @@ Phạm vi thiết kế hướng đến phiên bản sản phẩm khả dụng t�
 
 Thanh toán, số dư ví, quyết toán và rút tiền được mô phỏng để phục vụ học tập và kiểm thử. Các thao tác này không đại diện cho giao dịch chuyển tiền thực tế với ngân hàng hoặc tổ chức thanh toán.
 
-Các giới hạn và lịch thử lại lấy từ [Tham số đã chốt](parameters.md), theo xác nhận ngày 18/11/2026; đây là yêu cầu thiết kế, không xác nhận code đã đáp ứng. Review, quản trị Category qua giao diện và in-app vẫn là Should; Reporting/phân tích vẫn hoãn theo SAD.
+Các giới hạn và lịch thử lại lấy từ [Tham số đã chốt](parameters.md), theo xác nhận ngày 18/11/2026; đây là yêu cầu thiết kế, không xác nhận code đã đáp ứng. Theo [quyết định 25/11/2026](coverage.md#notification-channels), in-app là Must; email thông báo nghiệp vụ tùy chọn, triển khai sau, không thay email xác minh/đặt lại mật khẩu. Review và quản trị Category qua giao diện vẫn là Should; Reporting/phân tích vẫn hoãn theo SAD.
 
 ## 1.4. Phạm vi kỹ thuật và giới hạn
 
@@ -823,7 +823,7 @@ Withdrawal kiểm tra quyền hiện hành từ Identity theo [API Wallet/withdr
 
 ### 3.8.7. Notification Service
 
-Notification dùng chung luồng tạo thông báo cho event và internal API. Việc ghi nhận thông báo được tách khỏi gửi email để một lỗi gửi không làm mất thông báo hoặc rollback nghiệp vụ nguồn.
+Notification dùng chung luồng tạo thông báo cho event và internal API. In-app là Must, gồm danh sách, số chưa đọc, đọc từng bản/tất cả và xóa đúng owner. Email nghiệp vụ là tùy chọn triển khai sau; in-app không cần email transport để hoạt động. Lỗi thông báo không rollback nghiệp vụ nguồn.
 
 ```mermaid
 %%{init: {"flowchart": {"wrappingWidth": 220, "nodeSpacing": 25, "rankSpacing": 40}}}%%
@@ -831,7 +831,7 @@ flowchart LR
     GatewayN["Gateway / internal caller"]
     KafkaN["Kafka - business events"]
     IdentityN["Identity API"]
-    MailN["Email transport<br/>Cần chọn provider hoặc adapter demo"]
+    MailN["Email transport - triển khai sau<br/>Cần chọn provider hoặc adapter demo"]
     DBN[("Notification DB")]
 
     subgraph C4L3Notification["Notification Service - component đề xuất"]
@@ -840,7 +840,7 @@ flowchart LR
         CreateN["Notification Creation<br/>Validation và deduplication"]
         TemplateN["Template / Channel Policy<br/>Loại, người nhận và kênh hợp lệ"]
         QueryN["Notification Query / State<br/>Danh sách, đọc, xóa in-app"]
-        WorkerN["Email Delivery Worker<br/>Gửi và retry thông báo đã lưu"]
+        WorkerN["Email Delivery Worker - triển khai sau<br/>Gửi và retry email đã lưu"]
         ClientN["Identity Client - OpenFeign<br/>Lấy contact theo userId"]
         RepoN["Repositories + Inbox / Dedupe<br/>Notification và trạng thái gửi"]
 
@@ -863,9 +863,9 @@ flowchart LR
     RepoN -->|"SQL / JDBC"| DBN
 ```
 
-Notification Creation commit thông báo và dấu chống lặp trước khi worker gửi email. Query/State chỉ quản lý thông báo của chính người dùng; xóa in-app không xóa bản ghi chống lặp hoặc hủy email tương ứng. Email transport là phụ thuộc chưa chọn, không được hiểu là đã tích hợp Amazon SES. Nếu gửi thành công nhưng mất xác nhận, retry vẫn có nguy cơ gửi email lặp tùy khả năng của transport; Inbox không tự bảo đảm một email chỉ được nhận đúng một lần.
+Notification Creation commit in-app và dấu chống lặp cùng transaction. Query/State chỉ quản lý thông báo của chính người dùng. Khi triển khai email sau này, worker gửi ngoài transaction; xóa in-app không xóa dấu chống lặp hoặc hủy email tương ứng. Email transport là phụ thuộc chưa chọn, không được hiểu là đã tích hợp Amazon SES. Nếu gửi thành công nhưng mất xác nhận, retry vẫn có nguy cơ gửi email lặp tùy khả năng của transport; Inbox không tự bảo đảm một email chỉ được nhận đúng một lần.
 
-Email có một lần đầu và tối đa 3 lần gửi lại sau 1, 5, 15 phút từ lỗi trước; chỉ retry lỗi tạm thời và không sớm hơn Retry-After. Lỗi vĩnh viễn hoặc token/link hết hạn thì dừng ngay; hết lượt ghi thất bại, không đổi trạng thái nghiệp vụ, giữ cùng thông báo/key. Email demo và retention bí mật vẫn cần quyết định riêng. In-app Should hiển thị tối đa 50 thông báo gần nhất, giữ nội dung 30 ngày; không xóa email, cắt lịch retry hoặc làm mất dedupe, không áp dụng retention này cho reset URL.
+In-app Must hiển thị tối đa 50 thông báo gần nhất, giữ nội dung 30 ngày; xóa/hết hạn không làm mất dedupe và replay không khôi phục bản đã xóa/hết hạn. Khi triển khai email, giữ P-19: một lần đầu và tối đa 3 lần gửi lại sau 1, 5, 15 phút từ lỗi trước, chỉ retry lỗi tạm thời và không sớm hơn Retry-After; lỗi vĩnh viễn/token hết hạn dừng ngay, hết lượt ghi thất bại, giữ cùng thông báo/key và không đổi nghiệp vụ. Retention in-app không xóa email/cắt lịch retry và không áp dụng cho reset URL. Luồng email bảo mật của Identity giữ nguyên; email demo và retention bí mật vẫn cần quyết định riêng.
 
 ### 3.8.8. Gateway Service
 
