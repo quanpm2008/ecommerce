@@ -2,17 +2,16 @@ x-eureka-client: &eureka-client
   depends_on:
     discovery-service:
       condition: service_healthy
-    database:
-      condition: service_healthy
   environment: &eureka-client-env
     SPRING_APPLICATION_JSON: &eureka-url-json '{"eureka":{"client":{"serviceUrl":{"defaultZone":"http://discovery-service:8761/eureka/"}}}}'
-    SPRING_DATASOURCE_URL: jdbc:postgresql://database:5432/ecommerce
-    SPRING_DATASOURCE_USERNAME: ecommerce
-    SPRING_DATASOURCE_PASSWORD: ecommerce
+    SPRING_DATASOURCE_URL: ${DB_JDBC_URL:?Set DB_JDBC_URL in .env}
+    SPRING_DATASOURCE_USERNAME: ${DB_USERNAME:?Set DB_USERNAME in .env}
+    SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
 
 services:
-  # shortcut: shared database and credentials for dev, split before production.
+  # Optional local PostgreSQL; the default stack uses the datasource from .env.
   database:
+    profiles: ["local-db"]
     image: postgres:16
     environment:
       POSTGRES_DB: ecommerce

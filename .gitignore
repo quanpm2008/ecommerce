@@ -6,3 +6,8 @@ scripts/bin/harness.exe
 
 CLAUDE.md
 .claude/
+
+# Local database credentials
+.env
+.env.*
+!.env.example

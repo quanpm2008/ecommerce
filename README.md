@@ -1,5 +1,9 @@
 # Development
 
+Chuẩn bị `.env` từ `.env.example` và điền mật khẩu DB nếu chưa có `.env`.
+Compose đọc kết nối Supabase từ `DB_JDBC_URL`, `DB_USERNAME`, `DB_PASSWORD`;
+không commit `.env`.
+
 Build và chạy toàn bộ service lần đầu:
 
 ```bash
@@ -14,22 +18,18 @@ docker compose -p ecommerce restart product-service
 
 Nếu sửa `pom.xml`, cần build lại image của service đó.
 
-## Database dùng chung cho dev
+## Database
 
-Compose chạy một PostgreSQL 16 với database `ecommerce`, username/password đều là
-`ecommerce`. Các service dùng chung datasource `jdbc:postgresql://database:5432/ecommerce`
-và chờ database healthy trước khi khởi động (discovery-service không cần database).
-JPA hiện vẫn bị comment trong các `pom.xml`; cấu hình này cung cấp thông tin kết nối,
-chưa bật tầng persistence hay tạo bảng.
+Mặc định cả 7 service nghiệp vụ dùng Supabase qua SSL từ `.env`. Gateway và
+Discovery không dùng database. Mỗi service giữ schema riêng; Flyway tiếp tục
+kiểm tra và áp dụng migration khi khởi động.
 
-Chỉ chạy database để phát triển service trên máy:
+Product dùng Hibernate `validate` và không tự seed dữ liệu demo cũ. Chỉ bật
+`PRODUCT_SEED_ENABLED=true` khi chạy Product trên database dùng một lần.
 
-```bash
-docker compose -p ecommerce up -d database
-```
+PostgreSQL local chỉ chạy khi bật profile `local-db` hoặc gọi đích danh service
+`database`; `bash up.sh` mặc định không khởi động nó. Không xóa volume local khi
+đổi sang Supabase.
 
-Kết nối từ máy host bằng `jdbc:postgresql://localhost:5432/ecommerce` với tài khoản trên.
-Database chỉ mở cổng trên localhost; tài khoản này chỉ dành cho dev.
-
-Dữ liệu lưu trong volume `postgres-data`, được giữ lại khi chạy `docker compose down`.
-Lệnh `docker compose down -v` sẽ xóa cả dữ liệu database.
+Xem [DEVELOPMENT.md](DEVELOPMENT.md#database) để cấu hình datasource khi chạy
+Docker hoặc IDE/Maven.

@@ -4,27 +4,29 @@
 
 - Docker with the Compose plugin
 - Java 21, only needed to run or test a service outside Docker (the Docker build brings its own Maven). gateway-service and identity-service need a locally installed Maven 3.8+ (`mvn`); the other services ship a Maven wrapper that is not executable in git, so run it as `sh mvnw` (or use `mvn`).
-- Free host ports: `5432` (Postgres), `8333` (object storage), `8761` (Eureka), `8080`–`8087` (services)
+- Free host ports: `8333` (object storage), `8761` (Eureka), `8080`, `8081`, `8084`–`8087`, `18082` (Finance), `18083` (Identity). Port `5432` is only needed for optional local PostgreSQL.
 
-If a local PostgreSQL already uses 5432, set `POSTGRES_HOST_PORT` to publish the compose database on another host port, e.g. `POSTGRES_HOST_PORT=5433 ./up.sh`. This only changes the port used from the host; containers still reach the database at `database:5432`. Set it on **every** `docker compose` command (or `export` it once in your shell). Otherwise compose sees a changed port, recreates `database` on 5432, and the restart fails with "address already in use". The data volume survives this.
+Compose requires `.env` in the repository root. If it does not exist, copy
+`.env.example` to `.env` and fill in `DB_PASSWORD`. The template contains no
+password; `.env` and other local environment files are ignored by Git.
 
 Always pass the same compose project name, `-p ecommerce`. `up.sh` builds images named `ecommerce-<service>`, which is what compose expects for that project name.
 
 ## Option 1 — Run everything in Docker
 
 ```bash
-./up.sh
+bash up.sh
 ```
 
-This builds an image for every `*-service/` folder, then starts the whole stack with `docker compose -p ecommerce up -d --no-build`. Startup order is enforced by health checks: `database` and `discovery-service` must be healthy before the other services start.
+This builds an image for every `*-service/` folder, then starts the stack with `docker compose -p ecommerce up -d --no-build`. Services wait for healthy Discovery and connect directly to the database in `.env`; the optional local `database` service is inactive by default.
 
 Check that it's up:
 
 ```bash
 docker compose -p ecommerce ps
-curl -s http://localhost:8083/actuator/health    # any service: /actuator/health
+curl -s http://localhost:18083/actuator/health   # Identity's published Docker port
 curl -s http://localhost:8081/actuator/health    # gateway: {"status":"UP"} only, no details
-curl -s http://localhost:8083/hello              # Hello, World! from identity-service
+curl -s http://localhost:18083/hello
 ```
 
 Open the Eureka dashboard at http://localhost:8761 to see which services have registered.
@@ -34,8 +36,8 @@ Open the Eureka dashboard at http://localhost:8761 to see which services have re
 | discovery-service (Eureka) | http://localhost:8761 |
 | cart-service | http://localhost:8080 |
 | gateway-service | http://localhost:8081 |
-| finance-service | http://localhost:8082 |
-| identity-service | http://localhost:8083 |
+| finance-service | http://localhost:18082 |
+| identity-service | http://localhost:18083 |
 | notification-service | http://localhost:8084 |
 | order-service | http://localhost:8085 |
 | payment-service | http://localhost:8086 |
@@ -59,7 +61,7 @@ docker build --network=host -t ecommerce-identity-service identity-service
 docker compose -p ecommerce up -d --no-build identity-service
 ```
 
-Running `./up.sh` again rebuilds and restarts everything.
+Running `bash up.sh` again rebuilds and recreates services as needed. After changing `.env`, use `docker compose -p ecommerce up -d` to apply the new environment; `restart` does not reload it.
 
 ### Logs
 
@@ -69,23 +71,31 @@ docker compose -p ecommerce logs -f identity-service
 
 ## Option 2 — Run a service locally, with infrastructure in Docker
 
-Start only Postgres and Eureka:
+Start Eureka and object storage (no local database is needed for Supabase):
 
 ```bash
-docker compose -p ecommerce up -d database discovery-service object-storage
+docker compose -p ecommerce up -d discovery-service object-storage
 ```
 
-Then run the service from its folder:
+Load `.env` and export Spring's datasource variables from the repository root:
 
 ```bash
+set -a
+. ./.env
+set +a
+export SPRING_DATASOURCE_URL="$DB_JDBC_URL"
+export SPRING_DATASOURCE_USERNAME="$DB_USERNAME"
+export SPRING_DATASOURCE_PASSWORD="$DB_PASSWORD"
 cd identity-service
-SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/ecommerce \
-SPRING_DATASOURCE_USERNAME=ecommerce \
-SPRING_DATASOURCE_PASSWORD=ecommerce \
 mvn spring-boot:run
 ```
 
-`application.properties` already points Eureka at `http://localhost:8761/eureka/`. Identity, Cart and Notification default to `jdbc:postgresql://localhost:5432/ecommerce`; override `SPRING_DATASOURCE_URL` for a different host port. Each owns a separate schema.
+Set the same three `SPRING_DATASOURCE_*` environment variables in each business
+service's IDE run configuration. Java 21 is required. Host-run Identity listens
+on `8083`, Finance on `8082`; the Docker host ports above are different.
+Neither Spring Boot nor Maven automatically loads the root `.env`.
+`application.properties` points Eureka at `http://localhost:8761/eureka/`;
+schema ownership remains unchanged.
 
 ## Running tests
 
@@ -102,20 +112,64 @@ Don't mix modes for services that call each other. A service started on the host
 
 ## Database
 
-| | |
+Compose maps `DB_JDBC_URL`, `DB_USERNAME` and `DB_PASSWORD` from `.env` into
+`SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME` and
+`SPRING_DATASOURCE_PASSWORD` for all seven business services. Missing/empty
+values fail Compose configuration instead of silently using another database.
+Do not print `docker compose config` output or share container environment
+dumps: they contain the resolved password. Use `docker compose config --quiet`.
+
+The Supabase JDBC URL is
+`jdbc:postgresql://db.eqpnceiiqruzpmlmzhuh.supabase.co:5432/postgres?sslmode=require`.
+Keep credentials outside the URL. This direct endpoint requires connectivity
+from the machine/container running the service; the current development
+credential is the database's `postgres` user, not a Supabase API key.
+
+The Supabase smoke check below ran Product on the **host**, not inside Docker.
+The direct endpoint normally needs IPv6; Compose configuration validation
+does not prove connectivity from a Docker bridge. If containers cannot reach
+it, copy the **Session Pooler** connection details (IPv4, port `5432`) from
+the Supabase dashboard's Connect dialog. Set `DB_JDBC_URL` to that pooler's
+host/database with `sslmode=require`, and `DB_USERNAME` to the exact pooler
+username shown there; it differs from the direct endpoint's `postgres` user.
+Do not guess the pooler hostname or substitute the transaction pooler on
+port `6543`. Recreate containers after updating `.env`.
+
+| Service | Schema |
 |---|---|
-| From the host | `jdbc:postgresql://localhost:5432/ecommerce` (or your `POSTGRES_HOST_PORT`) |
-| From containers | `jdbc:postgresql://database:5432/ecommerce` |
-| User / password | `ecommerce` / `ecommerce` (dev only) |
-| identity-service tables | schema `identity` (created by Flyway on startup) |
-| cart-service tables | schema `cart` |
-| notification-service tables | schema `notification`, Flyway V1; notifications and durable inbox/dedupe |
+| Identity | `identity` |
+| Product | `public` |
+| Cart | `cart` |
+| Order | `orders` |
+| Payment | `payment_service` |
+| Finance | `finance` |
+| Notification | `notification` |
 
-```bash
-docker compose -p ecommerce exec database psql -U ecommerce -d ecommerce
-```
+Keep Flyway enabled. Product keeps its dedicated `product_schema_history`
+table and uses Hibernate `validate`, not automatic schema updates. Its legacy
+`DataSeeder` is disabled by default (`product.seed.enabled=false`); only opt in
+with `PRODUCT_SEED_ENABLED=true` in the Product process environment on a
+disposable database. That dataset adds its own categories, products and reviews
+and must not be enabled on the seeded Supabase database. The Product base
+catalog tables must already exist before Hibernate validation can pass.
 
-The data lives in the `postgres-data` volume.
+For optional local PostgreSQL, explicitly start it with
+`docker compose -p ecommerce --profile local-db up -d database`. It publishes
+`127.0.0.1:${POSTGRES_HOST_PORT:-5432}` and keeps data in `postgres-data`.
+Starting that profile does **not** switch application datasources: set all three
+`DB_*` values in `.env` to the local database first if using it for Compose
+applications (`jdbc:postgresql://database:5432/ecommerce`, username/password
+`ecommerce`). Wait for the local database to be healthy before starting apps;
+they no longer depend on its health check. For host-run apps, use
+`jdbc:postgresql://localhost:<published-port>/ecommerce` instead. Do not remove
+the local volume when switching databases.
+
+Verification on 25/11/2026: Compose resolved the same Supabase datasource for
+all seven business services, excluded local PostgreSQL by default and rejected
+an empty password. An isolated Product process connected to Supabase, passed
+Flyway/Hibernate validation, returned HTTP health `UP` and listed 10 categories.
+Database counts remained 100 products, 5 sellers and no reviews: the legacy
+seeder did not run. This is not a full-stack checkout or interservice proof.
 
 ## Object storage
 
