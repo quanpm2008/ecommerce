@@ -155,6 +155,22 @@ class InternalQueriesTests extends EndpointTestSupport {
 				.andExpect(status().isNotFound());
 	}
 
+	@Test
+	void notificationRecipientLookupExcludesContactAndRequiresNotificationService() throws Exception {
+		Session customer = customer();
+		String path = "/users/" + customer.userId();
+		internal(HttpMethod.GET, path, null, NOTIFICATION_TOKEN, null)
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.userId").value(customer.userId().toString()))
+				.andExpect(jsonPath("$.data.accountType").value("CUSTOMER"))
+				.andExpect(jsonPath("$.data.email").doesNotExist())
+				.andExpect(jsonPath("$.data.fullName").doesNotExist());
+		internal(HttpMethod.GET, "/users/" + UUID.randomUUID(), null, NOTIFICATION_TOKEN, null)
+				.andExpect(status().isNotFound());
+		internal(HttpMethod.GET, path, null, ORDER_TOKEN, null)
+				.andExpect(status().isForbidden());
+	}
+
 	private String createAddress(Session customer) throws Exception {
 		return read(body(call(HttpMethod.POST, "/customers/me/addresses", json("recipientName", "Le Van D",
 				"recipientPhone", uniquePhone(), "provinceCode", HANOI, "wardCode", BA_DINH, "addressDetail",

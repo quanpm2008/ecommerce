@@ -127,6 +127,16 @@ public class InternalQueries {
 		return new Contact(user.getUserId(), user.getEmail(), user.getFullName());
 	}
 
+	/** Notification validates recipients without retrieving their email/contact details. */
+	@Transactional(readOnly = true)
+	public UserReference userReference(UUID userId) {
+		User user = users.findById(userId).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "User not found"));
+		return new UserReference(user.getUserId(), user.getAccountType().name());
+	}
+
+	public record UserReference(UUID userId, String accountType) {
+	}
+
 	private CustomerAddress ownedAddress(UUID customerId, UUID addressId) {
 		return addresses.findByAddressIdAndCustomerId(addressId, customerId)
 				.orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Address not found"));
