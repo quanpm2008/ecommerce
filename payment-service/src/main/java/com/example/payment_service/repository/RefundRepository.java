@@ -21,10 +21,13 @@ public interface RefundRepository extends JpaRepository<Refund, UUID> {
 
     Optional<Refund> findByIdempotencyKey(String idempotencyKey);
 
+    @Query("SELECT COALESCE(SUM(r.amountVnd), 0) FROM Refund r WHERE r.paymentId = :paymentId")
+    Long sumTotalRefundAmountByPaymentId(@Param("paymentId") UUID paymentId);
+
     @Query("SELECT COALESCE(SUM(r.amountVnd), 0) FROM Refund r WHERE r.paymentId = :paymentId AND r.status IN ('PENDING', 'SUCCESS')")
     Long sumActiveRefundAmountByPaymentId(@Param("paymentId") UUID paymentId);
 
-    List<Refund> findByNeedsManualReviewTrue();
+    List<Refund> findByCustomerRetryRequiredTrue();
 
-    Page<Refund> findByNeedsManualReviewTrue(Pageable pageable);
+    Page<Refund> findByCustomerRetryRequiredTrue(Pageable pageable);
 }

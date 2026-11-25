@@ -45,11 +45,11 @@ CREATE TABLE refunds (
     status               VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
     idempotency_key      VARCHAR(128) NOT NULL,
     provider_refund_id   VARCHAR(255),
-    retry_count          INTEGER      NOT NULL DEFAULT 0,
-    needs_manual_review  BOOLEAN      NOT NULL DEFAULT FALSE,
-    manual_note          TEXT,
-    created_at           TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    completed_at         TIMESTAMPTZ,
+    retry_count             INTEGER      NOT NULL DEFAULT 0,
+    retry_cycle             INTEGER      NOT NULL DEFAULT 0,
+    customer_retry_required BOOLEAN      NOT NULL DEFAULT FALSE,
+    created_at              TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    completed_at            TIMESTAMPTZ,
 
     CONSTRAINT uq_refunds_idempotency_key UNIQUE (idempotency_key),
     CONSTRAINT ck_refunds_scope CHECK (scope IN ('ORDER', 'FULL_CHECKOUT')),
@@ -62,7 +62,8 @@ CREATE TABLE refunds (
         'CUSTOMER_CANCEL', 'SELLER_REJECT', 'SELLER_CANCEL', 'SELLER_TIMEOUT', 'LATE_PAYMENT'
     )),
     CONSTRAINT ck_refunds_status CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED')),
-    CONSTRAINT ck_refunds_retry_count CHECK (retry_count >= 0),
+    CONSTRAINT ck_refunds_retry_count CHECK (retry_count BETWEEN 0 AND 3),
+    CONSTRAINT ck_refunds_retry_cycle CHECK (retry_cycle >= 0),
     CONSTRAINT ck_refunds_completed CHECK ((status IN ('SUCCESS', 'FAILED')) = (completed_at IS NOT NULL))
 );
 
@@ -77,7 +78,7 @@ CREATE UNIQUE INDEX uq_refunds_provider_refund_id
 
 CREATE INDEX ix_refunds_payment_id ON refunds (payment_id);
 CREATE INDEX ix_refunds_status ON refunds (status);
-CREATE INDEX ix_refunds_manual_review ON refunds (needs_manual_review) WHERE needs_manual_review = TRUE;
+CREATE INDEX ix_refunds_customer_retry ON refunds (customer_retry_required) WHERE customer_retry_required = TRUE;
 
 -- Transactional Outbox pattern cho payment-service
 CREATE TABLE outbox_events (

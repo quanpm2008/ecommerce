@@ -16,7 +16,7 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
 
     Optional<Payment> findByCheckoutSessionId(UUID checkoutSessionId);
 
-    Optional<Payment> findByIdempotencyKey(UUID empotencyKey);
+    Optional<Payment> findByIdempotencyKey(String idempotencyKey);
 
     //Khóa Payment (SELECT FOR UPDATE) để đảm bảo an toàn đồng thời khi tạo Refund
     @Lock(LockModeType.PESSIMISTIC_WRITE)

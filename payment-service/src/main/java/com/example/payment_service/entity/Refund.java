@@ -52,11 +52,11 @@ public class Refund {
     @Column(name = "retry_count", nullable = false)
     private int retryCount = 0;
 
-    @Column(name = "needs_manual_review", nullable = false)
-    private boolean needsManualReview = false;
+    @Column(name = "retry_cycle", nullable = false)
+    private int retryCycle = 0;
 
-    @Column(name = "manual_note")
-    private String manualNote;
+    @Column(name = "customer_retry_required", nullable = false)
+    private boolean customerRetryRequired = false;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -94,7 +94,8 @@ public class Refund {
         this.idempotencyKey = Objects.requireNonNull(idempotencyKey, "idempotencyKey is required");
         this.status = RefundStatus.PENDING;
         this.retryCount = 0;
-        this.needsManualReview = false;
+        this.retryCycle = 0;
+        this.customerRetryRequired = false;
     }
 
     /**
@@ -104,7 +105,7 @@ public class Refund {
         this.status = RefundStatus.SUCCESS;
         this.providerRefundId = providerRefundId;
         this.completedAt = completedAt != null ? completedAt : Instant.now();
-        this.needsManualReview = false;
+        this.customerRetryRequired = false;
     }
 
     /**
@@ -116,23 +117,47 @@ public class Refund {
         this.completedAt = completedAt != null ? completedAt : Instant.now();
     }
 
-    public void retry() {
+    /**
+     * Hết 3 lần retry tự động trong chu kỳ mà vẫn thất bại -> đánh dấu cần Customer can thiệp mở chu kỳ mới.
+     */
+    public void markCustomerRetryRequired() {
+        this.status = RefundStatus.FAILED;
+        this.customerRetryRequired = true;
+    }
+
+    /**
+     * Thử lại tự động trong chu kỳ (tối đa 3 lần).
+     */
+    public void autoRetry() {
         if (this.status != RefundStatus.FAILED) {
             throw new IllegalStateException("Only FAILED refund can be retried (current status: " + this.status + ")");
+        }
+        if (this.retryCount >= 3) {
+            throw new IllegalStateException("Maximum auto retries (3) reached in current cycle");
         }
         this.status = RefundStatus.PENDING;
         this.retryCount++;
         this.completedAt = null;
     }
 
-    public void flagForManualReview(String note) {
-        this.needsManualReview = true;
-        this.manualNote = note;
-    }
-
-    public void markHandled(String note) {
-        this.needsManualReview = false;
-        this.manualNote = (this.manualNote != null ? this.manualNote + "; " : "") + "Handled: " + note;
+    /**
+     * Customer chủ Payment mở chu kỳ hoàn tiền mới.
+     */
+    public void openNewRetryCycle(int expectedCycle) {
+        if (this.status != RefundStatus.FAILED) {
+            throw new IllegalStateException("Only FAILED refund can open a new retry cycle");
+        }
+        if (!this.customerRetryRequired) {
+            throw new IllegalStateException("Customer retry is not required yet for this refund");
+        }
+        if (this.retryCycle != expectedCycle) {
+            throw new IllegalStateException("Snapshot mismatch: expected retryCycle " + this.retryCycle + ", got " + expectedCycle);
+        }
+        this.retryCycle++;
+        this.retryCount = 0;
+        this.customerRetryRequired = false;
+        this.status = RefundStatus.PENDING;
+        this.completedAt = null;
     }
 }
 
