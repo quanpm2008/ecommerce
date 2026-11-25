@@ -10,6 +10,8 @@ import com.example.order_service.service.CheckoutQuote;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
+import org.springframework.dao.DataAccessException;
+import org.springframework.transaction.TransactionException;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -60,7 +62,8 @@ public class BuyNowPreviewController {
 	}
 
 	@ExceptionHandler({CheckoutIdentityClient.Unavailable.class, ProductBatchClient.ProductBatchUnavailable.class,
-			CartCheckoutItemsClient.Unavailable.class, CheckoutQuote.Unavailable.class})
+			CartCheckoutItemsClient.Unavailable.class, CheckoutQuote.Unavailable.class, DataAccessException.class,
+			TransactionException.class})
 	void unavailable(HttpServletRequest request, HttpServletResponse response) throws IOException {
 		errors.write(request, response, 503, "SERVICE_UNAVAILABLE", "Chưa thể xác nhận dữ liệu checkout");
 	}

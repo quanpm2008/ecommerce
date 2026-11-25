@@ -8,6 +8,7 @@ import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
@@ -32,11 +33,13 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import javax.sql.DataSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @Import(CartCheckoutPayPostgresTests.RemoteConfiguration.class)
 class CartCheckoutPayPostgresTests extends PayHttpTestSupport {
+	@Autowired DataSource dataSource;
 	private static final UUID SECOND_SELLER = UUID.randomUUID();
 	private static final String CART_TOKEN = "test-cart-from-order";
 	private static final Map<UUID, Snapshot> CARTS = new ConcurrentHashMap<>();
@@ -54,6 +57,7 @@ class CartCheckoutPayPostgresTests extends PayHttpTestSupport {
 	static void cartSources(DynamicPropertyRegistry properties) {
 		properties.add("order.cart.base-url", CartCheckoutPayPostgresTests::remoteUrl);
 		properties.add("order.cart.service-token", () -> CART_TOKEN);
+		properties.add("spring.datasource.hikari.connection-init-sql", () -> "SET lock_timeout TO '500ms'");
 	}
 
 	@TestConfiguration(proxyBeanMethods = false)
@@ -290,6 +294,27 @@ class CartCheckoutPayPostgresTests extends PayHttpTestSupport {
 		assertThat(inventory(cart)).isEqualTo(stock);
 	}
 
+	@Test
+	void returns503ForLocalStockReadOrReservationFailure() throws Exception {
+		var cart = cart();
+		String quote = preview(cart);
+		var before = counts();
+		var stock = inventory(cart);
+		try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+			connection.setAutoCommit(false);
+			try {
+				statement.execute("lock table orders.inventory in access exclusive mode");
+				assertRejected(sendPreview(cart), 503, "SERVICE_UNAVAILABLE");
+				assertRejected(pay(cart.first().customer(), UUID.randomUUID(), quote, cart.first().address()),
+						503, "SERVICE_UNAVAILABLE");
+			} finally {
+				connection.rollback();
+			}
+		}
+		assertThat(counts()).isEqualTo(before);
+		assertThat(inventory(cart)).isEqualTo(stock);
+	}
+
 	private CartCase sameSellerCart() {
 		var cart = cart();
 		PRODUCT_SELLERS.put(cart.second().product(), SELLER);
@@ -322,15 +347,19 @@ class CartCheckoutPayPostgresTests extends PayHttpTestSupport {
 	}
 
 	private String preview(CartCase cart) throws Exception {
-		var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/orders/checkout/preview"))
-				.header("Authorization", "Bearer " + token(cart.first().customer())).header("Content-Type", "application/json")
-				.POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(Map.of("source", "CART", "cartItemIds", cart.itemIds()))))
-				.build();
-		var response = SUPPORT_HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+		var response = sendPreview(cart);
 		assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
 		String quote = body(response).at("/data/quoteToken").asString();
 		assertThat(quote).isNotBlank();
 		return quote;
+	}
+
+	private HttpResponse<String> sendPreview(CartCase cart) throws Exception {
+		var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/orders/checkout/preview"))
+				.header("Authorization", "Bearer " + token(cart.first().customer())).header("Content-Type", "application/json")
+				.POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(Map.of("source", "CART", "cartItemIds", cart.itemIds()))))
+				.build();
+		return SUPPORT_HTTP.send(request, HttpResponse.BodyHandlers.ofString());
 	}
 
 	private Map<String, Integer> counts() {

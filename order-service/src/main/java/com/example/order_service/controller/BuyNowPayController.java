@@ -1,5 +1,8 @@
 package com.example.order_service.controller;
 
+import org.springframework.dao.DataAccessException;
+import org.springframework.transaction.TransactionException;
+
 import com.example.order_service.client.CheckoutIdentityClient;
 import com.example.order_service.client.FinanceCommissionClient;
 import com.example.order_service.client.PayIdentityClient;
@@ -96,7 +99,8 @@ class BuyNowPayController {
 	}
 
 	@ExceptionHandler({CheckoutIdentityClient.Unavailable.class, ProductBatchClient.ProductBatchUnavailable.class,
-			CheckoutQuote.Unavailable.class, PayIdentityClient.Unavailable.class, FinanceCommissionClient.Unavailable.class})
+			CheckoutQuote.Unavailable.class, PayIdentityClient.Unavailable.class, FinanceCommissionClient.Unavailable.class,
+			DataAccessException.class, TransactionException.class})
 	void unavailable(HttpServletRequest req, HttpServletResponse res) throws IOException {
 		errors.write(req, res, 503, "SERVICE_UNAVAILABLE", "Chưa thể xác nhận dữ liệu checkout");
 	}
