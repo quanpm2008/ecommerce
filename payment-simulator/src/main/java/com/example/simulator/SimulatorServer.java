@@ -138,7 +138,7 @@ public final class SimulatorServer implements AutoCloseable {
                 writeHtml(exchange, 404, PaymentPageRenderer.renderNotFound());
                 return;
             }
-            writeHtml(exchange, 200, PaymentPageRenderer.renderPaymentPage(payment, null));
+            writeHtml(exchange, 200, PaymentPageRenderer.renderPaymentPage(payment, null, config.frontendReturnBaseUrl()));
             return;
         }
         if ("POST".equals(method) && parts.length == 4 && "pay".equals(parts[1]) && "confirm".equals(parts[3])) {
@@ -161,7 +161,7 @@ public final class SimulatorServer implements AutoCloseable {
                 String notice = outcome.alreadyFinalized()
                         ? "Giao dịch đã được xử lý trước đó, không thu tiền lần hai."
                         : "Đã ghi nhận kết quả thanh toán và gửi webhook về hệ thống.";
-                writeHtml(exchange, 200, PaymentPageRenderer.renderPaymentPage(outcome.payment(), notice));
+                writeHtml(exchange, 200, PaymentPageRenderer.renderPaymentPage(outcome.payment(), notice, config.frontendReturnBaseUrl()));
             }
             return;
         }
@@ -288,6 +288,9 @@ public final class SimulatorServer implements AutoCloseable {
             throw new HttpError(400);
         }
         synchronized (store) {
+            if (store.isAttemptClosedMissing(request.refundId(), request.attemptId())) {
+                throw new HttpError(409);
+            }
             RefundAttemptRecord existing = store.findRefundAttempt(request.refundId(), request.attemptId());
             if (existing != null) {
                 if (!sameRefundRequest(existing, request)) {
@@ -357,10 +360,9 @@ public final class SimulatorServer implements AutoCloseable {
             if (existing != null) {
                 return existing.toResponse();
             }
-            return new RefundAttemptAbsence(
+            return store.recordOrGetClosedMissingAttempt(
                     refundId,
                     attemptId,
-                    "refund-" + attemptId,
                     clock.instant(),
                     REFUND_ATTEMPT_NOT_FOUND
             );

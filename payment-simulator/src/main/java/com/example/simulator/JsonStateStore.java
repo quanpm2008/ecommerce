@@ -13,6 +13,7 @@ import java.util.UUID;
 
 import com.example.simulator.SimulatorModels.FaultMode;
 import com.example.simulator.SimulatorModels.PaymentRecord;
+import com.example.simulator.SimulatorModels.RefundAttemptAbsence;
 import com.example.simulator.SimulatorModels.RefundAttemptRecord;
 import com.example.simulator.SimulatorModels.SnapshotState;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -25,6 +26,7 @@ public final class JsonStateStore {
     private final Map<UUID, PaymentRecord> paymentsById = new LinkedHashMap<>();
     private final Map<String, UUID> paymentIdsByToken = new LinkedHashMap<>();
     private final Map<AttemptKey, RefundAttemptRecord> refundsByAttempt = new LinkedHashMap<>();
+    private final Map<AttemptKey, RefundAttemptAbsence> closedMissingAttempts = new LinkedHashMap<>();
     private FaultMode nextPaymentFault = FaultMode.NONE;
     private FaultMode nextRefundFault = FaultMode.NONE;
     private long lateSuccessDelayMs = 5000L;
@@ -81,6 +83,29 @@ public final class JsonStateStore {
         persist();
     }
 
+    public synchronized boolean isAttemptClosedMissing(UUID refundId, UUID attemptId) {
+        return closedMissingAttempts.containsKey(new AttemptKey(refundId, attemptId));
+    }
+
+    public synchronized RefundAttemptAbsence recordOrGetClosedMissingAttempt(
+            UUID refundId, UUID attemptId, java.time.Instant completedAt, String errorCode) {
+        AttemptKey key = new AttemptKey(refundId, attemptId);
+        RefundAttemptAbsence existing = closedMissingAttempts.get(key);
+        if (existing != null) {
+            return existing;
+        }
+        RefundAttemptAbsence created = new RefundAttemptAbsence(
+                refundId,
+                attemptId,
+                "refund-" + attemptId,
+                completedAt,
+                errorCode
+        );
+        closedMissingAttempts.put(key, created);
+        persist();
+        return created;
+    }
+
     public synchronized FaultMode consumeNextPaymentFault() {
         FaultMode fault = this.nextPaymentFault;
         this.nextPaymentFault = FaultMode.NONE;
@@ -116,6 +141,7 @@ public final class JsonStateStore {
         return new SnapshotState(
                 new ArrayList<>(paymentsById.values()),
                 new ArrayList<>(refundsByAttempt.values()),
+                new ArrayList<>(closedMissingAttempts.values()),
                 nextPaymentFault,
                 nextRefundFault,
                 lateSuccessDelayMs
@@ -143,6 +169,11 @@ public final class JsonStateStore {
             if (loaded.refunds() != null) {
                 for (RefundAttemptRecord attempt : loaded.refunds()) {
                     refundsByAttempt.put(new AttemptKey(attempt.refundId, attempt.attemptId), attempt);
+                }
+            }
+            if (loaded.closedMissingAttempts() != null) {
+                for (RefundAttemptAbsence absence : loaded.closedMissingAttempts()) {
+                    closedMissingAttempts.put(new AttemptKey(absence.refundId(), absence.attemptId()), absence);
                 }
             }
             if (loaded.nextPaymentFault() != null) {

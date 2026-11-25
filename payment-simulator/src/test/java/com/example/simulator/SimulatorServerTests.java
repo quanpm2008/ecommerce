@@ -64,8 +64,9 @@ class SimulatorServerTests {
 
         try {
             URI webhookUrl = URI.create("http://127.0.0.1:" + webhookReceiver.getAddress().getPort() + "/webhook");
-            Clock clock = Clock.fixed(Instant.parse("2026-11-25T10:00:00Z"), ZoneOffset.UTC);
+            Clock clock = Clock.systemUTC();
             SimulatorConfig config = new SimulatorConfig(0, URI.create("http://localhost:8089"),
+                    URI.create("http://localhost:5173/checkout"),
                     CRED_HEADER, CRED_VALUE, webhookUrl, WEBHOOK_SECRET, stateFile);
 
             UUID paymentId = UUID.randomUUID();
@@ -111,6 +112,7 @@ class SimulatorServerTests {
                         HttpResponse.BodyHandlers.ofString());
                 assertEquals(200, confirmRes.statusCode());
                 assertTrue(confirmRes.body().contains("SUCCESS"));
+                assertTrue(confirmRes.body().contains("http://localhost:5173/checkout/" + checkoutId));
 
                 assertTrue(webhookLatch.await(5, TimeUnit.SECONDS));
                 assertEquals(1, receivedWebhooks.size());
@@ -160,8 +162,9 @@ class SimulatorServerTests {
 
         try {
             URI webhookUrl = URI.create("http://127.0.0.1:" + webhookReceiver.getAddress().getPort() + "/webhook");
-            Clock clock = Clock.fixed(Instant.parse("2026-11-25T10:00:00Z"), ZoneOffset.UTC);
+            Clock clock = Clock.systemUTC();
             SimulatorConfig config = new SimulatorConfig(0, URI.create("http://localhost:8089"),
+                    URI.create("http://localhost:5173/checkout"),
                     CRED_HEADER, CRED_VALUE, webhookUrl, WEBHOOK_SECRET, stateFile);
 
             try (SimulatorServer server = new SimulatorServer(config, clock)) {
@@ -190,6 +193,21 @@ class SimulatorServerTests {
                 assertEquals(404, missingRes.statusCode());
                 RefundAttemptAbsence absence = mapper.readValue(missingRes.body(), RefundAttemptAbsence.class);
                 assertEquals("REFUND_ATTEMPT_NOT_FOUND", absence.errorCode());
+
+                Thread.sleep(20);
+                HttpResponse<String> repeatedMissingRes = http.send(
+                        HttpRequest.newBuilder(base.resolve("/v1/refunds/" + refundId + "/attempts/" + missingAttemptId))
+                                .header(CRED_HEADER, CRED_VALUE).GET().build(),
+                        HttpResponse.BodyHandlers.ofString());
+                assertEquals(404, repeatedMissingRes.statusCode());
+                RefundAttemptAbsence repeatedAbsence = mapper.readValue(repeatedMissingRes.body(), RefundAttemptAbsence.class);
+                assertEquals(absence.providerRefundId(), repeatedAbsence.providerRefundId());
+                assertEquals(absence.completedAt(), repeatedAbsence.completedAt());
+
+                CreateRefundRequest closedAttemptPost = new CreateRefundRequest(
+                        refundId, missingAttemptId, paymentId, created.providerTransactionId(), 60000L, "VND");
+                HttpResponse<String> closedAttemptPostRes = postProvider(base.resolve("/v1/refunds"), closedAttemptPost);
+                assertEquals(409, closedAttemptPostRes.statusCode());
 
                 ScenarioControlRequest rejectNext = new ScenarioControlRequest(null, FaultMode.REJECT, null);
                 http.send(HttpRequest.newBuilder(base.resolve("/__sim/scenario"))

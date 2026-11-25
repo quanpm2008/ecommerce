@@ -146,6 +146,7 @@ public final class SimulatorModels {
     public record SnapshotState(
             List<PaymentRecord> payments,
             List<RefundAttemptRecord> refunds,
+            List<RefundAttemptAbsence> closedMissingAttempts,
             FaultMode nextPaymentFault,
             FaultMode nextRefundFault,
             long lateSuccessDelayMs

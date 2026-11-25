@@ -1,5 +1,6 @@
 package com.example.simulator;
 
+import java.net.URI;
 import java.text.NumberFormat;
 import java.util.Locale;
 
@@ -10,7 +11,7 @@ public final class PaymentPageRenderer {
     private PaymentPageRenderer() {
     }
 
-    public static String renderPaymentPage(PaymentRecord payment, String notice) {
+    public static String renderPaymentPage(PaymentRecord payment, String notice, URI frontendReturnBaseUrl) {
         String amountFormatted = NumberFormat.getIntegerInstance(Locale.US).format(payment.amountVnd) + " VND";
         StringBuilder actions = new StringBuilder();
         if (payment.status == GatewayStatus.PENDING) {
@@ -26,6 +27,16 @@ public final class PaymentPageRenderer {
                     """.formatted(escape(payment.token)));
         } else {
             String badgeClass = payment.status == GatewayStatus.SUCCESS ? "status-success" : "status-failed";
+            String returnLinkHtml = "";
+            if (frontendReturnBaseUrl != null && payment.checkoutSessionId != null) {
+                String base = frontendReturnBaseUrl.toString();
+                String target = base.endsWith("/") ? base + payment.checkoutSessionId : base + "/" + payment.checkoutSessionId;
+                returnLinkHtml = """
+                        <div class="return-wrap">
+                            <a href="%s" class="btn btn-return">Quay về trang chi tiết phiên</a>
+                        </div>
+                        """.formatted(escape(target));
+            }
             actions.append("""
                     <div class="result-box %s">
                         <strong>Trạng thái kết thúc: %s</strong>
@@ -33,12 +44,14 @@ public final class PaymentPageRenderer {
                         <p>Thời điểm hoàn tất: <code>%s</code></p>
                         %s
                     </div>
+                    %s
                     """.formatted(
                     badgeClass,
                     escape(payment.status.name()),
                     escape(payment.providerTransactionId),
                     escape(String.valueOf(payment.completedAt)),
-                    payment.errorCode != null ? "<p>Mã lỗi: <code>" + escape(payment.errorCode) + "</code></p>" : ""
+                    payment.errorCode != null ? "<p>Mã lỗi: <code>" + escape(payment.errorCode) + "</code></p>" : "",
+                    returnLinkHtml
             ));
         }
 
@@ -65,6 +78,8 @@ public final class PaymentPageRenderer {
                         .btn { flex: 1; min-width: 180px; border: none; border-radius: 8px; padding: 12px 16px; font-size: 15px; font-weight: 600; cursor: pointer; }
                         .btn-success { background: #16a34a; color: #fff; }
                         .btn-fail { background: #dc2626; color: #fff; }
+                        .btn-return { display: inline-block; text-decoration: none; text-align: center; background: #1d4ed8; color: #fff; }
+                        .return-wrap { margin-top: 16px; }
                         .result-box { margin-top: 20px; padding: 16px; border-radius: 8px; font-size: 14px; }
                         .status-success { background: #dcfce7; border: 1px solid #86efac; color: #14532d; }
                         .status-failed { background: #fee2e2; border: 1px solid #fca5a5; color: #7f1d1d; }

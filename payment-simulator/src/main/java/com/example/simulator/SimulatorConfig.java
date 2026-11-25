@@ -7,6 +7,7 @@ import java.util.Map;
 public record SimulatorConfig(
         int port,
         URI publicOrigin,
+        URI frontendReturnBaseUrl,
         String credentialHeader,
         String credential,
         URI webhookUrl,
@@ -20,6 +21,10 @@ public record SimulatorConfig(
     public static SimulatorConfig fromMap(Map<String, String> env) {
         int port = parseInt(env.get("SIMULATOR_PORT"), 8089);
         URI publicOrigin = URI.create(nonBlank(env.get("SIMULATOR_PUBLIC_ORIGIN"), "http://localhost:" + port));
+        URI frontendReturnBaseUrl = URI.create(nonBlank(
+                env.get("SIMULATOR_FRONTEND_RETURN_URL"),
+                "http://localhost:5173/checkout"
+        ));
         String credentialHeader = nonBlank(
                 env.get("SIMULATOR_CREDENTIAL_HEADER"),
                 nonBlank(env.get("PAYMENT_PROVIDER_CREDENTIAL_HEADER"), "X-Provider-Key")
@@ -40,6 +45,7 @@ public record SimulatorConfig(
         return new SimulatorConfig(
                 port,
                 publicOrigin,
+                frontendReturnBaseUrl,
                 credentialHeader,
                 credential,
                 webhookUrl,

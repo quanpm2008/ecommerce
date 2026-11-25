@@ -35,16 +35,16 @@ Deploy a standalone external Payment Provider Simulator (`payment-simulator`) ou
 - [x] `pom.xml` with Java 21, Jackson (`databind` + `jsr310`), JUnit 5, `maven-shade-plugin`
 - [x] `POST /v1/payments`: credential check (`401`), validation (`400`), expiry check (`409`), idempotency by `paymentId` (`200`/`409`), fault injection (`REJECT`, `DROP_AFTER_COMMIT`, `DELAY_AFTER_COMMIT`, `LATE_SUCCESS`)
 - [x] `GET /v1/payments/{paymentId}`: status query, auto-expiration (`LINK_EXPIRED`) + webhook dispatch
-- [x] `POST /v1/refunds`: credential check, payment `SUCCESS` & `providerTransactionId` check, obligation & over-refund check (`409`), idempotency by `(refundId, attemptId)`, fault injection (`REJECT`, `PENDING`, `LATE_SUCCESS`, `DROP_AFTER_COMMIT`, `DELAY_AFTER_COMMIT`)
-- [x] `GET /v1/refunds/{refundId}/attempts/{attemptId}`: attempt lookup (`200`) or `404` with `REFUND_ATTEMPT_NOT_FOUND`
-- [x] `GET /pay/{token}` & `POST /pay/{token}/confirm`: HTML page + single-capture confirmation (`SUCCESS` / `FAILED`) + signed `payment.result` webhook
+- [x] `POST /v1/refunds`: credential check, payment `SUCCESS` & `providerTransactionId` check, obligation & over-refund check (`409`), idempotency by `(refundId, attemptId)`, reject `409` if attempt already closed by `GET`, fault injection (`REJECT`, `PENDING`, `LATE_SUCCESS`, `DROP_AFTER_COMMIT`, `DELAY_AFTER_COMMIT`)
+- [x] `GET /v1/refunds/{refundId}/attempts/{attemptId}`: attempt lookup (`200`) or persistent closed-missing tombstone (`404` `REFUND_ATTEMPT_NOT_FOUND` with stable `providerRefundId` and `completedAt`)
+- [x] `GET /pay/{token}` & `POST /pay/{token}/confirm`: HTML page + single-capture confirmation (`SUCCESS` / `FAILED`) + signed `payment.result` webhook + configurable frontend return link (`SIMULATOR_FRONTEND_RETURN_URL`)
 - [x] `/__sim/*` control endpoints: `/__sim/health`, `/__sim/state`, `/__sim/scenario`, `/__sim/payments/{paymentId}/complete`, `/__sim/refunds/{refundId}/attempts/{attemptId}/complete`
 - [x] Atomic JSON snapshot persistence (`JsonStateStore`) surviving process restart
 
 ### 2. Container & Runtime Wiring
 - [x] `payment-service/entrypoint.sh` launching simulator + Spring Boot service
 - [x] `payment-service/Dockerfile` building shaded jar from root context and exposing `8086`, `8089`
-- [x] `compose.yaml` & `up.sh` wiring `PAYMENT_PROVIDER_*`, `SIMULATOR_*`, port `8089:8089`, and root build context
+- [x] `compose.yaml` & `up.sh` wiring `PAYMENT_PROVIDER_*`, `PAYMENT_REFUND_QUERY_INTERVAL`, `SIMULATOR_*`, port `8089:8089`, and root build context
 
 ### 3. Validation
 - [x] `mvn -B test package -f payment-simulator/pom.xml` (`SimulatorServerTests`: 2/2 passed)
