@@ -2800,6 +2800,8 @@ Consumer event Outbox và internal POST dùng chung hàm createNotification vớ
 
 G-14 dùng hai contract obligations §7.1 tại ban/login/refresh/J7. Đây là bổ sung đặc tả, không tuyên bố endpoint code tồn tại. 404 tài khoản/ví đáng lẽ tồn tại, timeout/lỗi/không nhất quán không là nghĩa vụ 0: request cần xác minh →503, không ghi ban một phần/cấp quyền rộng hơn; job giữ trạng thái và retry.
 
+Refund scope ORDER đến sớm được giữ ở Inbox `WAITING_DEPENDENCY` khi Finance chưa xác định được Seller từ Settlement hoặc `checkout.paid` đã xác minh. Finance tiếp tục đánh giá dữ liệu xác minh được của từng Seller và chưa quy event này cho tài khoản nào. Khi có liên kết theo Order và Payment, chỉ tính hiệu ứng còn chờ cho Seller đúng chủ. Nếu dữ liệu đã liên kết mâu thuẫn, trả 503 theo phạm vi Seller liên quan. Việc đọc nghĩa vụ không thay đổi Inbox hoặc số dư.
+
 HTTP liên service nằm ngoài transaction giữ khóa. Trước commit Identity kiểm tra version và đợt cấm còn hiện hành để job không ghi đè Admin unban. Snapshot các nguồn không nguyên tử; giữ bền vững nghĩa vụ/hiệu ứng muộn để mở lại quyền giới hạn, không mất tiền.
 
 Điều phối giữa các service dùng outbox/inbox và retry; không join database chéo. Khi event cancel/confirm/refund tới Finance trước checkout.paid hoặc trước ví được tạo, consumer giữ bản ghi chờ phụ thuộc và retry; không đánh dấu đã áp dụng thành công hoặc ghi số dư âm. Event cùng aggregate phải kiểm tra version/state; event cũ không đảo trạng thái mới. Đối soát J5/Finance kiểm tra lại service sở hữu khi thiếu dữ kiện; không tự đoán số tiền từ notification.
