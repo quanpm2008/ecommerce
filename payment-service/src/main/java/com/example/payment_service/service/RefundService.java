@@ -1,6 +1,7 @@
 package com.example.payment_service.service;
 
 import com.example.payment_service.client.*;
+import com.example.payment_service.dto.RefundResponse;
 import com.example.payment_service.entity.*;
 import com.example.payment_service.exception.*;
 import com.example.payment_service.repository.OutboxEventRepository;
@@ -37,9 +38,6 @@ public class RefundService {
         this.paymentGateway = paymentGateway;
     }
 
-    /**
-     * Tạo yêu cầu hoàn tiền ban đầu cho đơn hàng ORDER hoặc toàn bộ phiên FULL_CHECKOUT
-     */
     public Refund initiateRefund(UUID paymentId, UUID orderId, RefundScope scope,
                                  Long amountVnd, RefundReason reason, String idempotencyKey) {
         Objects.requireNonNull(paymentId, "paymentId is required");
@@ -88,7 +86,6 @@ public class RefundService {
                     "Cannot refund a payment that is not in SUCCESS status (current: " + payment.getStatus() + ")");
         }
 
-        // Điều kiện 2: Kiểm tra tổng các nghĩa vụ hoàn tiền không vượt thu
         Long currentTotalRefunded = refundRepository.sumTotalRefundAmountByPaymentId(paymentId);
         if (currentTotalRefunded + amountVnd > payment.getAmountVnd()) {
             throw new RefundLimitExceededException("REFUND_AMOUNT_EXCEEDED",
@@ -107,7 +104,6 @@ public class RefundService {
             }
             refund = Refund.createOrderRefund(paymentId, orderId, amountVnd, reason, idempotencyKey);
         } else {
-            // FULL_CHECKOUT
             refund = Refund.createFullCheckoutRefund(paymentId, amountVnd, idempotencyKey);
         }
 
@@ -129,7 +125,6 @@ public class RefundService {
             refund.markSuccess(result.providerRefundId(), now);
             refundRepository.save(refund);
 
-            // Ghi Outbox Event: refund.succeeded
             Map<String, Object> payload = Map.of(
                     "refundId", refund.getRefundId().toString(),
                     "paymentId", refund.getPaymentId().toString(),
@@ -146,10 +141,8 @@ public class RefundService {
         } else if (result.isFailed()) {
             refund.markFailed(result.providerRefundId(), now);
 
-            // Nếu đã đạt 3 lần retry tự động trong chu kỳ mà vẫn thất bại
             if (refund.getRetryCount() >= 3) {
                 refund.markCustomerRetryRequired();
-                // Phát Outbox Event thông báo cho Customer chủ Payment
                 Payment payment = paymentRepository.findById(refund.getPaymentId()).orElse(null);
                 String customerId = payment != null ? payment.getCustomerId().toString() : "";
 
@@ -167,7 +160,6 @@ public class RefundService {
             refundRepository.save(refund);
 
         } else {
-            // PENDING/TIMEOUT: Giữ nguyên PENDING, không tăng retryCount
             log.info("[RefundService] Refund still PENDING for refundId={}", refundId);
         }
 
@@ -231,5 +223,26 @@ public class RefundService {
     @Transactional(readOnly = true)
     public Page<Refund> getAdminRefunds(Pageable pageable) {
         return refundRepository.findAll(pageable);
+    }
+
+    public RefundResponse toRefundResponse(Refund refund) {
+        boolean canRetryRefund = (refund.getStatus() == RefundStatus.FAILED && refund.isCustomerRetryRequired());
+        return new RefundResponse(
+                refund.getRefundId(),
+                refund.getPaymentId(),
+                refund.getOrderId(),
+                refund.getScope(),
+                refund.getAmountVnd(),
+                refund.getReason(),
+                refund.getStatus(),
+                refund.getRetryCycle(),
+                refund.getRetryCount(),
+                refund.isCustomerRetryRequired(),
+                canRetryRefund,
+                refund.getProviderRefundId(),
+                refund.getCreatedAt(),
+                refund.getCompletedAt(),
+                true
+        );
     }
 }

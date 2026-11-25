@@ -4,6 +4,7 @@ import com.example.payment_service.client.ChargeCommand;
 import com.example.payment_service.client.ChargeResult;
 import com.example.payment_service.client.PaymentGateway;
 import com.example.payment_service.client.SimulatorScenario;
+import com.example.payment_service.dto.PaymentResponse;
 import com.example.payment_service.entity.OutboxEvent;
 import com.example.payment_service.entity.Payment;
 import com.example.payment_service.exception.IdempotencyConflictException;
@@ -11,8 +12,10 @@ import com.example.payment_service.exception.PaymentConflictException;
 import com.example.payment_service.exception.PaymentNotFoundException;
 import com.example.payment_service.repository.OutboxEventRepository;
 import com.example.payment_service.repository.PaymentRepository;
+import com.example.payment_service.repository.RefundRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,13 +31,23 @@ public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final OutboxEventRepository outboxEventRepository;
     private final PaymentGateway paymentGateway;
+    private final RefundRepository refundRepository;
+
+    @Autowired
+    public PaymentService(PaymentRepository paymentRepository,
+                          OutboxEventRepository outboxEventRepository,
+                          PaymentGateway paymentGateway,
+                          RefundRepository refundRepository) {
+        this.paymentRepository = paymentRepository;
+        this.outboxEventRepository = outboxEventRepository;
+        this.paymentGateway = paymentGateway;
+        this.refundRepository = refundRepository;
+    }
 
     public PaymentService(PaymentRepository paymentRepository,
                           OutboxEventRepository outboxEventRepository,
                           PaymentGateway paymentGateway) {
-        this.paymentRepository = paymentRepository;
-        this.outboxEventRepository = outboxEventRepository;
-        this.paymentGateway = paymentGateway;
+        this(paymentRepository, outboxEventRepository, paymentGateway, null);
     }
 
     public Payment processPayment(UUID checkoutSessionId, UUID customerId, Long amountVnd,
@@ -52,12 +65,10 @@ public class PaymentService {
                 log.info("[PaymentService] Idempotent replay for key={}, paymentId={}", idempotencyKey, existing.getPaymentId());
                 return existing;
             }
-            // Khác payload: vi phạm chống trùng lặp
             throw new IdempotencyConflictException("IDEMPOTENCY_KEY_REUSED",
                     "Idempotency key has already been used for a different payment request");
         }
 
-        // Kiểm tra xem CheckoutSession đã có Payment nào chưa (tối đa 1 Payment/phiên)
         Optional<Payment> existingBySession = paymentRepository.findByCheckoutSessionId(checkoutSessionId);
         if (existingBySession.isPresent()) {
             Payment sessionPayment = existingBySession.get();
@@ -79,7 +90,6 @@ public class PaymentService {
             chargeResult = paymentGateway.charge(chargeCmd);
         } catch (Exception ex) {
             log.error("[PaymentService] Error communicating with PaymentGateway: {}", ex.getMessage(), ex);
-            // Mất kết nối/timeout: giữ Payment ở trạng thái PENDING để xử lý sau
             chargeResult = ChargeResult.pending(null);
         }
 
@@ -110,7 +120,6 @@ public class PaymentService {
             payment.markSuccess(result.providerTransactionId(), now);
             paymentRepository.save(payment);
 
-            // Ghi Outbox Event: payment.succeeded
             Map<String, Object> payload = Map.of(
                     "paymentId", payment.getPaymentId().toString(),
                     "checkoutSessionId", payment.getCheckoutSessionId().toString(),
@@ -127,7 +136,6 @@ public class PaymentService {
             payment.markFailed(result.errorCode(), result.providerTransactionId(), now);
             paymentRepository.save(payment);
 
-            // Ghi Outbox Event: payment.failed
             Map<String, Object> payload = new HashMap<>();
             payload.put("paymentId", payment.getPaymentId().toString());
             payload.put("checkoutSessionId", payment.getCheckoutSessionId().toString());
@@ -152,11 +160,43 @@ public class PaymentService {
         Optional<Payment> paymentOpt = paymentRepository.findByCheckoutSessionId(checkoutSessionId);
         if (paymentOpt.isPresent()) {
             Payment payment = paymentOpt.get();
-            // Xác minh ownership: Không cho phép đọc phiên của người khác
             if (currentCustomerId != null && !payment.getCustomerId().equals(currentCustomerId)) {
                 throw new PaymentNotFoundException("Checkout session payment not found for current customer");
             }
         }
         return paymentOpt;
+    }
+
+    public PaymentResponse toPaymentResponse(Payment payment) {
+        Long refundedAmountVnd = 0L;
+        if (refundRepository != null) {
+            Long sum = refundRepository.sumTotalRefundAmountByPaymentId(payment.getPaymentId());
+            if (sum != null) {
+                refundedAmountVnd = sum;
+            }
+        }
+        String refundState;
+        if (refundedAmountVnd == 0) {
+            refundState = "NONE";
+        } else if (refundedAmountVnd < payment.getAmountVnd()) {
+            refundState = "PARTIAL";
+        } else {
+            refundState = "FULL";
+        }
+        return new PaymentResponse(
+                payment.getPaymentId(),
+                payment.getCheckoutSessionId(),
+                payment.getAmountVnd(),
+                payment.getCurrency(),
+                payment.getProvider(),
+                payment.getStatus(),
+                payment.getProviderTransactionId(),
+                payment.getErrorCode(),
+                refundedAmountVnd,
+                refundState,
+                payment.getCreatedAt(),
+                payment.getCompletedAt(),
+                true
+        );
     }
 }
