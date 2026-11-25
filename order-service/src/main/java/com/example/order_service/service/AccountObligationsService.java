@@ -14,7 +14,9 @@ import feign.FeignException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.TransactionException;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -26,6 +28,8 @@ import java.util.UUID;
 
 @Service
 public class AccountObligationsService {
+    // Keep the repeated UUID query parameters below the HTTP request-size limit.
+    private static final int REFUND_BATCH_SIZE = 100;
     private static final Set<Order.Status> OPEN = Set.of(Order.Status.AWAITING_PAYMENT, Order.Status.PAID,
             Order.Status.PACKING, Order.Status.DELIVERED);
 
@@ -84,7 +88,7 @@ public class AccountObligationsService {
             boolean refundUnresolved = orderRefunds.values().stream().anyMatch(AccountObligationsService::unresolved)
                     || fullRefunds.values().stream().anyMatch(AccountObligationsService::unresolved);
             return new Obligations(openOrders, paymentPending, refundUnresolved);
-        } catch (DataAccessException | FeignException failure) {
+        } catch (DataAccessException | TransactionException | FeignException failure) {
             throw new SourceUnavailable(failure);
         }
     }
@@ -140,12 +144,17 @@ public class AccountObligationsService {
 
     private Map<UUID, Refund> orderRefunds(Map<UUID, Row> orders, Map<UUID, Collection> payments, Set<UUID> refundIds) {
         var byOrder = new HashMap<UUID, Refund>();
-        for (Refund refund : verifiedRefunds(client.refundsByOrders(List.copyOf(orders.keySet()), credential), refundIds)) {
-            Row order = orders.get(refund.orderId());
-            if (!"ORDER".equals(refund.scope()) || order == null || order.orderStatus() != Order.Status.CANCELLED
-                    || refund.amountVnd() != order.orderAmountVnd() || !matchesPayment(refund, payments.get(order.checkoutId()))
-                    || byOrder.put(order.orderId(), refund) != null) {
-                throw new SourceUnavailable();
+        for (List<UUID> batch : refundBatches(orders.keySet())) {
+            Set<UUID> requested = new HashSet<>(batch);
+            for (Refund refund : verifiedRefunds(client.refundsByOrders(batch, credential), refundIds)) {
+                Row order = orders.get(refund.orderId());
+                if (!"ORDER".equals(refund.scope()) || !requested.contains(refund.orderId()) || order == null
+                        || order.orderStatus() != Order.Status.CANCELLED
+                        || refund.amountVnd() != order.orderAmountVnd()
+                        || !matchesPayment(refund, payments.get(order.checkoutId()))
+                        || byOrder.put(order.orderId(), refund) != null) {
+                    throw new SourceUnavailable();
+                }
             }
         }
         if (orders.values().stream().anyMatch(row -> row.orderStatus() == Order.Status.CANCELLED
@@ -158,16 +167,30 @@ public class AccountObligationsService {
     private Map<UUID, Refund> fullRefunds(Map<UUID, Row> checkouts, Map<UUID, Row> paymentCheckouts,
             Map<UUID, Collection> payments, Set<UUID> refundIds) {
         var byCheckout = new HashMap<UUID, Refund>();
-        for (Refund refund : verifiedRefunds(client.refundsByCheckouts(List.copyOf(checkouts.keySet()), credential), refundIds)) {
-            Row checkout = paymentCheckouts.get(refund.paymentId());
-            if (!"FULL_CHECKOUT".equals(refund.scope()) || refund.orderId() != null || checkout == null
-                    || checkout.checkoutStatus() != CheckoutSession.Status.CLOSED
-                    || refund.amountVnd() != checkout.checkoutAmountVnd() || !matchesPayment(refund, payments.get(checkout.checkoutId()))
-                    || byCheckout.put(checkout.checkoutId(), refund) != null) {
-                throw new SourceUnavailable();
+        for (List<UUID> batch : refundBatches(checkouts.keySet())) {
+            Set<UUID> requested = new HashSet<>(batch);
+            for (Refund refund : verifiedRefunds(client.refundsByCheckouts(batch, credential), refundIds)) {
+                Row checkout = paymentCheckouts.get(refund.paymentId());
+                if (!"FULL_CHECKOUT".equals(refund.scope()) || refund.orderId() != null || checkout == null
+                        || !requested.contains(checkout.checkoutId())
+                        || checkout.checkoutStatus() != CheckoutSession.Status.CLOSED
+                        || refund.amountVnd() != checkout.checkoutAmountVnd()
+                        || !matchesPayment(refund, payments.get(checkout.checkoutId()))
+                        || byCheckout.put(checkout.checkoutId(), refund) != null) {
+                    throw new SourceUnavailable();
+                }
             }
         }
         return byCheckout;
+    }
+
+    private static List<List<UUID>> refundBatches(Set<UUID> ids) {
+        List<UUID> ordered = List.copyOf(ids);
+        var batches = new ArrayList<List<UUID>>();
+        for (int start = 0; start < ordered.size(); start += REFUND_BATCH_SIZE) {
+            batches.add(ordered.subList(start, Math.min(start + REFUND_BATCH_SIZE, ordered.size())));
+        }
+        return batches;
     }
 
     private static List<Refund> verifiedRefunds(Refunds envelope, Set<UUID> refundIds) {

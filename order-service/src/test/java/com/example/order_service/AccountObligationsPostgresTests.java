@@ -104,6 +104,24 @@ class AccountObligationsPostgresTests extends OrderPostgresTestSupport {
     }
 
     @Test
+    void splitsBothRefundLookupsForSellerWithLongHistory() {
+        UUID seller = UUID.randomUUID();
+        var checkoutIds = new ArrayList<UUID>();
+        var orderIds = new ArrayList<UUID>();
+        for (int i = 0; i < 101; i++) {
+            var checkout = checkout("CLOSED", null);
+            checkoutIds.add(checkout.id());
+            orderIds.add(order(checkout, seller, "EXPIRED"));
+        }
+
+        assertThat(obligations.read(seller, AccountType.SELLER).hasUnresolvedRefund()).isFalse();
+        assertThat(ORDER_FILTERS).extracting(List::size).containsExactly(100, 1);
+        assertThat(CHECKOUT_FILTERS).extracting(List::size).containsExactly(100, 1);
+        assertThat(ORDER_FILTERS.stream().flatMap(List::stream).toList()).containsExactlyInAnyOrderElementsOf(orderIds);
+        assertThat(CHECKOUT_FILTERS.stream().flatMap(List::stream).toList()).containsExactlyInAnyOrderElementsOf(checkoutIds);
+    }
+
+    @Test
     void keepsClosedCheckoutAndFullRefundObligationsUntilVerifiedSuccess() {
         var checkout = checkout("CLOSED", null);
         UUID seller = UUID.randomUUID();
