@@ -67,15 +67,19 @@ class FinanceSellerObligationsController {
                             or (i.event_type = 'order.cancelled' and i.payload #>> '{payload,wasPaid}' = 'true'))))
                 ), effects as (
                     select case
+                        when exists (select 1 from paid_orders other where other.order_id = p.order_id
+                            and (other.seller_id, other.payment_id, other.gross_vnd, other.commission_bps)
+                                is distinct from (p.seller_id, p.payment_id, p.gross_vnd, p.commission_bps))
+                            then 'UNVERIFIED'
                         when s.order_id is not null and (s.seller_id, s.payment_id, s.gross_amount_vnd, s.commission_bps_snapshot)
                             is distinct from (p.seller_id, p.payment_id, p.gross_vnd, p.commission_bps) then 'UNVERIFIED'
                         when s.order_id is not null then 'SATISFIED'
-                        when p.status = 'FAILED_REVIEW' then 'UNVERIFIED'
+                        when p.status in ('APPLIED', 'FAILED_REVIEW') then 'UNVERIFIED'
                         else 'WAITING'
                     end as state
                     from paid_orders p
                     left join finance.settlement s on s.order_id = p.order_id
-                    where p.status in ('WAITING_DEPENDENCY', 'FAILED_REVIEW')
+                    where p.status in ('WAITING_DEPENDENCY', 'FAILED_REVIEW', 'APPLIED')
                         and (p.seller_id = :seller or s.seller_id = :seller)
                     union all
                     select case

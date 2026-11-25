@@ -122,6 +122,27 @@ class FinanceSellerObligationsPostgresTests {
     }
 
     @Test
+    void reportsContradictoryPaidEvidenceOnlyForInvolvedSellers() throws Exception {
+        assertTestDatabase();
+        UUID owner = wallet(0, 0, 7);
+        UUID conflictingOwner = wallet(0, 0, 3);
+        UUID unrelated = wallet(0, 0, 1);
+        UUID order = UUID.randomUUID();
+        UUID checkout = UUID.randomUUID();
+        UUID payment = UUID.randomUUID();
+        for (UUID seller : List.of(owner, conflictingOwner)) {
+            inbox("checkout.paid", "order-service", checkout, "APPLIED", Map.of(
+                    "checkoutSessionId", checkout, "paymentId", payment,
+                    "orders", List.of(paidOrder(order, seller))));
+            assertError(read(owner, IDENTITY), 503, "SERVICE_UNAVAILABLE");
+        }
+        settlement(order, payment, owner, 100, "REFUNDED");
+        assertError(read(owner, IDENTITY), 503, "SERVICE_UNAVAILABLE");
+        assertError(read(conflictingOwner, IDENTITY), 503, "SERVICE_UNAVAILABLE");
+        assertSnapshot(unrelated, false, 0, 0, 1);
+    }
+
+    @Test
     void orderRefundWaitsForSellerEvidence() throws Exception {
         assertTestDatabase();
         UUID owner = wallet(0, 0, 7);
