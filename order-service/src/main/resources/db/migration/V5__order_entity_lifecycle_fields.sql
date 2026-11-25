@@ -1,0 +1,15 @@
+ALTER TABLE orders.purchase_order
+    ADD COLUMN cancel_reason_code varchar(50),
+    ADD COLUMN cancel_reason_note varchar(500),
+    ADD COLUMN cancelled_by_type varchar(16) CHECK (cancelled_by_type IN ('CUSTOMER', 'SELLER', 'SYSTEM', 'ADMIN')),
+    ADD COLUMN cancelled_by uuid,
+    ADD COLUMN paid_at timestamptz,
+    ADD COLUMN packing_at timestamptz,
+    ADD COLUMN delivered_at timestamptz,
+    ADD COLUMN confirmed_at timestamptz,
+    ADD COLUMN cancelled_at timestamptz,
+    ADD COLUMN confirmed_by varchar(16) CHECK (confirmed_by IN ('CUSTOMER', 'SYSTEM')),
+    ADD COLUMN seller_action_due_at timestamptz,
+    ADD COLUMN customer_confirm_due_at timestamptz,
+    ADD COLUMN needs_manual_review boolean NOT NULL DEFAULT false,
+    ADD COLUMN manual_note text;

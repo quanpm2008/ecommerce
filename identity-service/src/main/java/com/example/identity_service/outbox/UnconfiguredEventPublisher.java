@@ -1,20 +1,21 @@
 package com.example.identity_service.outbox;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
 /**
- * Stand-in until a broker is chosen: nothing is sent and events stay PENDING in {@code outbox_events}, ready to go
- * out once a real {@link EventPublisher} replaces this one.
+ * Keeps events pending when Kafka publishing is disabled.
  */
 @Slf4j
 @Component
+@ConditionalOnProperty(name = "identity.kafka.enabled", havingValue = "false", matchIfMissing = true)
 class UnconfiguredEventPublisher implements EventPublisher {
 
 	UnconfiguredEventPublisher() {
-		log.warn("No message broker configured: outbox events stay PENDING until an EventPublisher is added");
+		log.warn("Identity Kafka publishing is disabled. Outbox events stay PENDING");
 	}
 
 	@Override

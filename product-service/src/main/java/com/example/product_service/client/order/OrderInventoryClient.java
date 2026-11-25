@@ -12,11 +12,11 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
 
-@FeignClient(name = "order-service", configuration = FeignConfig.class)
+@FeignClient(name = "order-service", url = "${product.order.base-url:}", configuration = FeignConfig.class)
 public interface OrderInventoryClient {
 
     @PostMapping("/internal/v1/inventory")
-    ApiResponse<Void> initInventory(@RequestBody InitInventoryRequest request);
+    ApiResponse<Void> initInventory(@RequestHeader("Idempotency-Key") String key, @RequestBody InitInventoryRequest request);
 
     @GetMapping("/internal/v1/inventory/availability")
     ApiResponse<List<InventoryAvailabilityDto>> getAvailability(@RequestParam("productIds") List<UUID> productIds);

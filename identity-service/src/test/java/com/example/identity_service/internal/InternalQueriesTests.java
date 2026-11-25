@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -24,6 +25,23 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * notification-service.
  */
 class InternalQueriesTests extends EndpointTestSupport {
+
+	@Test
+	void saleEvidencePreservesTheDecisionFromBeforeABan() throws Exception {
+		Session seller = approvedSeller();
+		Instant captured = jdbc.queryForObject("select clock_timestamp()", java.sql.Timestamp.class).toInstant();
+		jdbc.update("update sellers set status = 'BANNED', ban_reason = 'Review' where seller_id = ?", seller.userId());
+		Instant afterBan = jdbc.queryForObject("select clock_timestamp()", java.sql.Timestamp.class).toInstant();
+		String body = """
+				{"completedAt":"%s","sellerIds":["%s"]}
+				""";
+		internal(HttpMethod.POST, "/sellers/sale-evidence", body.formatted(captured, seller.userId()), ORDER_TOKEN, null)
+				.andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].decision").value("ELIGIBLE"));
+		internal(HttpMethod.POST, "/sellers/sale-evidence", body.formatted(afterBan, seller.userId()), ORDER_TOKEN, null)
+				.andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].decision").value("INELIGIBLE"));
+		internal(HttpMethod.POST, "/sellers/sale-evidence", body.formatted(Instant.EPOCH, seller.userId()), ORDER_TOKEN, null)
+				.andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].decision").value("UNKNOWN"));
+	}
 
 	@Test
 	void sellerStatusesFollowG06WithoutPii() throws Exception {

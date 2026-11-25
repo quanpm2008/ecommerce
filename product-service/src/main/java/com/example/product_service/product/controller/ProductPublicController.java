@@ -19,7 +19,7 @@ import java.util.UUID;
 
 @Tag(name = "2. Products - Public", description = "Tìm kiếm và xem chi tiết sản phẩm công khai")
 @RestController
-@RequestMapping("/products")
+@RequestMapping({"/products", "/api/v1/products"})
 @RequiredArgsConstructor
 public class ProductPublicController {
 

@@ -39,6 +39,22 @@ public class CartStore {
 	public record Totals(long lineCount, long totalQuantity) {
 	}
 
+	public record CheckoutLine(UUID cartItemId, UUID productId, int quantity, long rowVersion) {}
+
+	public record CheckoutSnapshot(UUID cartId, UUID customerId, List<CheckoutLine> items) {}
+
+	@Transactional(readOnly = true)
+	public CheckoutSnapshot checkoutItems(UUID customerId, List<UUID> ids) {
+		Cart cart = carts.findByCustomerId(customerId).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+		var selected = items.findByCartIdAndCartItemIdIn(cart.getCartId(), ids);
+		if (selected.size() != ids.size()) {
+			throw new ApiException(ErrorCode.NOT_FOUND);
+		}
+		return new CheckoutSnapshot(cart.getCartId(), cart.getCustomerId(), selected.stream()
+				.map(line -> new CheckoutLine(line.getCartItemId(), line.getProductId(), line.getQuantity(), line.getRowVersion()))
+				.toList());
+	}
+
 	@Transactional
 	public Contents contents(UUID customerId) {
 		Cart cart = ensure(customerId, false);

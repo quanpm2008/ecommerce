@@ -1,6 +1,7 @@
 package com.example.cart_service.security;
 
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
@@ -9,7 +10,7 @@ class WebConfig implements WebMvcConfigurer {
 
 	private final CustomerAccessInterceptor customerAccess;
 
-	WebConfig(CustomerAccessInterceptor customerAccess) {
+	WebConfig(@Lazy CustomerAccessInterceptor customerAccess) {
 		this.customerAccess = customerAccess;
 	}
 

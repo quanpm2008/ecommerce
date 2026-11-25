@@ -16,9 +16,16 @@ public class InternalFeignConfig {
 	public static final String SERVICE_TOKEN_HEADER = "X-Service-Token";
 
 	@Bean
-	RequestInterceptor cartInternalHeaders(@Value("${cart.internal.service-token:}") String serviceToken) {
+	RequestInterceptor cartInternalHeaders(@Value("${cart.internal.service-token:}") String identityToken,
+			@Value("${cart.product-token:}") String productToken, @Value("${cart.order-token:}") String orderToken) {
 		return template -> {
-			if (serviceToken != null && !serviceToken.isBlank()) {
+			String serviceToken = switch (template.feignTarget().name()) {
+				case "identity-service" -> identityToken;
+				case "product-service" -> productToken;
+				case "order-service" -> orderToken;
+				default -> "";
+			};
+			if (!serviceToken.isBlank()) {
 				template.header(SERVICE_TOKEN_HEADER, serviceToken);
 			}
 			String requestId = MDC.get(RequestIdFilter.MDC_KEY);

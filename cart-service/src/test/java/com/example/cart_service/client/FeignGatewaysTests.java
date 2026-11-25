@@ -60,6 +60,8 @@ class FeignGatewaysTests extends IntegrationTestSupport {
 		registry.add("cart.clients.product-url", () -> base);
 		registry.add("cart.clients.order-url", () -> base);
 		registry.add("cart.internal.service-token", () -> SERVICE_TOKEN);
+		registry.add("cart.product-token", () -> "cart-product-fixture");
+		registry.add("cart.order-token", () -> "cart-order-fixture");
 	}
 
 	@AfterAll
@@ -106,8 +108,9 @@ class FeignGatewaysTests extends IntegrationTestSupport {
 		assertThat(found.get(PRODUCT).priceVnd()).isEqualTo(150_000L);
 		assertThat(found.get(PRODUCT).sellerId()).isEqualTo(SHOP);
 		assertThat(found.get(PRODUCT).selling()).isTrue();
+		assertThat(lastHeaders.get("x-service-token")).isEqualTo("cart-product-fixture");
 		assertThat(inventory.availability(List.of(PRODUCT))).containsExactlyEntriesOf(Map.of(PRODUCT, 48));
-		assertThat(lastHeaders.get("x-service-token")).isEqualTo(SERVICE_TOKEN);
+		assertThat(lastHeaders.get("x-service-token")).isEqualTo("cart-order-fixture");
 	}
 
 	private static HttpServer start() {
@@ -152,7 +155,7 @@ class FeignGatewaysTests extends IntegrationTestSupport {
 					{"data":{"sellerId":"%s","sellerName":"Shop Áo Xinh","description":null,"logoUrl":null}}"""
 					.formatted(SHOP));
 		}
-		else if (path.equals("/internal/v1/products/batch") && body.trim().startsWith("[")) {
+		else if (path.equals("/internal/v1/products/batch") && body.contains("\"productIds\"")) {
 			reply(exchange, 200, """
 					{"data":[{"productId":"%s","sellerId":"%s","priceVnd":150000,"productName":"Áo thun",
 					"coverImageUrl":"https://cdn/x.jpg","media":[{"objectKey":"k","type":"IMAGE"}],

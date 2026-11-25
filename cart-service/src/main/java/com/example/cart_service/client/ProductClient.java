@@ -12,8 +12,8 @@ import java.util.UUID;
 		configuration = InternalFeignConfig.class)
 interface ProductClient {
 
-	/** Body: a JSON array of product ids, as product-service implements it. */
 	@PostMapping("/internal/v1/products/batch")
-	ApiResponse<List<ProductSnapshot>> batch(@RequestBody List<UUID> productIds);
+	ApiResponse<List<ProductSnapshot>> batch(@RequestBody BatchRequest selection);
 
+	record BatchRequest(List<UUID> productIds) {}
 }

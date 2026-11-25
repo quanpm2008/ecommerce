@@ -3,8 +3,7 @@ package com.example.identity_service.outbox;
 import java.util.Map;
 
 /**
- * Sends one outbox envelope to the message broker (API §2.1 "Message broker + Outbox"). The team has not chosen a
- * broker yet, so the only implementation is {@link UnconfiguredEventPublisher}; a broker adapter replaces it.
+ * Sends one outbox envelope to the configured broker (API §2.1 "Message broker + Outbox").
  * Delivery is at least once: an event may be sent again if the relay's commit fails after sending, and consumers
  * de-duplicate by {@code eventId} (Inbox).
  */

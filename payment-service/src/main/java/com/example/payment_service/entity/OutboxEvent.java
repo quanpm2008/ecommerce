@@ -37,6 +37,9 @@ public class OutboxEvent {
     @Column(name = "aggregate_id", nullable = false)
     private UUID aggregateId;
 
+    @Column(name = "version", nullable = false)
+    private long version = 1L;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "payload", nullable = false, columnDefinition = "jsonb")
     private Map<String, Object> payload;
@@ -52,9 +55,14 @@ public class OutboxEvent {
     private Instant publishedAt;
 
     public OutboxEvent(UUID eventId, String eventType, UUID aggregateId, Map<String, Object> payload) {
+        this(eventId, eventType, aggregateId, 1L, payload);
+    }
+
+    public OutboxEvent(UUID eventId, String eventType, UUID aggregateId, long version, Map<String, Object> payload) {
         this.eventId = eventId != null ? eventId : UUID.randomUUID();
         this.eventType = Objects.requireNonNull(eventType, "eventType is required");
         this.aggregateId = Objects.requireNonNull(aggregateId, "aggregateId is required");
+        this.version = version;
         this.payload = Objects.requireNonNull(payload, "payload is required");
         this.status = STATUS_PENDING;
     }

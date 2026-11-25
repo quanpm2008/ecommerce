@@ -23,7 +23,7 @@ public class CreateProductRequest {
     private UUID categoryId;
 
     @NotNull
-    @Min(value = 0)
+    @Min(value = 1)
     private Long priceVnd;
 
     @NotNull
@@ -36,5 +36,6 @@ public class CreateProductRequest {
     @NotEmpty
     private List<@Valid MediaItem> media;
 
+    @NotNull
     private ProductStatus status;
 }
