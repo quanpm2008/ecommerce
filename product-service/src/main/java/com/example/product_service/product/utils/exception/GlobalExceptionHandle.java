@@ -146,6 +146,13 @@ public class GlobalExceptionHandle {
         return buildResponse(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", msg, req);
     }
 
+    @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
+    public ResponseEntity<ApiErrorResponse> handleStatus(
+            org.springframework.web.server.ResponseStatusException exception, HttpServletRequest request) {
+        var status = HttpStatus.valueOf(exception.getStatusCode().value());
+        return buildResponse(status, exception.getReason(), status.getReasonPhrase(), request);
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiErrorResponse> handleIllegalArgument(
             IllegalArgumentException e, HttpServletRequest req) {

@@ -22,14 +22,14 @@ public class OrderInventoryClientAdapter {
 
     private final OrderInventoryClient orderInventoryClient;
 
-    public void initInventory(UUID productId, UUID sellerId, Integer onHandQuantity) {
+    public void initInventory(UUID productId, UUID sellerId, Integer onHandQuantity, String key) {
         InitInventoryRequest request = InitInventoryRequest.builder()
                 .productId(productId)
                 .sellerId(sellerId)
                 .onHandQuantity(onHandQuantity != null ? onHandQuantity : 0)
                 .build();
         try {
-            orderInventoryClient.initInventory(request);
+            orderInventoryClient.initInventory(key, request);
         } catch (Exception e) {
             log.error("Failed to initialize inventory for product {}: {}", productId, e.getMessage(), e);
             throw e;

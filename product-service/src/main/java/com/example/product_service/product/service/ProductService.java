@@ -26,7 +26,7 @@ public interface ProductService {
 
     SellerProductResponse getSellerProductDetail(UUID sellerId, UUID productId);
 
-    SellerProductResponse createProduct(UUID sellerId, CreateProductRequest request);
+    SellerProductResponse createProduct(UUID sellerId, String key, CreateProductRequest request);
 
     SellerProductResponse updateProduct(UUID sellerId, UUID productId, UpdateProductRequest request);
 

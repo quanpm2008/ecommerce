@@ -133,7 +133,7 @@ final class FeignGateways {
 			if (productIds.isEmpty()) {
 				return Map.of();
 			}
-			List<ProductSnapshot> products = call("Product batch", () -> client.batch(List.copyOf(productIds)));
+			List<ProductSnapshot> products = call("Product batch", () -> client.batch(new ProductClient.BatchRequest(List.copyOf(productIds))));
 			Map<UUID, ProductSnapshot> result = new HashMap<>();
 			products.forEach(product -> result.put(product.productId(), product));
 			return result;
