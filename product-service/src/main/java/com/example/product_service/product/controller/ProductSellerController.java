@@ -2,6 +2,7 @@ package com.example.product_service.product.controller;
 
 import com.example.product_service.common.response.ApiPageResponse;
 import com.example.product_service.common.response.ApiResponse;
+import com.example.product_service.client.identity.IdentityClientAdapter;
 import com.example.product_service.product.dto.request.CreateProductRequest;
 import com.example.product_service.product.dto.request.UpdateProductRequest;
 import com.example.product_service.product.dto.request.UpdateProductStatusRequest;
@@ -23,16 +24,16 @@ import java.util.UUID;
 
 @Tag(name = "4. Products - Seller", description = "Quản lý sản phẩm của người bán (Seller)")
 @RestController
-@RequestMapping("/seller/products")
+@RequestMapping({"/seller/products", "/api/v1/seller/products"})
 @RequiredArgsConstructor
 public class ProductSellerController {
 
     private final ProductService productService;
+    private final IdentityClientAdapter sellerAuthorization;
 
     @Operation(summary = "Xem danh sách sản phẩm của Seller (lọc theo status, tồn kho, từ khóa, danh mục, phân trang)")
     @GetMapping
     public ResponseEntity<ApiPageResponse<SellerProductResponse>> getSellerProducts(
-            @RequestHeader("X-User-Id") UUID sellerId,
             @RequestParam(required = false) ProductStatus status,
             @RequestParam(required = false) String stock,
             @RequestParam(required = false) String q,
@@ -47,25 +48,24 @@ public class ProductSellerController {
         Sort s = Sort.by(parts.length > 1 && parts[1].equalsIgnoreCase("asc") ? Sort.Direction.ASC : Sort.Direction.DESC, parts[0]);
         Pageable pageable = PageRequest.of(zeroBasedPage, size, s);
 
-        return ResponseEntity.ok(productService.getSellerProducts(sellerId, status, stock, q, categoryId, pageable));
+        return ResponseEntity.ok(productService.getSellerProducts(sellerAuthorization.requireSeller(), status, stock, q, categoryId, pageable));
     }
 
     @Operation(summary = "Xem chi tiết sản phẩm của Seller (kèm thông tin tồn kho chi tiết, version)")
     @GetMapping("/{productId}")
     public ResponseEntity<ApiResponse<SellerProductResponse>> getSellerProductDetail(
-            @RequestHeader("X-User-Id") UUID sellerId,
             @PathVariable UUID productId) {
 
-        return ResponseEntity.ok(ApiResponse.of(productService.getSellerProductDetail(sellerId, productId)));
+        return ResponseEntity.ok(ApiResponse.of(productService.getSellerProductDetail(sellerAuthorization.requireSeller(), productId)));
     }
 
     @Operation(summary = "Thêm sản phẩm mới (khởi tạo kho ban đầu qua Order Service)")
     @PostMapping
     public ResponseEntity<ApiResponse<SellerProductResponse>> createProduct(
-            @RequestHeader("X-User-Id") UUID sellerId,
+            @RequestHeader("Idempotency-Key") String key,
             @Valid @RequestBody CreateProductRequest request) {
 
-        SellerProductResponse response = productService.createProduct(sellerId, request);
+        SellerProductResponse response = productService.createProduct(sellerAuthorization.requireSeller(), key, request);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.of(response));
     }
@@ -73,20 +73,18 @@ public class ProductSellerController {
     @Operation(summary = "Cập nhật thông tin sản phẩm (tên, giá, mô tả, danh mục, danh sách media)")
     @PutMapping("/{productId}")
     public ResponseEntity<ApiResponse<SellerProductResponse>> updateProduct(
-            @RequestHeader("X-User-Id") UUID sellerId,
             @PathVariable UUID productId,
             @Valid @RequestBody UpdateProductRequest request) {
 
-        return ResponseEntity.ok(ApiResponse.of(productService.updateProduct(sellerId, productId, request)));
+        return ResponseEntity.ok(ApiResponse.of(productService.updateProduct(sellerAuthorization.requireSeller(), productId, request)));
     }
 
     @Operation(summary = "Bật bán hoặc tạm ẩn sản phẩm (SELLING <-> HIDDEN)")
     @PatchMapping("/{productId}/status")
     public ResponseEntity<ApiResponse<SellerProductResponse>> updateProductStatus(
-            @RequestHeader("X-User-Id") UUID sellerId,
             @PathVariable UUID productId,
             @Valid @RequestBody UpdateProductStatusRequest request) {
 
-        return ResponseEntity.ok(ApiResponse.of(productService.updateProductStatus(sellerId, productId, request)));
+        return ResponseEntity.ok(ApiResponse.of(productService.updateProductStatus(sellerAuthorization.requireSeller(), productId, request)));
     }
 }

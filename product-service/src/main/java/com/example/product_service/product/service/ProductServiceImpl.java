@@ -55,6 +55,8 @@ public class ProductServiceImpl implements ProductService {
     private final IdentityClientAdapter identityClientAdapter;
     private final OrderInventoryClientAdapter orderInventoryClientAdapter;
     private final NotificationClient notificationClient;
+    private final ProductInventoryProvision inventoryProvision;
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     @Override
     @Transactional(readOnly = true)
@@ -190,48 +192,41 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
-    @Transactional
-    public SellerProductResponse createProduct(UUID sellerId, CreateProductRequest request) {
-
-        Category category = categoryRepository.findById(request.getCategoryId())
-                .orElseThrow(() -> new CategoryNotAvailableException("Danh mục không tồn tại: " + request.getCategoryId()));
-
-        if (category.getStatus() != CategoryStatus.VISIBLE) {
-            throw new CategoryNotAvailableException("Danh mục đã bị ẩn, không thể thêm sản phẩm.");
+    public SellerProductResponse createProduct(UUID sellerId, String key, CreateProductRequest request) {
+        if (key.isBlank() || key.length() > 128) {
+            throw new IllegalArgumentException("Invalid Idempotency-Key");
+        }
+        ProductStatus target = request.getStatus();
+        if (target != ProductStatus.SELLING && target != ProductStatus.HIDDEN) {
+            throw new IllegalArgumentException("Product status must be SELLING or HIDDEN");
+        }
+        String hash;
+        try {
+            byte[] body = objectMapper.writeValueAsBytes(request);
+            hash = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(body));
+        } catch (com.fasterxml.jackson.core.JsonProcessingException | java.security.NoSuchAlgorithmException error) {
+            throw new IllegalStateException("Cannot fingerprint Product creation", error);
         }
 
-        productValidator.validateAndNormalizeMedia(request.getMedia());
-
-        ProductStatus targetStatus = request.getStatus() != null ? request.getStatus() : ProductStatus.SELLING;
-
-        Product product = Product.builder()
-                .sellerId(sellerId)
-                .categoryId(request.getCategoryId())
-                .productName(request.getProductName().trim())
-                .priceVnd(request.getPriceVnd())
-                .description(request.getDescription())
-                .status(ProductStatus.HIDDEN)
-                .media(request.getMedia())
-                .build();
-
-        Product saved = productRepository.save(product);
-
-        orderInventoryClientAdapter.initInventory(
-                saved.getProductId(),
-                sellerId,
-                request.getInitialStock() != null ? request.getInitialStock() : 0);
-
-        saved.setStatus(targetStatus);
-        Product finalized = productRepository.save(saved);
-
-        InventoryDetailDto inv = InventoryDetailDto.builder()
-                .onHandQuantity(request.getInitialStock())
-                .reservedQuantity(0)
-                .availableQuantity(request.getInitialStock())
-                .version(1L)
-                .build();
-
-        return toSellerProductResponse(finalized, category.getCategoryName(), inv);
+        UUID productId = inventoryProvision.register(sellerId, key, hash, request.getInitialStock(), target, () -> {
+            Category category = categoryRepository.findById(request.getCategoryId())
+                    .orElseThrow(() -> new CategoryNotAvailableException("Category not found"));
+            if (category.getStatus() != CategoryStatus.VISIBLE) {
+                throw new CategoryNotAvailableException("Category is hidden");
+            }
+            productValidator.validateAndNormalizeMedia(request.getMedia());
+            return productRepository.saveAndFlush(Product.builder()
+                    .sellerId(sellerId)
+                    .categoryId(request.getCategoryId())
+                    .productName(request.getProductName().trim())
+                    .priceVnd(request.getPriceVnd())
+                    .description(request.getDescription())
+                    .status(ProductStatus.HIDDEN)
+                    .media(request.getMedia())
+                    .build()).getProductId();
+        });
+        inventoryProvision.deliver(productId);
+        return getSellerProductDetail(sellerId, productId);
     }
 
     @Override
@@ -289,6 +284,9 @@ public class ProductServiceImpl implements ProductService {
             throw new InvalidStateTransitionException("Seller không thể chuyển sản phẩm sang REMOVED.");
         }
 
+        if (request.getStatus() == ProductStatus.SELLING && inventoryProvision.pending(productId)) {
+            throw new InvalidStateTransitionException("Inventory provisioning is pending");
+        }
         p.setStatus(request.getStatus());
         Product updated = productRepository.save(p);
 
@@ -414,7 +412,7 @@ public class ProductServiceImpl implements ProductService {
         }
 
         List<UUID> sellerIds = products.stream().map(Product::getSellerId).distinct().toList();
-        Map<UUID, Boolean> sellerSellableMap = identityClientAdapter.getSellableMap(sellerIds);
+        Map<UUID, Boolean> sellerSellableMap = identityClientAdapter.requireSellableMap(sellerIds);
 
         return products.stream()
                 .map(p -> {

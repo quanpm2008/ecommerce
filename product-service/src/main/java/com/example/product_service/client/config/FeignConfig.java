@@ -15,19 +15,32 @@ import java.util.concurrent.TimeUnit;
 @Configuration
 public class FeignConfig {
 
-    @Value("${internal.security.service-token:product-service-test-token-0123456789abcdef}")
-    private String serviceToken;
+    @Value("${internal.security.service-token:}")
+    private String identityToken;
+
+    @Value("${product.order.service-token:}")
+    private String orderToken;
+
+    @Value("${product.notification.service-token:}")
+    private String notificationToken;
 
     @Bean
     public Request.Options requestOptions() {
-        return new Request.Options(2000, TimeUnit.MILLISECONDS, 2000, TimeUnit.MILLISECONDS, true);
+        return new Request.Options(2000, TimeUnit.MILLISECONDS, 2000, TimeUnit.MILLISECONDS, false);
     }
 
     @Bean
     public RequestInterceptor requestIdForwardingInterceptor() {
         return template -> {
-            if (serviceToken != null && !serviceToken.isBlank()) {
-                template.header("X-Service-Token", serviceToken);
+            String target = template.feignTarget().name();
+            String token = switch (target) {
+                case "identity-service" -> identityToken;
+                case "order-service" -> orderToken;
+                case "notification-service" -> notificationToken;
+                default -> "";
+            };
+            if (!token.isBlank()) {
+                template.header("X-Service-Token", token);
             }
 
             ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
@@ -43,7 +56,9 @@ public class FeignConfig {
                 }
 
                 String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
-                if (authHeader != null && !authHeader.isBlank()) {
+                if (authHeader != null && !authHeader.isBlank()
+                        && "identity-service".equals(target)
+                        && "/internal/v1/identity/auth/authorization-context".equals(template.path())) {
                     template.header(HttpHeaders.AUTHORIZATION, authHeader);
                 }
             }
