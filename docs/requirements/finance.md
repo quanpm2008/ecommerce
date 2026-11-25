@@ -143,7 +143,7 @@ Các AT bao phủ nhiều service; hồ sơ này là đầu mối đọc, không
 
 Nguồn: [§6 / UC-D04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L973–1000. Vai trò: Người bán · Ưu tiên: M.
 
-Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
+Các điều khoản giữ mã ổn định khi di chuyển tài liệu. Các nhánh Should không thuộc DoD Must; riêng in-app Notification đã chuyển thành Must theo [quyết định 25/11/2026](coverage.md#notification-channels), email nghiệp vụ tùy chọn triển khai sau.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
@@ -163,7 +163,7 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 
 Nguồn hiệu lực: [FRD UC-D05](FRD.md), [Database §3.5/§8.3](database.md), [API §6.6](api_specs.md), [Thẻ 15](coverage.md#the-15). Vai trò: Seller · Ưu tiên: M.
 
-Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
+Các điều khoản giữ mã ổn định khi di chuyển tài liệu. Các nhánh Should không thuộc DoD Must; riêng in-app Notification đã chuyển thành Must theo [quyết định 25/11/2026](coverage.md#notification-channels), email nghiệp vụ tùy chọn triển khai sau.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
@@ -192,7 +192,7 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 
 Nguồn: [§6 / UC-E02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1075–1104. Vai trò: Quản trị viên · Ưu tiên: M.
 
-Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
+Các điều khoản giữ mã ổn định khi di chuyển tài liệu. Các nhánh Should không thuộc DoD Must; riêng in-app Notification đã chuyển thành Must theo [quyết định 25/11/2026](coverage.md#notification-channels), email nghiệp vụ tùy chọn triển khai sau.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
@@ -213,7 +213,7 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 
 Nguồn: [§6 / UC-G04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1383–1414. Vai trò: Hệ thống · Ưu tiên: M · Đổi tên và phạm vi ở v5.2 (trước đây: Chốt hoa hồng và chi trả người bán).
 
-Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
+Các điều khoản giữ mã ổn định khi di chuyển tài liệu. Các nhánh Should không thuộc DoD Must; riêng in-app Notification đã chuyển thành Must theo [quyết định 25/11/2026](coverage.md#notification-channels), email nghiệp vụ tùy chọn triển khai sau.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|

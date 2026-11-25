@@ -138,7 +138,7 @@ Các AC sau là diễn giải kiểm chứng từ điều khoản cùng mã UC/R
 | <a id="ac-ord-005"></a>AC-ORD-005 | UC-B08; UC-D02; P-21a/P-21b | Checkout chưa thu hoặc Order PAID/PACKING; lý do hợp lệ, ghi chú rỗng/500/501 ký tự | Customer hủy hoặc Seller từ chối lặp, tranh start-packing/J4 | Chưa thu hủy cả phiên nếu không PENDING; Customer chỉ hủy PAID; giữ đúng enum P-21a/P-21b. Ghi chú tối đa 500 ký tự; Customer OTHER bắt buộc ghi chú, Seller luôn bắt buộc; thiếu/vượt giới hạn không hủy đơn. Đúng một RESTOCK/nghĩa vụ refund, không đổi đơn khác. |
 | <a id="ac-ord-006"></a>AC-ORD-006 | UC-B09; UC-D02; UC-G03; REQ-ORD-007 | Order PACKING/DELIVERED và hai due_at độc lập; thời gian xử lý còn 24 giờ hoặc 24 giờ +1 giây | Seller xem cảnh báo, giao/từ chối cạnh J4; Customer xác nhận cạnh J3 | Cảnh báo sắp hết hạn tại còn đúng 24 giờ trở xuống, chưa cảnh báo tại 24 giờ +1 giây; không đổi hạn 7 ngày. Một chuyển hợp lệ; sau hạn Seller không lách do job chậm; J3 một CONFIRMED; không hủy DELIVERED/CONFIRMED; một settlement release. |
 | <a id="ac-ord-007"></a>AC-ORD-007 | UC-B10; G-16; P-10 | Cart có X×3; BUY_NOW chọn 1, 99 hoặc 100 đơn vị, tồn đủ hoặc thiếu | Preview/rời trang, rồi xác nhận pay | Chỉ cho 1–99 và không vượt tồn thực tế; 100 bị từ chối dù đủ tồn, không tạo dòng giỏ. Preview không ghi/giữ; pay một OrderItem; Cart vẫn X×3; chưa login quay lại rồi yêu cầu bấm tiếp, không tự đặt đơn. |
-| <a id="ac-ord-008"></a>AC-ORD-008 | UC-G03; P-RF-01/P-19 | Refund ORDER/FULL_CHECKOUT lỗi rõ hoặc PENDING/timeout; email lỗi tạm thời/vĩnh viễn/token hết hạn | J5/J6 tra cứu, thử lại; Customer bấm thử lại Refund sau hết lượt | Mỗi chu kỳ hoàn và mỗi email có một lần đầu, tối đa 3 lần thử lại chờ 1/5/15 phút từ lần lỗi trước; Refund chưa rõ chỉ tra cứu, không tiêu lượt/gửi lệnh hoàn mới. Hết lượt Refund thông báo khách, chỉ khách đúng chủ mở chu kỳ mới cùng Refund/số tiền/khóa chống trùng, đặt lại bộ đếm giữ lịch sử; Admin không làm thay. Email tôn trọng Retry-After, dừng lỗi vĩnh viễn/token hết hạn hoặc hết lượt, giữ cùng thông báo/khóa chống trùng và không đổi trạng thái nghiệp vụ. Chỉ Refund SUCCESS mới ghi đã hoàn/giảm pending. |
+| <a id="ac-ord-008"></a>AC-ORD-008 | UC-G03; P-RF-01/P-19 | Refund ORDER/FULL_CHECKOUT lỗi rõ hoặc PENDING/timeout; nếu có email thì xét lỗi tạm thời/vĩnh viễn/token hết hạn | J5 tra cứu, thử lại; Customer bấm thử lại Refund sau hết lượt; J6 chỉ áp dụng khi triển khai email | Mỗi chu kỳ hoàn có một lần đầu, tối đa 3 lần thử lại chờ 1/5/15 phút từ lần lỗi trước; Refund chưa rõ chỉ tra cứu, không tiêu lượt/gửi lệnh hoàn mới. Hết lượt Refund thông báo in-app cho khách, chỉ khách đúng chủ mở chu kỳ mới cùng Refund/số tiền/khóa chống trùng, đặt lại bộ đếm giữ lịch sử; Admin không làm thay. Khi có email, giữ P-19: một lần đầu + tối đa 3 retry, tôn trọng Retry-After, dừng lỗi vĩnh viễn/token hết hạn hoặc hết lượt, giữ cùng thông báo/key và không đổi nghiệp vụ. Chỉ Refund SUCCESS mới ghi đã hoàn/giảm pending. |
 
 ### AT nguồn thuộc hồ sơ này
 
@@ -173,7 +173,7 @@ Các AT bao phủ nhiều service; hồ sơ này là đầu mối đọc, không
 
 Nguồn: [§6 / UC-B03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L561–594. Vai trò: Khách hàng (đã đăng nhập) · Ưu tiên: M.
 
-Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
+Các điều khoản giữ mã ổn định khi di chuyển tài liệu. Các nhánh Should không thuộc DoD Must; riêng in-app Notification đã chuyển thành Must theo [quyết định 25/11/2026](coverage.md#notification-channels), email nghiệp vụ tùy chọn triển khai sau.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
@@ -196,7 +196,7 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 
 Nguồn: [§6 / UC-B04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L595–632. Vai trò: Khách hàng · Ưu tiên: M.
 
-Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
+Các điều khoản giữ mã ổn định khi di chuyển tài liệu. Các nhánh Should không thuộc DoD Must; riêng in-app Notification đã chuyển thành Must theo [quyết định 25/11/2026](coverage.md#notification-channels), email nghiệp vụ tùy chọn triển khai sau.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
@@ -221,7 +221,7 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 
 Nguồn hiệu lực: [FRD §6 / UC-B06](FRD.md), [Database §8.2B](database.md), [SAD §5.1](software-architecture.md), [Thẻ 15](coverage.md#the-15). Vai trò: Hệ thống · Ưu tiên: M.
 
-Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
+Các điều khoản giữ mã ổn định khi di chuyển tài liệu. Các nhánh Should không thuộc DoD Must; riêng in-app Notification đã chuyển thành Must theo [quyết định 25/11/2026](coverage.md#notification-channels), email nghiệp vụ tùy chọn triển khai sau.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
@@ -241,7 +241,7 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 
 Nguồn: [§6 / UC-B07](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L699–728. Vai trò: Khách hàng · Ưu tiên: M.
 
-Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
+Các điều khoản giữ mã ổn định khi di chuyển tài liệu. Các nhánh Should không thuộc DoD Must; riêng in-app Notification đã chuyển thành Must theo [quyết định 25/11/2026](coverage.md#notification-channels), email nghiệp vụ tùy chọn triển khai sau.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
@@ -262,7 +262,7 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 
 Nguồn: [§6 / UC-B08](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L729–762. Vai trò: Khách hàng · Ưu tiên: M.
 
-Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
+Các điều khoản giữ mã ổn định khi di chuyển tài liệu. Các nhánh Should không thuộc DoD Must; riêng in-app Notification đã chuyển thành Must theo [quyết định 25/11/2026](coverage.md#notification-channels), email nghiệp vụ tùy chọn triển khai sau.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
@@ -285,7 +285,7 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 
 Nguồn: [§6 / UC-B09](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L763–794. Vai trò: Khách hàng, Hệ thống · Ưu tiên: M.
 
-Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
+Các điều khoản giữ mã ổn định khi di chuyển tài liệu. Các nhánh Should không thuộc DoD Must; riêng in-app Notification đã chuyển thành Must theo [quyết định 25/11/2026](coverage.md#notification-channels), email nghiệp vụ tùy chọn triển khai sau.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
@@ -307,7 +307,7 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 
 Nguồn: [§6 / UC-B10](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L795–838. Vai trò: Khách hàng · Ưu tiên: M.
 
-Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
+Các điều khoản giữ mã ổn định khi di chuyển tài liệu. Các nhánh Should không thuộc DoD Must; riêng in-app Notification đã chuyển thành Must theo [quyết định 25/11/2026](coverage.md#notification-channels), email nghiệp vụ tùy chọn triển khai sau.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
@@ -335,7 +335,7 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 
 Nguồn: [§6 / UC-D02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L911–944. Vai trò: Người bán · Ưu tiên: M (bao gồm từ chối giao hàng và xử lý quá hạn).
 
-Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
+Các điều khoản giữ mã ổn định khi di chuyển tài liệu. Các nhánh Should không thuộc DoD Must; riêng in-app Notification đã chuyển thành Must theo [quyết định 25/11/2026](coverage.md#notification-channels), email nghiệp vụ tùy chọn triển khai sau.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
@@ -358,7 +358,7 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 
 Nguồn: [§6 / UC-G03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1353–1382. Vai trò: Hệ thống · Ưu tiên: M.
 
-Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
+Các điều khoản giữ mã ổn định khi di chuyển tài liệu. Các nhánh Should không thuộc DoD Must; riêng in-app Notification đã chuyển thành Must theo [quyết định 25/11/2026](coverage.md#notification-channels), email nghiệp vụ tùy chọn triển khai sau.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
@@ -368,7 +368,7 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 | <a id="uc-g03.main-02"></a>UC-G03.MAIN-02 | Luồng chính | J2/J2b: tra cứu Payment chưa rõ; nếu quá P-04 vẫn không có kết quả thì đóng phiên và các đơn, tiếp tục theo dõi để hoàn toàn bộ nếu tiền đến muộn. | [UC-G03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1365 |
 | <a id="uc-g03.main-03"></a>UC-G03.MAIN-03 | Luồng chính | J4 (Must): với mỗi Order, nếu quá 7 ngày kể từ thanh toán thành công mà Seller chưa xác nhận “Đã giao” hoặc “Từ chối giao hàng”, hệ thống tự hủy đơn và hoàn tiền đơn đó (Settlement chờ_hoàn; số dư chờ bị trừ khi hoàn thành công — UC-G02). | [UC-G03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1367 |
 | <a id="uc-g03.main-04"></a>UC-G03.MAIN-04 | Luồng chính | J3 (Must): Order đã_giao nhưng khách không chọn “Đã nhận hàng” trong 7 ngày kể từ lúc Seller xác nhận đã giao → tự chuyển sang “Đã xác nhận” và quyết toán đơn (UC-G04), tiền Seller chuyển sang khả dụng. | [UC-G03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1369 |
-| <a id="uc-g03.main-05"></a>UC-G03.MAIN-05 | Luồng chính | J5 tra cứu khoản hoàn chưa rõ, chỉ thử lại khi thất bại rõ; mỗi chu kỳ một lần đầu và tối đa 3 lần thử lại chờ 1/5/15 phút. Hết lượt thì thông báo khách, chỉ khách đúng chủ mở chu kỳ mới, không Admin. J6 gửi lại email lỗi tạm thời tối đa 3 lần sau lần đầu, chờ 1/5/15 phút; tôn trọng Retry-After, dừng lỗi vĩnh viễn/token hết hạn/hết lượt. Cả hai giữ cùng đối tượng nghiệp vụ và khóa chống trùng; xem chi tiết dưới. | [P-RF-01/P-19](parameters.md); [FRD UC-G03](FRD.md) |
+| <a id="uc-g03.main-05"></a>UC-G03.MAIN-05 | Luồng chính | J5 tra cứu khoản hoàn chưa rõ, chỉ thử lại khi thất bại rõ; mỗi chu kỳ một lần đầu và tối đa 3 lần thử lại chờ 1/5/15 phút. Hết lượt thì thông báo in-app cho khách, chỉ khách đúng chủ mở chu kỳ mới, không Admin. J6 email nghiệp vụ triển khai sau: khi có, gửi lại lỗi tạm thời tối đa 3 lần sau lần đầu, chờ 1/5/15 phút; tôn trọng Retry-After, dừng lỗi vĩnh viễn/token hết hạn/hết lượt. Cả hai giữ cùng đối tượng nghiệp vụ và khóa chống trùng; xem chi tiết dưới. | [P-RF-01/P-19](parameters.md); [FRD UC-G03](FRD.md); [quyết định 25/11/2026](coverage.md#notification-channels) |
 | <a id="uc-g03.alt-01"></a>UC-G03.ALT-01 | Ngoại lệ | Seller bấm giao/từ chối ngay khi J4 chạy: chỉ một chuyển trạng thái thắng, không vừa giao vừa hủy. | [UC-G03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1375 |
 | <a id="uc-g03.alt-02"></a>UC-G03.ALT-02 | Ngoại lệ | Khách xác nhận nhận đúng lúc J3 chạy: chỉ một lần ghi nhận, một lần quyết toán và một bút toán SETTLEMENT_RELEASED. | [UC-G03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1377 |
 | <a id="uc-g03.alt-03"></a>UC-G03.ALT-03 | Ngoại lệ | Thanh toán chờ kết quả không được coi là thất bại chỉ vì chưa phản hồi; đối soát trước khi nhả hàng. | [UC-G03](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1379 |
@@ -378,6 +378,6 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 
 - **J5/P-RF-01:** mỗi chu kỳ một lần thực hiện đầu và tối đa 3 lần thử lại, chờ 1, 5, 15 phút tính từ lần thất bại trước. Chỉ gửi lại lệnh khi lần trước thất bại rõ; PENDING hoặc timeout thì tiếp tục tra cứu, không tính là lần thử lại. Không dùng khoảng 21 phút ước tính để kết luận giao dịch chưa rõ là thất bại.
 - Hết 3 lần vẫn thất bại thì dừng tự động và thông báo cho khách đã thanh toán. Khách bấm **Thử lại hoàn tiền** mở chu kỳ mới cho cùng Refund, số tiền và mã chống trùng; đặt lại bộ đếm chu kỳ nhưng giữ toàn bộ lịch sử. Áp dụng cả ORDER và FULL_CHECKOUT; kiểm tra đúng chủ kể cả phiên giới hạn nghĩa vụ. Admin không xử lý thay khách. Chỉ ghi đã hoàn và giảm số dư chờ khi cổng xác nhận SUCCESS.
-- **J6/P-19:** mỗi email một lần gửi đầu và tối đa 3 lần gửi lại, chờ 1, 5, 15 phút từ lần thất bại trước. Chỉ thử lại lỗi tạm thời như timeout, mất kết nối, lỗi nhà cung cấp hoặc giới hạn tần suất; không gửi trước Retry-After nếu có. Dừng ngay với lỗi vĩnh viễn (ví dụ địa chỉ nhận không hợp lệ), liên kết/token hết hạn hoặc hết lượt.
+- **J6/P-19 (email nghiệp vụ tùy chọn triển khai sau):** khi triển khai, mỗi email một lần gửi đầu và tối đa 3 lần gửi lại, chờ 1, 5, 15 phút từ lần thất bại trước. Chỉ thử lại lỗi tạm thời như timeout, mất kết nối, lỗi nhà cung cấp hoặc giới hạn tần suất; không gửi trước Retry-After nếu có. Dừng ngay với lỗi vĩnh viễn (ví dụ địa chỉ nhận không hợp lệ), liên kết/token hết hạn hoặc hết lượt. Không thay luồng email bảo mật của Identity.
 - Gửi lại dùng cùng thông báo và khóa chống trùng, không tạo email nghiệp vụ mới. Hết lượt ghi nhận gửi thất bại, không đổi trạng thái đơn/thanh toán/hoàn tiền/tài khoản. Cơ chế email demo và thời gian giữ bí mật của demo chưa chốt; không áp giới hạn in-app 30 ngày cho token/reset URL.
 - Lịch kích hoạt J5/J6, timeout và khóa worker là quyết định kỹ thuật riêng; không dùng các khoảng chờ trên làm chu kỳ chạy job. Nguồn: [tham số đã chốt](parameters.md).

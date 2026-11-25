@@ -1,5 +1,17 @@
 # Nguồn, độ phủ và phần còn mở
 
+<a id="notification-channels"></a>
+## Kênh thông báo — 25/11/2026
+
+Nguồn: người dùng yêu cầu in-app là Must, gửi thông báo qua email không bắt buộc và thực hiện sau. Quyết định này thay mức M (email)/S (in-app) của UC-G01, SAD và các contract cùng chủ đề; không thay các quyết định nghiệp vụ khác.
+
+- In-app bắt buộc: tạo từ event/internal API đúng allowlist, chống trùng, xem danh sách/số chưa đọc, đánh dấu đã đọc từng bản/tất cả và xóa của chính người nhận. Giữ P-22: tối đa 50 thông báo gần nhất, giữ nội dung 30 ngày; xóa/hết hạn không làm mất dedupe hoặc khôi phục bản cũ khi replay.
+- Email thông báo nghiệp vụ là kênh bổ sung tùy chọn, triển khai sau; không cần adapter, delivery worker hay J6 email nghiệp vụ để hoàn thành in-app. P-19 và các AC email giữ làm yêu cầu khi triển khai kênh này.
+- Không thay luồng email xác minh/đặt lại mật khẩu của Identity. Token/resetUrl không được chuyển sang in-app hoặc log/màn vận hành chung.
+- Phạm vi tài liệu hiệu lực: Notification, FRD, API, Database, SAD, System Architecture, tham số và các hồ sơ tham chiếu. Các bản nguồn lịch sử `docs/api.md`, `docs/database.md`, FRD v5.4 và Google Docs không được sửa trong lượt này; mức ưu tiên cũ trong đó không còn hiệu lực cho Notification.
+
+Đây là thay đổi yêu cầu, không xác nhận code, migration hoặc UI đã triển khai.
+
 <a id="single-user-refresh"></a>
 ## Một phiên refresh trên User — 23/11/2026
 
@@ -80,29 +92,29 @@ Mọi kết luận code/test là khảo sát tĩnh ngày 11/11/2026, không kế
 
 ## Manifest nguồn
 
-Hash là SHA-256 toàn bộ bytes, chỉ phát hiện đổi nguồn. Ba hàng `business/...` là manifest lịch sử baseline 11/11/2026, không đổi đường dẫn/hash quá khứ thành giả định file hiện có. Ngày 16/11 hai nguồn kiến trúc chuyển vào `docs/requirements/`; ngày 18/11 nguồn hiện hành được hiệu chỉnh theo Thẻ 15 và các tham số Thẻ 16, bổ sung P-37 ngày 19/11/2026. Ngày 23/11/2026, FRD/API/Database/SAD/System Architecture được hiệu chỉnh phần phiên theo quyết định 0003; manifest hiện hành phản ánh bytes sau hiệu chỉnh. Nguồn lịch sử `docs/api.md`, `docs/database.md`, FRD v5.4 không bị sửa bởi công việc này.
+Hash là SHA-256 toàn bộ bytes, chỉ phát hiện đổi nguồn. Ba hàng `business/...` là manifest lịch sử baseline 11/11/2026, không đổi đường dẫn/hash quá khứ thành giả định file hiện có. Ngày 16/11 hai nguồn kiến trúc chuyển vào `docs/requirements/`; ngày 18/11 nguồn hiện hành được hiệu chỉnh theo Thẻ 15 và các tham số Thẻ 16, bổ sung P-37 ngày 19/11/2026. Ngày 23/11/2026, FRD/API/Database/SAD/System Architecture được hiệu chỉnh phần phiên theo quyết định 0003; ngày 25/11/2026 cập nhật in-app Must/email nghiệp vụ triển khai sau theo [quyết định kênh thông báo](#notification-channels). Manifest hiện hành phản ánh bytes sau hiệu chỉnh. Nguồn lịch sử `docs/api.md`, `docs/database.md`, FRD v5.4 không bị sửa bởi công việc này.
 
 | Đường dẫn | Phiên bản / phạm vi | Dòng | SHA-256 |
 |---|---|---:|---|
 | `business/UET FRD v5.4 - dong bo API DB.md` | FRD v5.4, 06/11/2026; 37 UC (2 loại bỏ), nghiệp vụ/ngoại lệ | 1539 | `e4fbc0e7b16583e90da42e0ca0fb139f54b63682be9a5c8ca3a91ca283b07de9` |
 | `business/database.md` | Database RBAC v5.0, 25/10/2026; data dictionary/G/WD/state | 1055 | `033b8c01e69a8e6c9f783c51b29933ae8afe240e5f85e37423c60c4923e65ab1` |
 | `business/api.md` | API v1.0, 25/10/2026, có cập nhật sau metadata; contract để review | 2979 | `6cf4d3144537fcabf1e4aafd3f1e3886200166e6ad3cbe696dbd5463d12b4046` |
-| `docs/requirements/software-architecture.md` | SAD-ECOM-01 v1.1 + Thẻ 15/Thẻ 16/P-37 + quyết định 0003, 23/11/2026 | 1163 | `b432a3dc399c6c16f14ef9eb20c27b20839bf0f979946ac7399d3077247382c0` |
-| `docs/requirements/system-architecture.md` | Kiến trúc hệ thống + Thẻ 15/Thẻ 16/P-37 + quyết định 0003, 23/11/2026 | 1162 | `bddfd7405312bb8c98b69f177992d789c67c60ef9e90acfd72c884304d67d82f` |
+| `docs/requirements/software-architecture.md` | SAD-ECOM-01 v1.1 + Thẻ 15/Thẻ 16/P-37 + quyết định 0003 + kênh thông báo 25/11/2026 | 1163 | `14106662b30d6863df272c8c690d9a9db6eca2bff04be2895246700ef72b841f` |
+| `docs/requirements/system-architecture.md` | Kiến trúc hệ thống + Thẻ 15/Thẻ 16/P-37 + quyết định 0003 + kênh thông báo 25/11/2026 | 1162 | `f488010625b47cc9997e321a7d29db7f64faa5cbe03cee0a14eb6648266d2757` |
 
 ### Nguồn mới được thêm vào harness ngày 16/11/2026
 
 | Tài liệu | Phiên bản | Dòng | SHA-256 |
 |---|---|---:|---|
-| [docs/requirements/FRD.md](FRD.md) | FRD v5.5 + Thẻ 15/Thẻ 16/P-37 + quyết định 0003, 23/11/2026 | 1559 | `174ca599d57519f6821555fe1f13cfc32620788d4b03e9628eb9468c77226fa1` |
-| [docs/requirements/api_specs.md](api_specs.md) | API v1.1 + Thẻ 15/Thẻ 16/P-37 + quyết định 0003, 23/11/2026 | 3076 | `d3e43f0655931cf265e4502147110472f0b24f3228deda9ab38343af64083f9d` |
-| [docs/requirements/database.md](database.md) | Database v5.1 + Thẻ 15/Thẻ 16/P-37 + quyết định 0003, 23/11/2026 | 1142 | `1d7e793b129f0a7434b6c83bca7d863d831e399f23036f00e5cdb332a9a50169` |
+| [docs/requirements/FRD.md](FRD.md) | FRD v5.5 + Thẻ 15/Thẻ 16/P-37 + quyết định 0003 + kênh thông báo 25/11/2026 | 1559 | `a15bf25caba57ea9d1010c1552395656210cc54a07c768ca791a5d91e1c05a4c` |
+| [docs/requirements/api_specs.md](api_specs.md) | API v1.1 + Thẻ 15/Thẻ 16/P-37 + quyết định 0003 + kênh thông báo 25/11/2026 | 3078 | `2496a8537f843aefc4d88ba5306759ac07e6bba21f23d3be9889e5241f579860` |
+| [docs/requirements/database.md](database.md) | Database v5.1 + Thẻ 15/Thẻ 16/P-37 + quyết định 0003 + kênh thông báo 25/11/2026 | 1142 | `44d6b9eafb40043ab0d588ec6751c134d4c5bd63ae39749abec260577e2f10cc` |
 
 Các phần thuộc Thẻ 15 và các tham số Thẻ 16 được hiệu chỉnh theo nguồn quyết định tương ứng; không xác nhận đã rà lại toàn bộ 377 clause/implementation theo nguồn mới. Các dẫn `Lx–y` chưa sửa bên dưới vẫn là snapshot cũ, không chuyển nguyên số dòng sang bản mới. Khi chạm phần ngoài phạm vi, đối chiếu authority trước triển khai, không suy diễn từ hash/ngày sửa. Các inventory nguồn cũ giữ tên/section cũ như provenance, không phải đề nghị dùng lại scope/đa vai trò/snapshot đã bị thay.
 
 ## UC và điều khoản đã chuyển
 
-37 UC có đích: 32 UC Must/mixed được chuyển thành 377 clause gồm mục tiêu, điều kiện, bước chính, ngoại lệ, hậu điều kiện và ghi chú; 3 UC Should/Could chỉ ranh giới; 2 UC loại bỏ giữ mã. Google trong A01/A03, in-app trong G01 và phần mở rộng E08 không thành Must chỉ vì nằm cùng UC.
+37 UC có đích: 32 UC Must/mixed được chuyển thành 377 clause gồm mục tiêu, điều kiện, bước chính, ngoại lệ, hậu điều kiện và ghi chú; 3 UC Should/Could chỉ ranh giới; 2 UC loại bỏ giữ mã. Google trong A01/A03 và phần mở rộng E08 không thành Must chỉ vì nằm cùng UC. Riêng in-app G01 là Must theo [quyết định 25/11/2026](#notification-channels); email nghiệp vụ tùy chọn triển khai sau.
 
 Đây là độ phủ clause FRD đã chuyển, không khẳng định mọi field API/DB đã được chép sang bản tóm tắt hoặc mọi yêu cầu đã triển khai. Contract chi tiết giữ ở nguồn, có bảng route và section tra cứu trong mỗi hồ sơ.
 
@@ -233,7 +245,7 @@ Bảng ghi các hiệu chỉnh theo nguồn hiệu lực, không coi code đang 
 | [UC-E02.MAIN-01](finance.md#uc-e02.main-01) | [UC-E02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1085 | Admin mở tra cứu vận hành và đối soát; hoãn dashboard phân tích, biểu đồ và export. [baseline](software-architecture.md), L75–81 |
 | [UC-E02.ALT-01](finance.md#uc-e02.alt-01) | [UC-E02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1097 | Nguồn đủ dữ liệu và không có giao dịch thì phản ánh 0; thiếu nguồn không được coi là balanced=true hoặc không có giao dịch. [baseline](software-architecture.md), L665–685 |
 | [UC-G04.MAIN-02](finance.md#uc-g04.main-02) | [UC-G04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1395 | Order ghi CONFIRMED và Outbox trong local transaction; Finance xử lý order.confirmed, chuyển Settlement SETTLED, Seller pending −Sᵢ/available +Sᵢ, PLATFORM pending −Cᵢ/available +Cᵢ và SETTLEMENT_RELEASED trong transaction Finance. Không gộp transaction Order và Finance. [baseline](software-architecture.md), L559–570 |
-| [UC-G01.MAIN-05](notifications.md#uc-g01.main-05) | [UC-G01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1305 | Email demo bất đồng bộ là Must qua DemoEmailAdapter; không tuyên bố email thật đã giao. In-app là Should, chưa bắt buộc trong MVP. [baseline](software-architecture.md), L303–318 |
+| [UC-G01.MAIN-05](notifications.md#uc-g01.main-05) | [UC-G01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1305; baseline cũ M email/S in-app đã bị thay | In-app là Must: danh sách/số chưa đọc/đọc/xóa đúng owner; tối đa 50 gần nhất/30 ngày, giữ dedupe. Email nghiệp vụ không bắt buộc, triển khai sau; không thay email bảo mật của Identity. [Quyết định 25/11/2026](#notification-channels). |
 
 Các hiệu chỉnh xuyên nguồn khác: API nói 3 web app → ADR-02 một SPA; API hiện hành
 đã bỏ refreshToken JSON, dùng cookie theo SAD §6.3/0001 và một phiên trên User theo
@@ -282,7 +294,7 @@ Các nội dung sau **đề xuất/cần review trước code**, không tự t�
 | OQ-004 | SAD §6.3–6.4; DELTA-07 | Cookie refresh, profile local, Origin/CORS/CSRF **đã chốt 20/11/2026** tại [quyết định 0001](../decisions/0001-refresh-cookie-va-origin.md). Key rotation và service credential cụ thể vẫn mở; JWT service trong A.3 vẫn đề xuất. |
 | OQ-005 | SAD §7.2; DELTA-01…06 | Review và đồng bộ quote/pay/internal charge/cart snapshot, worker, close-expired, event/inbox; không tự gán endpoint hoặc table mới. |
 | OQ-006 | P-37 ngày 19/11/2026; SAD §6.7/A.6.1; API C-08; Database §5.2 | Đã chốt hành vi cho tên sản phẩm và tên cửa hàng: không phân biệt dấu tiếng Việt, không phân biệt hoa thường. FRD/API/Database và hồ sơ đã dùng cùng quy tắc. Còn review phương án index chi tiết và kiểm chứng implementation/test; không coi đặc tả là tính năng đã chạy hoặc đổi thành full-text. |
-| OQ-007 | P-19/P-22, N-06; SAD §7.3/A.6.4 | Email đã chốt 3 lần gửi lại sau lần đầu, chờ 1/5/15 phút; in-app tối đa 50 bản gần nhất, giữ 30 ngày. Quyền xem và thời gian giữ bí mật của email demo, lịch job và cách vận hành còn cần quyết định riêng; không hứa exactly-once gửi email thật. |
+| OQ-007 | P-19/P-22, N-06; SAD §7.3/A.6.4 | In-app Must tối đa 50 bản gần nhất/30 ngày. Email nghiệp vụ triển khai sau; khi có giữ 3 lần gửi lại sau lần đầu, chờ 1/5/15 phút. Quyền xem và thời gian giữ bí mật của email demo, lịch job và cách vận hành còn cần quyết định riêng; không hứa exactly-once gửi email thật. |
 | OQ-008 | SAD §7.3, C.5; DELTA-09 | Cloud topology/DB role/Kafka/backup, retention, tải/p95/RPO/RTO; không kết luận SLO từ thiết kế. |
 | OQ-009 | identity-service/should.md A8; API enum vs DB §6 | Tên AuditAction khác nhau giữa source API và DB chưa được baseline hiệu chỉnh cụ thể; giữ mở, không tự rename enum/CHECK. |
 | OQ-010 | API §3.4 N-04; P-18; SAD C.5 | Giá trị rate limit tại Gateway và giới hạn body **đã chọn 20/11/2026** tại [quyết định 0002](../decisions/0002-gioi-han-tan-suat-gateway.md) (đề xuất của team, theo từng instance). N-04 chính thức và bộ đếm dùng chung cho nhiều instance vẫn mở. |

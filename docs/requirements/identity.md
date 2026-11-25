@@ -151,7 +151,7 @@ Các AT bao phủ nhiều service; hồ sơ này là đầu mối đọc, không
 
 Nguồn hiệu lực: [FRD UC-A01](FRD.md), [API §3.2.1/§6.1](api_specs.md). Vai trò: Khách hàng · Ưu tiên: M (Google: S).
 
-Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
+Các điều khoản giữ mã ổn định khi di chuyển tài liệu. Các nhánh Should không thuộc DoD Must; riêng in-app Notification đã chuyển thành Must theo [quyết định 25/11/2026](coverage.md#notification-channels), email nghiệp vụ tùy chọn triển khai sau.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
@@ -174,7 +174,7 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 
 Nguồn hiệu lực: [FRD UC-A02](FRD.md), [API §6.1](api_specs.md), [Database §3.1.3](database.md). Vai trò: Seller · Ưu tiên: M.
 
-Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
+Các điều khoản giữ mã ổn định khi di chuyển tài liệu. Các nhánh Should không thuộc DoD Must; riêng in-app Notification đã chuyển thành Must theo [quyết định 25/11/2026](coverage.md#notification-channels), email nghiệp vụ tùy chọn triển khai sau.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
@@ -197,7 +197,7 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 
 Nguồn hiệu lực: [FRD UC-A03](FRD.md), [API §3.2/§6.1](api_specs.md), [Thẻ 15](coverage.md#the-15). Vai trò: Customer/Seller/Admin độc lập · Ưu tiên: M (Google: S).
 
-Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
+Các điều khoản giữ mã ổn định khi di chuyển tài liệu. Các nhánh Should không thuộc DoD Must; riêng in-app Notification đã chuyển thành Must theo [quyết định 25/11/2026](coverage.md#notification-channels), email nghiệp vụ tùy chọn triển khai sau.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
@@ -220,7 +220,7 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 
 Nguồn: [§6 / UC-A04](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L405–426. Vai trò: Khách hàng (local), Người bán, Quản trị viên · Ưu tiên: M.
 
-Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
+Các điều khoản giữ mã ổn định khi di chuyển tài liệu. Các nhánh Should không thuộc DoD Must; riêng in-app Notification đã chuyển thành Must theo [quyết định 25/11/2026](coverage.md#notification-channels), email nghiệp vụ tùy chọn triển khai sau.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
@@ -237,7 +237,7 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 
 Nguồn: [§6 / UC-A05](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L427–454. Vai trò: Khách hàng (local), Người bán, Quản trị viên · Ưu tiên: M.
 
-Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
+Các điều khoản giữ mã ổn định khi di chuyển tài liệu. Các nhánh Should không thuộc DoD Must; riêng in-app Notification đã chuyển thành Must theo [quyết định 25/11/2026](coverage.md#notification-channels), email nghiệp vụ tùy chọn triển khai sau.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
@@ -257,7 +257,7 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 
 Nguồn: [§6 / UC-A06](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L455–486. Vai trò: mọi role · Ưu tiên: M.
 
-Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
+Các điều khoản giữ mã ổn định khi di chuyển tài liệu. Các nhánh Should không thuộc DoD Must; riêng in-app Notification đã chuyển thành Must theo [quyết định 25/11/2026](coverage.md#notification-channels), email nghiệp vụ tùy chọn triển khai sau.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
@@ -279,7 +279,7 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 
 Nguồn: [§6 / UC-A07](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L487–506. Vai trò: mọi role · Ưu tiên: M.
 
-Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
+Các điều khoản giữ mã ổn định khi di chuyển tài liệu. Các nhánh Should không thuộc DoD Must; riêng in-app Notification đã chuyển thành Must theo [quyết định 25/11/2026](coverage.md#notification-channels), email nghiệp vụ tùy chọn triển khai sau.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
@@ -295,7 +295,7 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 
 Nguồn: [§6 / UC-B02](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L537–560. Vai trò: Khách hàng · Ưu tiên: M.
 
-Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
+Các điều khoản giữ mã ổn định khi di chuyển tài liệu. Các nhánh Should không thuộc DoD Must; riêng in-app Notification đã chuyển thành Must theo [quyết định 25/11/2026](coverage.md#notification-channels), email nghiệp vụ tùy chọn triển khai sau.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
@@ -313,7 +313,7 @@ Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu ba
 
 Nguồn: [§6 / UC-E01](../../business/UET%20FRD%20v5.4%20-%20dong%20bo%20API%20DB.md), L1049–1074. Vai trò: Quản trị viên · Ưu tiên: M.
 
-Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
+Các điều khoản giữ mã ổn định khi di chuyển tài liệu. Các nhánh Should không thuộc DoD Must; riêng in-app Notification đã chuyển thành Must theo [quyết định 25/11/2026](coverage.md#notification-channels), email nghiệp vụ tùy chọn triển khai sau.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|
@@ -367,7 +367,7 @@ Nguồn: [FRD UC-E03/G03](FRD.md), [API §3.2/§7.1–7.3](api_specs.md), [Datab
 
 Nguồn hiệu lực: [FRD UC-E06](FRD.md), [API §6.1](api_specs.md), [Database §3.1.3/§8.2C](database.md). Vai trò: Admin · Ưu tiên: M.
 
-Các điều khoản dưới đây là yêu cầu nguồn đã đối chiếu baseline; nhánh Google/in-app ghi Should không thuộc DoD Must. Mã clause giữ ổn định khi di chuyển tài liệu.
+Các điều khoản giữ mã ổn định khi di chuyển tài liệu. Các nhánh Should không thuộc DoD Must; riêng in-app Notification đã chuyển thành Must theo [quyết định 25/11/2026](coverage.md#notification-channels), email nghiệp vụ tùy chọn triển khai sau.
 
 | Mã điều khoản | Loại | Yêu cầu / điều kiện / ngoại lệ | Nguồn hiệu lực |
 |---|---|---|---|

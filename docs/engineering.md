@@ -41,7 +41,7 @@ Nguồn: [Database §4.2](../business/database.md), SAD §2.1/6.5–6.7.
 | Order | CheckoutSession, Order/OrderItem, Inventory/Reservation/StockMovement |
 | Payment | Payment/Refund; không ghi Order.status/Settlement |
 | Finance | Settlement/Wallet/WalletTransaction/Withdrawal; không ghi Payment/Order |
-| Notification | Dữ liệu delivery thuộc service; in-app Should theo contract nguồn |
+| Notification | Sở hữu thông báo in-app Must và khóa chống trùng; email nghiệp vụ tùy chọn, triển khai sau theo [quyết định 25/11/2026](requirements/coverage.md#notification-channels) |
 
 Không FK/join/ghi DB vượt ownership. Chỉ local transaction; gọi HTTP/simulator
 ngoài transaction ghi dữ liệu, giữ ý định bền vững và event cùng commit nguồn.
@@ -53,7 +53,7 @@ Các giới hạn phải được thực thi ở service sở hữu, không ch�
 
 - Finance cung cấp hoa hồng chung 5% = 500 bps; Order snapshot khi checkout, Finance dùng snapshot và làm tròn nửa lên một lần trên tổng đơn, không tra Category hay tính lại đơn cũ.
 - Payment: mỗi chu kỳ Refund có một lần đầu + tối đa 3 retry sau 1/5/15 phút từ lỗi trước; chỉ gửi lại lỗi rõ ràng, query PENDING/timeout không tính lượt. Hết lượt báo khách; chỉ khách đã thanh toán mở chu kỳ mới, cùng Refund/số tiền/key và giữ lịch sử, cho ORDER/FULL_CHECKOUT. Admin không retry thay khách; chỉ SUCCESS mới giảm pending.
-- Notification: email một lần đầu + tối đa 3 retry 1/5/15 phút cho lỗi tạm thời, tôn trọng Retry-After; dừng lỗi vĩnh viễn/token hết hạn, giữ cùng key và không rollback nghiệp vụ. In-app Should giữ 50 gần nhất/30 ngày mà không mất email/lịch retry/dedupe; không dùng retention này cho bí mật email demo.
+- Notification: in-app Must giữ 50 gần nhất/30 ngày, đọc/xóa đúng owner và không mất dedupe khi xóa/hết hạn; không phụ thuộc email adapter để hoạt động. Email nghiệp vụ triển khai sau; khi có, giữ một lần đầu + tối đa 3 retry 1/5/15 phút cho lỗi tạm thời, tôn trọng Retry-After, dừng lỗi vĩnh viễn/token hết hạn, giữ cùng key và không rollback nghiệp vụ. Retention in-app không xóa email/lịch retry hay áp dụng cho secret.
 - Identity: reset một lần/30 phút, không khóa tạm do sai mật khẩu (vẫn chống lạm dụng); tối đa 3 địa chỉ hiện có. Nạp địa giới tĩnh vào DB Identity, hai cấp tỉnh/thành và phường/xã/đặc khu, không quận/huyện; tra cứu/validation dùng cùng dataset có nguồn/version, không gọi ngoài. Order snapshot mã và tên.
 - Product seed đúng 10 ngành hàng ở P-21e với UUID, không hoa hồng theo Category. Product tối đa 9 tệp/2 video, mô tả 5.000 ký tự; Review Should tối đa 5 tệp/1 video, nội dung 1.000 ký tự. Cart tối đa 50 dòng, 1–99 đơn vị/dòng; thêm trùng cộng dồn không vượt 99, BUY_NOW tối đa 99 và không tạo dòng giỏ.
 
