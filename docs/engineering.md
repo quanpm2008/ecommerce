@@ -24,7 +24,7 @@ POM là quan sát implementation; không tự coi version đó là floor/chính 
 | <a id="req-eng-004"></a>REQ-ENG-004 | Đồng bộ | REST/OpenFeign trong service nghiệp vụ; reactive client ở Gateway | Không dùng trực tiếp repository/entity của service khác |
 | <a id="req-eng-005"></a>REQ-ENG-005 | Bất đồng bộ | Kafka + local Outbox/Inbox và business dedupe | Root Compose chưa có Kafka; Identity publisher chưa cấu hình, không coi event đã giao |
 | <a id="req-eng-006"></a>REQ-ENG-006 | Dữ liệu | PostgreSQL 16, service sở hữu dữ liệu; versioned SQL migration | Dev chung database ecommerce, Identity schema identity; không suy ra đã cách ly DB role |
-| <a id="req-eng-007"></a>REQ-ENG-007 | Tổ chức | Package by layer; Controller→Service→Repository | Identity hiện theo nhiều package tính năng; không refactor chỉ vì chuyển tài liệu |
+| <a id="req-eng-007"></a>REQ-ENG-007 | Tổ chức | Package by layer; Controller→Service→Repository | Notification theo yêu cầu người dùng 25/11/2026: controller/service/repository/model, một module/process/schema; client/security/config hỗ trợ biên. Identity hiện theo package tính năng, không refactor ngoài scope |
 | <a id="req-eng-008"></a>REQ-ENG-008 | Abstraction | Interface ở biên thay thế thật như PaymentGateway/EmailAdapter; không buộc Service/ServiceImpl | Không thêm generic repository hoặc thư viện common chứa toàn nghiệp vụ; helper dùng lại cần task cụ thể |
 | <a id="req-eng-009"></a>REQ-ENG-009 | Phạm vi hạ tầng | AWS theo baseline, simulator nội bộ; không thêm service ngoài 7 nghiệp vụ+Gateway+Discovery | Topology AWS/Kafka/storage/backup và version broker cụ thể còn review |
 | <a id="req-eng-010"></a>REQ-ENG-010 | Thành phần ngoài phạm vi | Không CQRS toàn hệ thống, Event Sourcing, service mesh, Kubernetes, Redis khi chưa có yêu cầu chứng minh cần | Đổi dependency/kiến trúc là task riêng, cần authority tương ứng |
@@ -129,9 +129,7 @@ khởi chạy container. OpenApiDocsTests ghi `openapi.json`/`api.html` trong mo
 khi nội dung đổi: phải xem diff, không sửa tay artifact sinh ra để che contract.
 Identity không có `mvnw` trong tree khảo sát; không đưa lệnh `./mvnw` giả định.
 
-Các module còn lại chỉ có context-load test hiện tại; không đồng nghĩa UC/AT
-đã đạt. Chưa tìm thấy CI checked-in; branch protection không được khảo sát.
-Không tuyên bố check tài liệu local là enforcement CI.
+Notification đã có kiểm chứng PostgreSQL/HTTP/Kafka độc lập, xem [hồ sơ Notification](requirements/notifications.md); không suy ra toàn bộ UC/AT hoặc producer đã đạt. Các module khác cần đối chiếu code/test hiện hành. Chưa xác minh CI hay branch protection cho thay đổi này; local test không phải enforcement CI.
 
 ## AT liên service có đầu mối kỹ thuật
 

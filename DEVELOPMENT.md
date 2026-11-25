@@ -85,7 +85,7 @@ SPRING_DATASOURCE_PASSWORD=ecommerce \
 mvn spring-boot:run
 ```
 
-`application.properties` already points Eureka at `http://localhost:8761/eureka/`. identity-service also defaults to `jdbc:postgresql://localhost:5432/ecommerce`, so the datasource variables are only needed when the database is on another port (e.g. `POSTGRES_HOST_PORT=5433` → `SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5433/ecommerce`). The other services don't use the database yet because JPA is still commented out in their `pom.xml`.
+`application.properties` already points Eureka at `http://localhost:8761/eureka/`. Identity, Cart and Notification default to `jdbc:postgresql://localhost:5432/ecommerce`; override `SPRING_DATASOURCE_URL` for a different host port. Each owns a separate schema.
 
 ## Running tests
 
@@ -108,6 +108,8 @@ Don't mix modes for services that call each other. A service started on the host
 | From containers | `jdbc:postgresql://database:5432/ecommerce` |
 | User / password | `ecommerce` / `ecommerce` (dev only) |
 | identity-service tables | schema `identity` (created by Flyway on startup) |
+| cart-service tables | schema `cart` |
+| notification-service tables | schema `notification`, Flyway V1; notifications and durable inbox/dedupe |
 
 ```bash
 docker compose -p ecommerce exec database psql -U ecommerce -d ecommerce
@@ -201,6 +203,52 @@ curl -s -H 'X-Service-Token: dev-order-service-token-0123456789abcdef' \
 ```
 
 The gateway must never route `/internal/**`.
+
+## Notification Service — in-app
+
+Notification is one layered Spring Boot application: `controller → service → repository`, with `model`, `client`, `security` and `config` support packages. It does not send business email. Internal HTTP ingestion works without Kafka; the Kafka consumer is optional runtime configuration, not a second application.
+
+For a host-run instance, set `NOTIFICATION_IDENTITY_URL=http://localhost:8083`, `NOTIFICATION_SERVICE_TOKEN` and the matching `IDENTITY_INTERNAL_TOKEN_NOTIFICATION` on Identity (at least 32 characters). Without a usable Identity credential, protected requests fail closed with 503. Compose supplies a dev-only matching token; never reuse it outside local development.
+
+Authenticated in-app endpoints:
+
+| Method | Path after `/api/v1` | Result |
+|---|---|---|
+| GET | `/notifications/me?page=1&size=20&unreadOnly=false` | Own latest 50 within 30 days; `data` and pagination `meta` |
+| GET | `/notifications/me/unread-count` | Own visible unread count |
+| POST | `/notifications/me/{notificationId}/read` | 204; other owner/missing/not visible is 404 |
+| POST | `/notifications/me/read-all` | 204; visible own notifications only |
+| DELETE | `/notifications/me/{notificationId}` | 204, including repeat delete; other owner is 404 |
+
+Every request revalidates the Bearer token and `notification:read:own` through Identity. Gateway already routes `/api/v1/notifications/**`; do not expose internal paths through it. No `X-User-Id` supplied by a client grants ownership.
+
+Producers call `POST /internal/v1/notifications` on the service port with their own `X-Service-Token`. Configure `NOTIFICATION_INTERNAL_TOKEN_IDENTITY`, `_PRODUCT`, `_ORDER`, `_PAYMENT`, `_FINANCE`; blank/short values disable that producer. Tokens must be distinct. Product's existing client uses `IDENTITY_INTERNAL_TOKEN_PRODUCT`, which Compose matches to Notification for local development.
+
+Example product moderation notification (replace UUIDs with real recipient/product ids):
+
+```bash
+curl -i http://localhost:8084/internal/v1/notifications \
+  -H "X-Service-Token: $NOTIFICATION_INTERNAL_TOKEN_PRODUCT" \
+  -H 'Content-Type: application/json' \
+  -d '{"eventId":"product-removal-1","recipientUserId":"00000000-0000-4000-8000-000000000001","audienceContext":"SELLER","type":"PRODUCT_REMOVED","channels":["IN_APP"],"reference":{"type":"PRODUCT","id":"00000000-0000-4000-8000-000000000002","code":null},"templateData":{"productName":"Sản phẩm mẫu","reason":"Vi phạm"}}'
+```
+
+201 creates the notification; identical replay returns 200 with the original id, even after deletion. Changed payload with the same dedupe key returns 409. EMAIL/unknown template fields return 400; unauthorized producer/type is 401/403, unknown recipient is 404. No arbitrary message HTML, redirect URL or reset token is accepted. Full templates and required event snapshots are in [API §7.1.1/7.2](docs/requirements/api_specs.md).
+
+Kafka: set `NOTIFICATION_KAFKA_ENABLED=true` and `KAFKA_BOOTSTRAP_SERVERS` only with a reachable broker and trusted producer ACLs. Topics match the event names in the API contract. Consumer group is `notification-service`, offsets commit after local writes; transient failures retry without dropping records or logging payloads. Invalid snapshots are recorded as `notification_inbox.state=FAILED_REVIEW` with a hash/error code, not their body. Fix producer data and republish with a new event id; an unchanged failed event may be replayed after fixing a dependency or implementation. Password-reset and seller verification events are not subscribed.
+
+Root Compose still has no broker and Identity's outbox publisher remains unconfigured. Order/Finance producers are not implemented here. Consumer tests prove the Notification boundary, not an end-to-end checkout or delivery of Identity's pending outbox.
+
+P-22 visibility is enforced on every read. The in-process retention worker removes expired/over-window content every `notification.retention.interval` (default `PT1H`, configurable maintenance interval, not an SLA), retaining ids, hashes and dedupe keys. `deleted_at` tombstones prevent replay from restoring content.
+
+Isolated validation, no shared database or running stack required (Docker and Java 21):
+
+```bash
+cd notification-service
+sh mvnw test
+```
+
+Tests start disposable PostgreSQL 16 and Kafka containers. HTTP tests call Notification on a random real port with an isolated Identity HTTP fixture; Identity's new recipient endpoint is checked separately by `InternalQueriesTests`.
 
 ## Events
 

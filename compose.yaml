@@ -113,6 +113,7 @@ services:
       IDENTITY_ORDER_BASE_URL: http://order-service:8085
       IDENTITY_INTERNAL_TOKEN_CART: ${IDENTITY_INTERNAL_TOKEN_CART:-cart-service-dev-token-0123456789abcdef}
       IDENTITY_FINANCE_BASE_URL: http://finance-service:8082
+      IDENTITY_INTERNAL_TOKEN_NOTIFICATION: ${IDENTITY_INTERNAL_TOKEN_NOTIFICATION:-notification-service-dev-token-0123456789abcdef}
     ports:
       - "8083:8083"
 
@@ -121,6 +122,14 @@ services:
     build: ./notification-service
     volumes:
       - ./notification-service/src:/app/src:ro
+    environment:
+      <<: *eureka-client-env
+      NOTIFICATION_SERVICE_TOKEN: ${IDENTITY_INTERNAL_TOKEN_NOTIFICATION:-notification-service-dev-token-0123456789abcdef}
+      NOTIFICATION_INTERNAL_TOKEN_PRODUCT: ${IDENTITY_INTERNAL_TOKEN_PRODUCT:-product-service-test-token-0123456789abcdef}
+      NOTIFICATION_INTERNAL_TOKEN_IDENTITY: ${NOTIFICATION_INTERNAL_TOKEN_IDENTITY:-}
+      NOTIFICATION_INTERNAL_TOKEN_ORDER: ${NOTIFICATION_INTERNAL_TOKEN_ORDER:-}
+      NOTIFICATION_INTERNAL_TOKEN_PAYMENT: ${NOTIFICATION_INTERNAL_TOKEN_PAYMENT:-}
+      NOTIFICATION_INTERNAL_TOKEN_FINANCE: ${NOTIFICATION_INTERNAL_TOKEN_FINANCE:-}
     ports:
       - "8084:8084"
 

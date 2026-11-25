@@ -11,19 +11,20 @@ Theo yêu cầu người dùng ngày 25/11/2026, **in-app là Must; email thông
 
 ## Phạm vi sửa và bằng chứng hiện trạng
 
-Khảo sát tĩnh ngày 11/11/2026; mọi test nêu dưới đây **chưa chạy**.
+Cập nhật implementation ngày 25/11/2026: Notification là một ứng dụng Layered (`controller → service → repository`, dữ liệu ở `model`), một module Maven/process/schema. Kiểm chứng bên dưới chạy trên hạ tầng cô lập, không sửa database đang dùng hoặc xác nhận toàn bộ checkout end-to-end.
 
 | Phạm vi | Code owner hiện có | Test đã tìm thấy | Giới hạn |
 |---|---|---|---|
-| G01 | [notification-service/src/main/java/com/example/notification_service/NotificationServiceApplication.java](../../notification-service/src/main/java/com/example/notification_service/NotificationServiceApplication.java) | [notification-service/src/test/java/com/example/notification_service/NotificationServiceApplicationTests.java](../../notification-service/src/test/java/com/example/notification_service/NotificationServiceApplicationTests.java) | Chỉ scaffold; chưa delivery/email demo/consumer/migration nghiệp vụ. |
+| G01 in-app | [controller](../../notification-service/src/main/java/com/example/notification_service/controller/NotificationController.java), [service](../../notification-service/src/main/java/com/example/notification_service/service/NotificationApplication.java), [repository](../../notification-service/src/main/java/com/example/notification_service/repository/NotificationStore.java), [migration V1](../../notification-service/src/main/resources/db/migration/V1__notification.sql) | [HTTP](../../notification-service/src/test/java/com/example/notification_service/NotificationEndpointsTests.java), [persistence](../../notification-service/src/test/java/com/example/notification_service/repository/NotificationStoreTests.java), [Kafka](../../notification-service/src/test/java/com/example/notification_service/NotificationKafkaTests.java) | 9 persistence + 5 HTTP + 2 Kafka test đã pass. HTTP dùng Identity fixture; Identity recipient API kiểm tra riêng, chưa chạy toàn stack. Email nghiệp vụ không triển khai. |
 | Nguồn event Identity | [identity-service/src/main/java/com/example/identity_service/outbox/UnconfiguredEventPublisher.java](../../identity-service/src/main/java/com/example/identity_service/outbox/UnconfiguredEventPublisher.java) | [identity-service/src/test/java/com/example/identity_service/outbox/OutboxRelayTests.java](../../identity-service/src/test/java/com/example/identity_service/outbox/OutboxRelayTests.java) | Publisher chưa cấu hình; Outbox PENDING không đồng nghĩa Notification đã nhận/gửi. |
+| Kiểm tra người nhận | [Identity recipient lookup](../../identity-service/src/main/java/com/example/identity_service/internal/InternalController.java) | [InternalQueriesTests](../../identity-service/src/test/java/com/example/identity_service/internal/InternalQueriesTests.java), OpenApiDocsTests | 9 test đã pass; endpoint chỉ trả userId/accountType, không phụ thuộc email. |
 
 Khi lập task, lần theo caller/consumer và artifacts trong cùng hàng, rồi xem dependency liên service dưới đây; không đổi các source gốc để che lệch implementation.
 
 ## Contract và dữ liệu cần tra cứu
 
-- [§3.7, §6](../../business/database.md): field, required/conditional, unique/FK/CHECK và ownership. Bảng nguồn là thiết kế, không khẳng định migration tồn tại.
-- [§7.1–7.3](../../business/api.md): provider/consumer allowlist, event payload và jobs. [§7.2](software-architecture.md): DELTA cần review.
+- [Database §3.7](database.md): field, ownership và tombstone/dedupe; migration implementation được dẫn ở bảng trên.
+- [API §6.7/7.1.1/7.2](api_specs.md): endpoint, producer/type allowlist, templateData và snapshot event đã được người dùng chọn ngày 25/11/2026. Producer bổ sung dữ liệu thiếu, không để Notification đọc chéo DB hoặc tự đoán người nhận.
 - Public paths bên dưới là phần sau `/api/v1`; internal dùng `/internal/v1`. Base URL mẫu trong nguồn không chứng minh cổng service hiện tại. Tên path là khóa contract ổn định; quyền ở bảng vẫn phải kết hợp trạng thái/ownership.
 - **Bảng contract nguồn, chưa phải bằng chứng triển khai.** Các endpoint in-app dưới đây thuộc Must theo quyết định 25/11/2026. DTO, body/error examples và required/optional giữ tại đúng mục nguồn, không suy ra từ tên endpoint.
 
@@ -77,6 +78,8 @@ Các AT bao phủ nhiều service; hồ sơ này là đầu mối đọc, không
 - Chưa có Kafka trong Compose được khảo sát hoặc publisher Identity thật; không thể tuyên bố sự kiện đã giao.
 - P-19 đã chốt lần gửi đầu + tối đa 3 lần gửi lại sau 1/5/15 phút; P-22 chỉ áp dụng nội dung in-app 50 thông báo/30 ngày. N-06, cách truy cập email demo, thời gian giữ email và secret vẫn cần quyết định riêng. Dedupe email ở nghiệp vụ khác với bảo đảm exactly-once của provider; adapter thật cần quyết định riêng.
 - Các endpoint `/notifications/me` và dữ liệu in-app thuộc DoD Must. Email nghiệp vụ, adapter và J6 có thể triển khai sau; các AC email chỉ áp dụng khi triển khai kênh này. Luồng xác minh/đặt lại mật khẩu của Identity giữ nguyên, secret không xuất hiện trong in-app.
+- Cách chạy/config và ví dụ gọi API: [DEVELOPMENT — Notification Service](../../DEVELOPMENT.md#notification-service--in-app). `sh mvnw clean test` đã pass 15 test; lần kiểm tra Kafka sau khi bổ sung recovery/privacy pass 2 test (16 test hành vi khác nhau tổng cộng). Identity: `mvn -Dtest=InternalQueriesTests,OpenApiDocsTests test` pass 9 test và sinh lại OpenAPI.
+- Lỗi template/event được giữ FAILED_REVIEW với hash/mã lỗi, không giữ payload. Lỗi phụ thuộc/DB không được xác nhận offset; worker Kafka thử lại và chỉ log topic/partition/offset/lần thử, không log nội dung.
 
 ## Đặc tả UC và ngoại lệ
 

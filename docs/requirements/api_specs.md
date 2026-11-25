@@ -2832,6 +2832,7 @@ Base /internal/v1, chỉ gọi bởi service đã xác thực (mTLS hoặc token
 | Identity | GET /identity/customers/{id}/checkout-eligibility | Order, Payment | { userId, userStatus, customerStatus, paymentBlocked, hasPhone, addressCount, canCheckout, authzVersion }; xác minh quyền và Customer. |
 | Identity | GET /identity/customers/{id}/addresses/{addressId} | Order | Snapshot recipientName, recipientPhone, provinceCode, provinceName, wardCode, wardName, addressDetail; mã/tên từ cùng danh mục seed DB Identity, 404 nếu không thuộc Customer. |
 | Identity | POST /identity/customers/{id}/addresses/{addressId}/touch | Order | { checkoutSessionId }; idempotent theo checkoutSessionId, cập nhật lastUsedAt sau checkout commit; địa chỉ đã bị xóa thì bỏ qua, không báo lỗi. |
+| Identity | GET /identity/users/{userId} | Notification | { userId, accountType }; kiểm tra người nhận có tồn tại, không lấy email/PII, không cấp quyền từ accountType. 404 nếu không tồn tại; chỉ notification-service được gọi. |
 | Identity | GET /identity/users/{userId}/contact | Notification | { userId, email, fullName }; service credential allowlist, bỏ contact theo actorType. |
 | Product | POST /products/batch | Cart, Order | { productIds } → productId, sellerId, giá, tên, media, sellable; không join DB. |
 | Product | POST /products/reviews/summary | Order | { customerId, productIds\[\] } ≤100 → \[{ productId, reviewId\|null, hasReviewed }\]; từ customerId của đơn đã xác minh, chỉ allow Order; không API public my-reviews. |
@@ -2853,6 +2854,24 @@ Base /internal/v1, chỉ gọi bởi service đã xác thực (mTLS hoặc token
 POST /internal/v1/notifications. Quyền INTERNAL, service credential có notification:create và allowlist producer/type. Request: { eventId, recipientUserId, audienceContext: CUSTOMER\|SELLER\|ACCOUNT, type: NotificationType, channels: \[EMAIL\|IN\_APP\], reference?: { type, id, code }, templateData: object }. Không nhận nội dung HTML, URL redirect hay email người nhận tự do từ public client; email lấy từ Identity qua userId.
 
 Các thông báo nghiệp vụ phải có kênh IN\_APP; EMAIL là kênh bổ sung tùy chọn triển khai sau, không thay IN\_APP. Luồng email xác minh/đặt lại mật khẩu của Identity giữ riêng, không tạo bản IN\_APP chứa secret. In-app không phụ thuộc contact/email adapter để hoạt động.
+
+Triển khai in-app hiện tại chỉ nhận `channels: [IN_APP]`; yêu cầu EMAIL trả 400 thay vì giả vờ đã gửi. `eventId` là chuỗi không rỗng tối đa 160 ký tự. `templateData` chỉ nhận các field của mẫu bên dưới; không nhận title/content/HTML/resetUrl/token/redirect từ producer. `reference` nếu có dùng CHECKOUT_SESSION, ORDER, REFUND, WITHDRAWAL, SELLER, USER hoặc PRODUCT đúng loại thông báo; chỉ WITHDRAWAL có `code`. REFUND_RETRY_REQUIRED cần reference REFUND để khách mở trang đọc trạng thái/xác nhận.
+
+| Mẫu | Dữ liệu nội dung |
+|---|---|
+| CHECKOUT_PAID | checkoutSessionId, totalAmountVnd, orders[{orderId,sellerName,totalAmountVnd}]; tổng tiền khớp tổng đơn |
+| NEW_ORDER | orderId, sellerName, totalAmountVnd; chỉ đơn của Seller nhận |
+| PAYMENT_FAILED / CHECKOUT_EXPIRED | checkoutSessionId |
+| ORDER_DELIVERED / ORDER_CONFIRMED / ORDER_AUTO_CONFIRMED | orderId, sellerName |
+| ORDER_CANCELLED / ORDER_REJECTED / ORDER_AUTO_CANCELLED | orderId, sellerName; reasonCode/reasonNote nếu có |
+| REFUND_SUCCEEDED / REFUND_RETRY_REQUIRED | refundId, paymentId, checkoutSessionId, scope, amountVnd; ORDER cần orderId, hết lượt cần retryCycle >0 |
+| FUNDS_AVAILABLE | orderId, sellerAmountVnd |
+| WITHDRAWAL_COMPLETED | withdrawalId, withdrawalCode, amountVnd, availableAfterVnd |
+| SELLER_REGISTERED / SELLER_APPROVED / SELLER_REJECTED | reason nếu có; không gửi email xác thực qua mẫu này |
+| PRODUCT_REMOVED | productName, reason nếu có |
+| ACCOUNT_BANNED / ACCOUNT_UNBANNED / USER_DISABLED / USER_ENABLED | accountStatus, accessMode; reason/restoreUntil nếu có |
+
+CUSTOMER/SELLER phải khớp accountType của người nhận; ACCOUNT dùng cho thông báo trạng thái tài khoản. Kiểm tra người nhận qua Identity trước transaction ghi Notification. Trường tiền dùng số nguyên VND không âm. Dữ liệu tạo qua internal POST dùng thời điểm tiếp nhận; event dùng occurredAt để thông báo đến muộn không đẩy tin cũ lên đầu.
 
 201 → data: { notificationIds\[\], status: "PENDING" }; retry cùng event/type/recipient/context/kênh và payload →200 cùng ID, khác payload →409 IDEMPOTENCY\_KEY\_REUSED. Commit Notification \+ dedupe trước khi trả. Khi triển khai email, gửi bất đồng bộ qua J6; mỗi kênh là một bản ghi để xóa in-app không ảnh hưởng email.
 
@@ -2882,23 +2901,25 @@ Event dùng Outbox, consumer Inbox chống lặp eventId; envelope thêm actor {
 | :---- | :---- | :---- | :---- |
 | payment.succeeded | Payment | paymentId, checkoutSessionId, amountVnd, completedAt | Order |
 | payment.failed | Payment | paymentId, checkoutSessionId, errorCode | Order |
-| checkout.paid | Order | checkoutSessionId, customerId, source, paidAt, cartItems\[{ cartItemId, quantity }\], orders\[{ orderId, sellerId, totalAmountVnd, commissionBps }\] | Cart, Finance, Notification |
-| checkout.closed | Order | checkoutSessionId, status (PAYMENT\_FAILED \| EXPIRED \| CANCELLED) | Notification |
+| checkout.paid | Order | checkoutSessionId, customerId, source, paidAt, cartItems\[{ cartItemId, quantity }\], orders\[{ orderId, sellerId, sellerName, totalAmountVnd, commissionBps }\] | Cart, Finance, Notification |
+| checkout.closed | Order | checkoutSessionId, customerId, status (PAYMENT\_FAILED \| EXPIRED \| CANCELLED) | Notification; PAYMENT_FAILED/EXPIRED có mẫu tương ứng, CANCELLED không phát thêm mẫu riêng |
 | order.packing | Order | orderId, sellerId | (Notification — tùy chọn) |
-| order.delivered | Order | orderId, customerId, sellerId, deliveredAt, customerConfirmDueAt | Notification |
-| order.cancelled | Order | orderId, checkoutSessionId, customerId, sellerId, totalAmountVnd, wasPaid, cancelledBy, reasonCode, reasonNote, refundReason | Payment (nếu wasPaid), Finance, Notification |
-| order.confirmed | Order | orderId, sellerId, customerId, confirmedAt, confirmedBy (CUSTOMER \| SYSTEM) | Finance, Notification |
-| refund.succeeded | Payment | refundId, paymentId, orderId, scope, amountVnd | Finance, Order, Notification |
+| order.delivered | Order | orderId, customerId, sellerId, sellerName, deliveredAt, customerConfirmDueAt | Notification |
+| order.cancelled | Order | orderId, checkoutSessionId, customerId, sellerId, sellerName, totalAmountVnd, wasPaid, cancelledBy, reasonCode, reasonNote, refundReason | Payment (nếu wasPaid), Finance, Notification |
+| order.confirmed | Order | orderId, sellerId, customerId, sellerName, confirmedAt, confirmedBy (CUSTOMER \| SYSTEM) | Finance, Notification |
+| refund.succeeded | Payment | refundId, paymentId, checkoutSessionId, customerId, orderId\|null, scope, amountVnd | Finance, Order, Notification |
 | refund.failed | Payment | refundId, paymentId, checkoutSessionId, customerId, orderId\|null, scope, amountVnd, errorCode, retryCycle, retryCount, retryExhausted | Notification chỉ gửi REFUND_RETRY_REQUIRED khi retryExhausted=true; dedupe refundId + retryCycle, hỗ trợ FULL_CHECKOUT không cần orderId. SUCCESS muộn vẫn áp dụng; link không tự retry |
 | funds.available | Finance | orderId, sellerId, sellerAmountVnd | Notification |
-| withdrawal.completed | Finance | withdrawalId, sellerId, amountVnd, availableAfterVnd | Notification |
+| withdrawal.completed | Finance | withdrawalId, withdrawalCode, sellerId, amountVnd, availableAfterVnd | Notification |
 | seller.registered / approved / rejected | Identity | userId, sellerId (=userId), approvalStatus, authzVersion, reason? | Finance (approved), Notification |
 | seller.banned / seller.unbanned | Identity | userId,sellerId,status,accountStatus,accessMode,bannedAt,disabledAt,restoreUntil,authzVersion,reason | Order không tự hủy; J4 giữ nguyên. Finance không đóng băng available vì ban; Notification phân biệt quyền giới hạn/unban, nêu deadline nếu có. |
 | customer.banned / customer.unbanned | Identity | userId,customerId,accountStatus,accessMode,bannedAt,disabledAt,restoreUntil,authzVersion,reason | Notification theo userId/accountType độc lập; không hợp quyền tài khoản khác. |
-| product.removed | Product | productId, sellerId, reason | Notification |
+| product.removed | Product | productId, productName, sellerId, reason | Notification |
 | password.reset\_requested | Identity | userId, resetUrl (secret nội bộ, không log), expiresAt | Notification EMAIL; không lưu in-app, queue retention ngắn |
 | user.disabled / user.enabled | Identity | userId,accountType,accountStatus,accessMode,bannedAt,disabledAt,restoreUntil,authzVersion,reason | Không tự hủy Order/đóng băng available; Payment/Refund vẫn chạy. user.enabled do nghĩa vụ muộn có accountStatus BANNED, không là unban; chỉ lệnh unban phát *.unbanned. Notification dùng type hiện có, phân biệt quyền giới hạn với khôi phục đầy đủ. |
 | user.roles\_changed | Identity | userId, roleCodes hiện hành, authzVersion | Audit/đồng bộ policy; API vẫn hỏi quyền hiện hành |
+
+Theo lựa chọn người dùng ngày 25/11/2026, producer bổ sung snapshot người nhận/tên cửa hàng và các mã hiển thị như bảng trên, thay vì để Notification gọi API tra cứu Order/Payment/Product. Không đọc chéo DB. Notification nhận event qua Kafka theo topic đúng eventType và kiểm tra producer allowlist; Kafka phải giới hạn quyền ghi topic cho producer tương ứng. Chỉ commit offset sau khi inbox và thông báo đã commit. Lỗi phụ thuộc/DB được thử lại; event thiếu hoặc sai dữ liệu ghi FAILED_REVIEW với mã lỗi và hash, không lưu/log raw payload. Không đăng ký consumer cho password.reset_requested/seller.reapplication_requested.
 
 ### 7.3 Job nền
 

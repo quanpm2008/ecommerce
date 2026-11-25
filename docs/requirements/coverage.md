@@ -12,6 +12,8 @@ Nguồn: người dùng yêu cầu in-app là Must, gửi thông báo qua email 
 
 Đây là thay đổi yêu cầu, không xác nhận code, migration hoặc UI đã triển khai.
 
+Implementation Notification ngày 25/11/2026 theo Layered Architecture: controller → service → repository, một module/process/schema. Người dùng chọn bổ sung recipient/display snapshot vào event; [API §7.1.1/7.2](api_specs.md) ghi contract cụ thể và endpoint Identity chỉ trả userId/accountType. [Hồ sơ Notification](notifications.md) ghi proof HTTP/PostgreSQL/Kafka và giới hạn producer; [kế hoạch hoàn tất](../plans/completed/notification-service.md) giữ kết quả thực thi.
+
 <a id="single-user-refresh"></a>
 ## Một phiên refresh trên User — 23/11/2026
 
@@ -107,8 +109,8 @@ Hash là SHA-256 toàn bộ bytes, chỉ phát hiện đổi nguồn. Ba hàng `
 | Tài liệu | Phiên bản | Dòng | SHA-256 |
 |---|---|---:|---|
 | [docs/requirements/FRD.md](FRD.md) | FRD v5.5 + Thẻ 15/Thẻ 16/P-37 + quyết định 0003 + kênh thông báo 25/11/2026 | 1559 | `a15bf25caba57ea9d1010c1552395656210cc54a07c768ca791a5d91e1c05a4c` |
-| [docs/requirements/api_specs.md](api_specs.md) | API v1.1 + Thẻ 15/Thẻ 16/P-37 + quyết định 0003 + kênh thông báo 25/11/2026 | 3078 | `2496a8537f843aefc4d88ba5306759ac07e6bba21f23d3be9889e5241f579860` |
-| [docs/requirements/database.md](database.md) | Database v5.1 + Thẻ 15/Thẻ 16/P-37 + quyết định 0003 + kênh thông báo 25/11/2026 | 1142 | `44d6b9eafb40043ab0d588ec6751c134d4c5bd63ae39749abec260577e2f10cc` |
+| [docs/requirements/api_specs.md](api_specs.md) | API v1.1 + Thẻ 15/Thẻ 16/P-37 + quyết định 0003 + Notification in-app/snapshot 25/11/2026 | 3099 | `e02931186daeab8d150c0d6f64128cad20c180932e7396a98af37187d0e2c668` |
+| [docs/requirements/database.md](database.md) | Database v5.1 + Thẻ 15/Thẻ 16/P-37 + quyết định 0003 + Notification in-app/tombstone 25/11/2026 | 1144 | `81af49b7228ee6565d1b2726c83b88a419256817c6e8d1713805705bca36e30a` |
 
 Các phần thuộc Thẻ 15 và các tham số Thẻ 16 được hiệu chỉnh theo nguồn quyết định tương ứng; không xác nhận đã rà lại toàn bộ 377 clause/implementation theo nguồn mới. Các dẫn `Lx–y` chưa sửa bên dưới vẫn là snapshot cũ, không chuyển nguyên số dòng sang bản mới. Khi chạm phần ngoài phạm vi, đối chiếu authority trước triển khai, không suy diễn từ hash/ngày sửa. Các inventory nguồn cũ giữ tên/section cũ như provenance, không phải đề nghị dùng lại scope/đa vai trò/snapshot đã bị thay.
 
