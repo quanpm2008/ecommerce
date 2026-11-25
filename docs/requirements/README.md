@@ -48,7 +48,7 @@ Các giá trị trong [bảng tham số](parameters.md) lấy từ Thẻ 16 và 
 | Cart/BUY_NOW, preview/pay, tồn, hủy/giao/nhận, deadline | [checkout-orders](checkout-orders.md) | Payment, Finance, Identity, Notification |
 | Charge/refund/simulator, khách thử lại hoàn tiền | [payments](payments.md) | Order CLOSED/PAID, Finance pending, Notification |
 | Settlement, ví, rounding, withdrawal, đối soát | [finance](finance.md) | Payment/Order nguồn, Identity, Notification |
-| Email demo/event/delivery | [notifications](notifications.md) | Event producer, Identity contact/secret |
+| In-app Must; email tùy chọn triển khai sau; event/dedupe | [notifications](notifications.md) | Event producer, Identity contact/secret |
 | Library, package, ownership, validation | [engineering](../engineering.md) | POM/config/test thực tế; không dùng thiết kế làm hiện trạng |
 | Giá trị tham số, giới hạn và lịch thử lại | [parameters](parameters.md) | Hồ sơ nghiệp vụ và contract theo service |
 | Kiến trúc phần mềm/hệ thống, quyết định và boundary | [SAD](software-architecture.md), [System Architecture](system-architecture.md) | SAD §7.1/D.1 và coverage khi có xung đột |

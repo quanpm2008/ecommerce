@@ -104,6 +104,14 @@ public class InternalController {
 		return ApiResponse.of(queries.touch(customerId, addressId, body.checkoutSessionId().strip()));
 	}
 
+	@Operation(summary = "Recipient identity", description = "User id and account type only; no email or credentials.")
+	@ErrorCodes(NOT_FOUND)
+	@GetMapping("/users/{userId}")
+	@PreAuthorize("hasAuthority('service:notification-service')")
+	ApiResponse<InternalQueries.UserReference> user(@PathVariable UUID userId) {
+		return ApiResponse.of(queries.userReference(userId));
+	}
+
 	@Operation(summary = "Where to email a user", description = "`{ userId, email, fullName }` only.")
 	@ErrorCodes(NOT_FOUND)
 	@GetMapping("/users/{userId}/contact")

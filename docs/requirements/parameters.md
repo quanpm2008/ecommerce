@@ -22,12 +22,12 @@ Nguồn: [Thẻ 16](https://docs.google.com/document/d/1VukChbA8p9eOU_loe7y_RVCF
 | P-21b | Giữ `DEFECTIVE`, `OUT_OF_STOCK_ACTUAL`, `CANNOT_DELIVER`, `OTHER`. Seller từ chối giao hàng luôn phải nhập ghi chú, tối đa **500 ký tự**. |
 | P-21d | Giữ ba danh sách lý do quản trị riêng cho từ chối hồ sơ Seller, cấm tài khoản và gỡ sản phẩm. Lưu `reason` dạng nhãn hoặc nhãn kèm mô tả, tổng **1–1.000 ký tự**; chọn Khác phải nhập mô tả. Không áp dụng giới hạn 500 ký tự của ghi chú hủy/từ chối đơn. |
 | P-21e | Dùng đúng **10 ngành hàng ban đầu** trong bảng dưới. Mỗi sản phẩm thuộc một ngành hàng; Category không có tỷ lệ hoa hồng riêng. |
-| P-22 | Thông báo trong ứng dụng hiển thị tối đa **50 thông báo gần nhất**, giữ nội dung **30 ngày**. Giới hạn này không xóa email, cắt lịch gửi lại hoặc làm mất khóa chống trùng. In-app vẫn là Should. |
+| P-22 | Thông báo trong ứng dụng hiển thị tối đa **50 thông báo gần nhất**, giữ nội dung **30 ngày**. Giới hạn này không làm mất khóa chống trùng; nếu có email thì không xóa email hoặc cắt lịch gửi lại. In-app là **Must** theo [quyết định 25/11/2026](coverage.md#notification-channels). |
 | P-26 | Nạp sẵn danh mục địa giới tĩnh vào **DB của Identity**. Dùng mô hình hai cấp: tỉnh/thành và phường/xã/đặc khu thuộc tỉnh/thành, không có quận/huyện. API và kiểm tra địa chỉ đọc cùng bộ dữ liệu này, không gọi API địa giới bên ngoài. Ghi rõ nguồn và phiên bản khi chuẩn bị dữ liệu; Order giữ cả mã và tên tại lúc đặt hàng. |
 | P-36 | Cảnh báo đơn sắp hết hạn khi thời gian xử lý còn **không quá 24 giờ** trước hạn 7 ngày. |
 | P-37 | **Đã chốt 19/11/2026:** tìm theo tên sản phẩm và tên cửa hàng **không phân biệt dấu tiếng Việt, không phân biệt hoa thường**. Ví dụ: `dien thoai`, `Điện Thoại` và `ĐIỆN THOẠI` cho cùng kết quả. Chuẩn hóa cả từ khóa và tên khi so khớp: bỏ dấu tiếng Việt, chuyển đ/Đ thành d và chuyển về chữ thường; giữ nguyên tên lưu và hiển thị. |
 
-Các ngưỡng thống kê không tự làm Reporting Service hay các màn phân tích thành bắt buộc; giữ phạm vi đã được chấp nhận trong SAD. Các giới hạn review và in-app áp dụng khi triển khai phần Should tương ứng.
+Các ngưỡng thống kê không tự làm Reporting Service hay các màn phân tích thành bắt buộc; review vẫn là Should. In-app là Must; email nghiệp vụ tùy chọn, triển khai sau, không chặn hoàn thành in-app.
 
 ## Thử lại hoàn tiền — P-RF-01
 
@@ -38,6 +38,8 @@ Hết 3 lần mà vẫn thất bại thì dừng tự động và thông báo ch
 Khoảng 21 phút là ước tính nếu mọi lần đều lỗi; còn thời gian xử lý và độ trễ chạy J5, không phải thời hạn cưỡng bức. Không dùng ngưỡng này để kết luận giao dịch chưa rõ kết quả đã thất bại.
 
 ## Gửi lại email — P-19
+
+Email thông báo nghiệp vụ không bắt buộc, triển khai sau theo [quyết định 25/11/2026](coverage.md#notification-channels). P-19 giữ nguyên để áp dụng khi triển khai email; không thay luồng xác minh/đặt lại mật khẩu của Identity.
 
 Mỗi email có một lần gửi đầu và tối đa **3 lần gửi lại**, chờ lần lượt **1, 5 và 15 phút** từ lần thất bại trước. Chỉ gửi lại lỗi tạm thời như timeout, mất kết nối, lỗi nhà cung cấp hoặc giới hạn tần suất. Có `Retry-After` thì không gửi sớm hơn thời điểm nhà cung cấp yêu cầu.
 

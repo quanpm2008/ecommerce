@@ -76,11 +76,11 @@ Các giá trị nghiệp vụ đã chốt ngày 18/11/2026 lấy từ [Tham số
 
 ### 1.2. Phạm vi phiên bản MVP
 
-Bao gồm tài khoản LOCAL, đăng nhập/đăng xuất, đổi/đặt lại mật khẩu, hồ sơ và địa chỉ; đăng ký/duyệt Seller, cấm/gỡ cấm theo nghĩa vụ hiện tại ([Thẻ 15](coverage.md#the-15)); xem/tìm Product và Seller; quản lý sản phẩm và tồn kho; giỏ, Mua ngay, checkout, thanh toán giả lập; xử lý/hủy/từ chối/xác nhận đơn; hoàn tiền và đối soát; quyết toán, ví và rút tiền giả lập; email demo và các tác vụ nền bắt buộc.
+Bao gồm tài khoản LOCAL, đăng nhập/đăng xuất, đổi/đặt lại mật khẩu, hồ sơ và địa chỉ; đăng ký/duyệt Seller, cấm/gỡ cấm theo nghĩa vụ hiện tại ([Thẻ 15](coverage.md#the-15)); xem/tìm Product và Seller; quản lý sản phẩm và tồn kho; giỏ, Mua ngay, checkout, thanh toán giả lập; xử lý/hủy/từ chối/xác nhận đơn; hoàn tiền và đối soát; quyết toán, ví và rút tiền giả lập; thông báo in-app và các tác vụ nền bắt buộc.
 
 Theo S6, phần D04/E02 được giới hạn ở tra cứu vận hành: danh sách và chi tiết đơn, Payment/Refund, Settlement, Wallet, WalletTransaction, Withdrawal và đối soát tiền. Không đưa biểu đồ doanh thu, top sản phẩm, export phân tích hay Reporting Service vào MVP.
 
-Should/Could chỉ có ranh giới mở rộng: Google login; Review; quản lý danh mục qua giao diện Admin; in-app Notification; gợi ý sản phẩm; phần can thiệp Admin ngoài phạm vi đã chốt. Admin không thử lại hoàn tiền thay khách. Danh mục nền phải seed đúng 10 ngành hàng tại [P-21e](parameters.md#danh-mục-ban-đầu--p-21e), dùng UUID và không có hoa hồng riêng theo Category; việc chưa xây CRUD Admin không làm mất dữ liệu cần cho luồng Must.
+Should/Could chỉ có ranh giới mở rộng: Google login; Review; quản lý danh mục qua giao diện Admin; email thông báo nghiệp vụ (triển khai sau); gợi ý sản phẩm; phần can thiệp Admin ngoài phạm vi đã chốt. [Quyết định 25/11/2026](coverage.md#notification-channels) chuyển in-app thành Must, không thay luồng email xác minh/đặt lại mật khẩu của Identity. Admin không thử lại hoàn tiền thay khách. Danh mục nền phải seed đúng 10 ngành hàng tại [P-21e](parameters.md#danh-mục-ban-đầu--p-21e), dùng UUID và không có hoa hồng riêng theo Category; việc chưa xây CRUD Admin không làm mất dữ liệu cần cho luồng Must.
 
 ### 1.3. Ràng buộc và nền tảng đã chốt
 
@@ -132,7 +132,7 @@ Mục này xác định ranh giới thành phần và hướng phụ thuộc tro
 | Order | Checkout, đơn, điều phối thanh toán, fulfillment và tồn kho | CheckoutSession, Order, OrderItem, Inventory, Reservation, StockMovement |
 | Payment | Kết quả thu/hoàn giả lập và đối soát giao dịch | Payment, Refund, dữ liệu simulator |
 | Finance | Quyền hưởng tiền theo Order, ví, bút toán và rút tiền giả lập | Settlement, Wallet, WalletTransaction, Withdrawal |
-| Notification | Tạo và gửi email demo từ sự kiện đã xảy ra | Notification/delivery records |
+| Notification | Tạo thông báo in-app từ sự kiện đã xảy ra; email nghiệp vụ tùy chọn triển khai sau | Notification và khóa chống trùng; delivery email khi triển khai |
 | Discovery | Đăng ký và tra cứu instance Eureka | Không có DB nghiệp vụ |
 
 Mỗi service chỉ ghi dữ liệu do mình sở hữu. Ví dụ Product có thể yêu cầu tạo Inventory nhưng Order mới là nơi ghi Inventory; Payment có thể thông báo thu thành công nhưng Order mới cập nhật Order PAID. Đây là ranh giới nghiệp vụ, không phụ thuộc việc dev đang dùng một hay nhiều PostgreSQL instance.
@@ -192,7 +192,7 @@ Gateway dùng Spring Cloud Gateway WebFlux, định tuyến public theo API Spec
 
 Discovery chỉ cung cấp instance, không là nguồn quyền hay bộ điều phối. Không mặc định có cân bằng tải đúng chỉ vì đã thêm Eureka/OpenFeign dependency; cần cấu hình và kiểm chứng khi triển khai.
 
-Các chức năng Should/Could giữ trong service đã sở hữu miền tương ứng: Google trong Identity, Review và gợi ý trong Product, in-app trong Notification. Chúng không làm xuất hiện thêm service và không chặn hoàn thành Must. Ranh giới mở rộng chi tiết tại phụ lục A.7.
+Các chức năng Should/Could giữ trong service đã sở hữu miền tương ứng: Google trong Identity, Review và gợi ý trong Product, email nghiệp vụ trong Notification. Chúng không làm xuất hiện thêm service và không chặn hoàn thành Must; in-app là Must theo quyết định 25/11/2026. Ranh giới mở rộng chi tiết tại phụ lục A.7.
 
 <a id="section-3"></a>
 
@@ -308,18 +308,18 @@ Mỗi giỏ tối đa 50 dòng sản phẩm khác nhau, mỗi dòng 1–99 đơn
 
 ### 3.7. Notification — thông báo
 
-**Trách nhiệm.** Notification xử lý hệ quả thông tin sau khi nghiệp vụ đã commit. Email demo là Must; in-app là Should.
+**Trách nhiệm.** Notification xử lý hệ quả thông tin sau khi nghiệp vụ đã commit. In-app là Must; email nghiệp vụ không bắt buộc, triển khai sau theo [quyết định 25/11/2026](coverage.md#notification-channels).
 
 | Module ứng dụng | Trách nhiệm |
 |---|---|
 | Tiếp nhận và mẫu nội dung | Nhận event hoặc API nội bộ allowlist; suy recipient/context và template. |
-| Delivery và chống trùng | Lưu công việc gửi theo event/channel/recipient/context, theo dõi retry. |
-| EmailAdapter | DemoEmailAdapter trong MVP; không tuyên bố giao email thật. |
-| In-app mở rộng | Read/unread/soft delete chỉ khi triển khai Should. |
+| Lưu thông báo và chống trùng | Tạo in-app và dấu chống trùng cùng transaction theo event/channel/recipient/context. |
+| EmailAdapter (triển khai sau) | Không bắt buộc cho in-app; adapter demo không đại diện giao email thật. |
+| In-app (Must) | Danh sách, số chưa đọc, đánh dấu đã đọc từng bản/tất cả và soft delete đúng owner. |
 
-**Kết nối.** Nhận các sự kiện checkout/order/refund/funds/withdrawal và account/product liên quan. Gọi Identity lấy contact qua REST. Không có public API cho client tự tạo email/thông báo.
+**Kết nối.** Nhận các sự kiện checkout/order/refund/funds/withdrawal và account/product liên quan. Gọi Identity lấy contact qua REST khi cần email, không lấy contact email để tạo in-app. Không có public API cho client tự tạo email/thông báo.
 
-**Ranh giới nhất quán.** Lưu delivery/dedupe trước gửi; gọi adapter ngoài transaction. Email lỗi không rollback Order hoặc Withdrawal. Dữ liệu reset mật khẩu đi đường riêng hạn chế truy cập.
+**Ranh giới nhất quán.** Lưu thông báo/dedupe cùng transaction. Khi có email, lưu delivery trước gửi và gọi adapter ngoài transaction. Lỗi thông báo không rollback Order hoặc Withdrawal. Dữ liệu reset mật khẩu đi đường riêng hạn chế truy cập, không đưa vào in-app.
 
 **Tra cứu tiếp.** Mục 4.3 và 6.7; delivery/secret/dedupe chi tiết ở phụ lục A.6.
 
@@ -963,13 +963,13 @@ Product tối đa 9 tệp, trong đó tối đa 2 video; Review tối đa 5 tệ
 
 #### A.6.4. Notification và email demo
 
-Nhận event, xác định recipientUserId/accountType và template allowlist, lưu delivery với dedupe `(eventId, channel, recipientUserId, audienceContext)`. Customer/Seller là tài khoản độc lập; không gộp thông báo/quyền giữa tài khoản cùng người. USER_ENABLED với accountStatus BANNED chỉ thông báo mở quyền nghĩa vụ, không unban; USER_DISABLED nêu restoreUntil khi có. Worker gửi EmailAdapter ngoài transaction rồi lưu kết quả. DemoEmailAdapter hiển thị nội dung/trạng thái mô phỏng, không tuyên bố email thật đã giao.
+Nhận event, xác định recipientUserId/accountType và template allowlist, lưu in-app cùng dedupe `(eventId, channel, recipientUserId, audienceContext)` trong transaction. Customer/Seller là tài khoản độc lập; không gộp thông báo/quyền giữa tài khoản cùng người. USER_ENABLED với accountStatus BANNED chỉ thông báo mở quyền nghĩa vụ, không unban; USER_DISABLED nêu restoreUntil khi có. Khi triển khai email nghiệp vụ sau này, worker gửi EmailAdapter ngoài transaction rồi lưu kết quả; adapter demo không đại diện email thật đã giao.
 
 Secret reset mật khẩu chỉ đi đường nội bộ hạn chế quyền; log và màn vận hành chung không chứa token/link đầy đủ. Demo cần cách xem email reset giới hạn cho môi trường demo để kiểm thử, không mở endpoint công khai đọc mọi email. Sau này đổi email adapter thật không đồng nghĩa có exactly-once email: crash sau nhà cung cấp nhận nhưng trước lưu SENT có thể gửi lại; cần provider idempotency nếu có hoặc chấp nhận at-least-once delivery được nêu rõ.
 
-P-19: một lần gửi đầu và tối đa 3 lần gửi lại sau 1, 5, 15 phút từ lỗi trước; chỉ retry lỗi tạm thời và không sớm hơn Retry-After nếu có. Dừng với lỗi vĩnh viễn hoặc token/link hết hạn; hết lượt ghi thất bại, không đổi trạng thái nghiệp vụ. Giữ cùng notification/key chống trùng. Cách xem email demo và retention bí mật vẫn cần quyết định riêng.
+Khi triển khai email, giữ P-19: một lần gửi đầu và tối đa 3 lần gửi lại sau 1, 5, 15 phút từ lỗi trước; chỉ retry lỗi tạm thời và không sớm hơn Retry-After nếu có. Dừng với lỗi vĩnh viễn hoặc token/link hết hạn; hết lượt ghi thất bại, không đổi trạng thái nghiệp vụ. Giữ cùng notification/key chống trùng. Cách xem email demo và retention bí mật vẫn cần quyết định riêng.
 
-In-app là Should: khi triển khai, giữ unread/read/delete và soft delete theo S3, hiển thị tối đa 50 thông báo gần nhất và giữ nội dung 30 ngày; không bắt MVP có chuông thông báo. Giới hạn này không xóa email, cắt lịch retry hay làm mất khóa chống trùng, không áp dụng cho token/reset URL. Email lỗi không đảo Order PAID hoặc Withdrawal đã commit.
+In-app là Must: danh sách, số chưa đọc, đánh dấu đã đọc và soft delete theo S3; hiển thị tối đa 50 thông báo gần nhất và giữ nội dung 30 ngày. Giới hạn này không làm mất khóa chống trùng; replay không khôi phục bản đã xóa/hết hạn. Nếu có email, không xóa email hoặc cắt lịch retry; không áp dụng retention này cho token/reset URL. In-app không cần email adapter để hoạt động; lỗi thông báo không đảo Order PAID hoặc Withdrawal đã commit.
 
 ### A.7. Ranh giới mở rộng Should/Could
 
@@ -1031,7 +1031,7 @@ Không cần một microservice test riêng. Kiểm thử failure injection tạ
 | AT-19 | Giỏ thay đổi/xóa-thêm lại, BUY_NOW | Giảm đúng dòng snapshot còn tồn tại; giữ dòng mới; BUY_NOW không gọi/đổi Cart |
 | AT-20 | Tạo Product nhưng Inventory timeout | Product HIDDEN, retry cùng ID, không bán trước khi tồn sẵn sàng |
 | AT-21 | Event lặp ID và khác ID cùng nghĩa vụ | Một mutation kho/Settlement/ledger; không chỉ dựa eventId |
-| AT-22 | Kafka/Notification lỗi rồi khôi phục | Outbox không mất; email retry tối đa 3 lần 1/5/15 phút, tôn trọng Retry-After và dừng lỗi vĩnh viễn/link hết hạn; cùng key, không rollback nghiệp vụ; in-app Should giữ 50 gần nhất/30 ngày mà không mất dedupe |
+| AT-22 | Kafka/Notification lỗi rồi khôi phục | Outbox không mất; backlog tạo in-app đúng người nhận, không trùng/rollback nghiệp vụ; đọc/xóa đúng owner, giữ 50 gần nhất/30 ngày mà không mất dedupe. Khi có email, kiểm tra P-19 riêng, không chặn hoàn thành in-app |
 | AT-23 | Bảo toàn tiền sau các luồng hỗn hợp | Ledger/Wallet/Settlement/Payment/Refund/Withdrawal khớp khi đã hội tụ |
 | AT-24 | Restart và migration/restore diễn tập | Key và giao dịch còn dùng được; không mất ý định hoặc tác động lặp |
 | AT-25 | Cookie/CORS/CSRF và service allowlist | Sai origin/audience/caller bị chặn; internal không public; không lộ refresh token JSON |
@@ -1087,7 +1087,7 @@ Không sửa code, Compose hoặc tài liệu đầu vào để che chênh lệc
 | M0 — chốt contract | Delta API/event/schema, config register, ma trận service allowlist | Các điểm mục 7.2 được review; không tự dùng số TBD |
 | M1 — nền tảng | Gateway WebFlux, Identity session/RBAC, DB ownership, Flyway, Kafka/Outbox/Inbox tối thiểu | Test quyền/credential/cookie và publish-replay cơ bản |
 | M2 — hàng hóa và checkout | Product/Inventory provisioning, Cart, Preview/quote, O1 và durable dispatch | AT-02…AT-07, AT-19/20; không cần Dashboard/Review |
-| M3 — đặt hàng hoàn chỉnh | Payment SUCCESS, Order PAID/SOLD, Cart, Finance pending, email demo | AT-01/08/21/22, E2E luồng mua |
+| M3 — đặt hàng hoàn chỉnh | Payment SUCCESS, Order PAID/SOLD, Cart, Finance pending, thông báo in-app Must | AT-01/08/21/22, E2E luồng mua; không phụ thuộc email nghiệp vụ |
 | M4 — xử lý đơn và tiền | Hủy/từ chối/giao/xác nhận, deadline jobs, Refund, Settlement, Withdrawal | AT-12…AT-18, AT-23/26 |
 | M5 — sự cố và cloud demo | Scenario FAIL/TIMEOUT/LATE_SUCCESS/REFUND_FAIL, vận hành/đối soát/restore | AT-09…AT-11/24/25, cấu hình NFR và bằng chứng tải/restore theo mục tiêu được chốt |
 
@@ -1102,7 +1102,7 @@ Mỗi mốc là vertical slice có hợp đồng và bằng chứng kiểm thử
 | J3 tự xác nhận | Order | DELIVERED quá hạn 7 ngày; CONFIRMED SYSTEM một lần |
 | J4 Seller quá hạn | Order | PAID/PACKING quá 7 ngày từ paid_at; hủy, RESTOCK, nghĩa vụ refund |
 | J5 refund | Payment | Query PENDING/timeout không tính lượt; retry lỗi rõ ràng tối đa 3 lần/chu kỳ theo 1/5/15 phút; hết lượt dừng và báo khách, chỉ khách mở chu kỳ mới cùng Refund/key |
-| J6 email | Notification | Một gửi đầu + tối đa 3 retry 1/5/15 phút cho lỗi tạm thời, tôn trọng Retry-After; dừng lỗi vĩnh viễn/token hết hạn và ghi thất bại khi hết lượt |
+| J6 email (nghiệp vụ triển khai sau) | Notification | Khi triển khai email: một gửi đầu + tối đa 3 retry 1/5/15 phút cho lỗi tạm thời, tôn trọng Retry-After; dừng lỗi vĩnh viễn/token hết hạn và ghi thất bại khi hết lượt. Không bắt buộc J6 email nghiệp vụ để hoàn thành in-app; không thay luồng email bảo mật của Identity |
 | CHECKOUT_CHARGE | Order | Tiếp tục ý định pay sau commit/crash; không tạo workflow mới |
 | PAYMENT_ORDER_APPLICATION | Payment | SUCCESS chưa chốt áp dụng Order hoặc FULL_CHECKOUT; theo dõi tới kết quả |
 | Outbox/Inbox retry | Mỗi service cần | Phát/tiếp tục event, phục hồi phụ thuộc, không bỏ khoản tiền/kho |

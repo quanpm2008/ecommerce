@@ -2528,6 +2528,78 @@
         "tags" : [ "Internal" ]
       }
     },
+    "/internal/v1/identity/users/{userId}" : {
+      "get" : {
+        "description" : "User id and account type only; no email or credentials.\n\n**Callers:** `notification-service`",
+        "operationId" : "user",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "userId",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseUserReference"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description" : "- `VALIDATION_ERROR`: Invalid request data"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description" : "- `UNAUTHENTICATED`: Not logged in or token is invalid\n- `TOKEN_EXPIRED`: Access token has expired\n- `TOKEN_STALE`: Access token permissions are out of date; refresh the token"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description" : "- `FORBIDDEN`: You do not have permission to perform this action"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description" : "- `NOT_FOUND`: Resource not found"
+          }
+        },
+        "security" : [ {
+          "serviceToken" : [ ]
+        } ],
+        "summary" : "Recipient identity",
+        "tags" : [ "Internal" ]
+      }
+    },
     "/internal/v1/identity/users/{userId}/contact" : {
       "get" : {
         "description" : "`{ userId, email, fullName }` only.\n\n**Callers:** `notification-service`",
@@ -3037,6 +3109,17 @@
         "properties" : {
           "data" : {
             "$ref" : "#/components/schemas/SellerSelfProfile"
+          },
+          "meta" : {
+            "description" : "Lists: { page, size, totalItems, totalPages }; some endpoints add their own, e.g. { maxAddresses } or { sourceVersion, fetchedAt }. Absent otherwise."
+          }
+        }
+      },
+      "ApiResponseUserReference" : {
+        "type" : "object",
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/UserReference"
           },
           "meta" : {
             "description" : "Lists: { page, size, totalItems, totalPages }; some endpoints add their own, e.g. { maxAddresses } or { sourceVersion, fetchedAt }. Absent otherwise."
@@ -3866,6 +3949,18 @@
           }
         },
         "required" : [ "files" ]
+      },
+      "UserReference" : {
+        "type" : "object",
+        "properties" : {
+          "accountType" : {
+            "type" : "string"
+          },
+          "userId" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }
       },
       "UserSelfProfile" : {
         "type" : "object",

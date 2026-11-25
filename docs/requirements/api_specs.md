@@ -2652,7 +2652,7 @@ Idempotency-Key: 9a0b7f31-4f0e-4a6f-8f3e-6c1b2d4e5a77
 
 ### 6.7 Notification Service
 
-**Nhận event hoặc internal POST từ service được phép, tạo Notification và gửi email bất đồng bộ (Must), in-app (Should). User tự đọc/xóa thông báo của mình; không mở API public tạo thông báo. Xóa in-app không xóa email delivery, audit hay giao dịch. Admin không cần màn thông báo riêng trong MVP nhưng API tự phục vụ dùng cùng policy nếu có dữ liệu.**
+**Nhận event hoặc internal POST từ service được phép, tạo thông báo in-app (Must). Email nghiệp vụ không bắt buộc, triển khai sau theo [quyết định 25/11/2026](coverage.md#notification-channels); không thay email xác minh/đặt lại mật khẩu của Identity, secret không lưu in-app. User tự xem danh sách/số chưa đọc, đánh dấu đã đọc từng bản/tất cả và xóa thông báo của mình; không mở API public tạo thông báo. Xóa in-app không xóa dedupe, email delivery nếu có, audit hay giao dịch. Admin không cần màn thông báo riêng trong MVP nhưng API tự phục vụ dùng cùng policy nếu có dữ liệu.**
 
 | Event | Người nhận | NotificationType |
 | :---- | :---- | :---- |
@@ -2662,7 +2662,7 @@ Idempotency-Key: 9a0b7f31-4f0e-4a6f-8f3e-6c1b2d4e5a77
 | order.cancelled | Customer \+ Seller (theo cancelledBy, reason) | ORDER\_CANCELLED, ORDER\_REJECTED, ORDER\_AUTO\_CANCELLED |
 | order.confirmed / funds.available | order.confirmed thông báo trạng thái; funds.available thông báo tiền sau khi Finance commit | ORDER\_CONFIRMED / ORDER\_AUTO\_CONFIRMED / FUNDS\_AVAILABLE |
 | refund.succeeded | Customer | REFUND\_SUCCEEDED |
-| refund.failed (retryExhausted=true) | Customer chủ Payment; ORDER và FULL_CHECKOUT | REFUND\_RETRY\_REQUIRED; email Must, in-app Should, một thông báo logic/refundId/retryCycle |
+| refund.failed (retryExhausted=true) | Customer chủ Payment; ORDER và FULL_CHECKOUT | REFUND\_RETRY\_REQUIRED; in-app Must, email tùy chọn triển khai sau, một thông báo logic/refundId/retryCycle |
 | withdrawal.completed | Seller (biên nhận) | WITHDRAWAL\_COMPLETED |
 | seller.registered / approved / rejected | User sở hữu Seller; ngữ cảnh SELLER | SELLER\_REGISTERED / SELLER\_APPROVED / SELLER\_REJECTED |
 | customer.banned / seller.banned / unbanned | Tài khoản tương ứng | ACCOUNT\_BANNED, ACCOUNT\_UNBANNED |
@@ -2675,7 +2675,7 @@ DedupeKey \= eventId:channel:recipientUserId:audienceContext; riêng REFUND_RETR
 
 | \# | Method | Path | Mô tả | Quyền | UC |
 | :---- | :---- | :---- | :---- | :---- | :---- |
-| 1 | GET | /notifications/me | Thông báo trong ứng dụng (Should) | notification:read:own | G01 |
+| 1 | GET | /notifications/me | Thông báo trong ứng dụng (Must) | notification:read:own | G01 |
 | 2 | GET | /notifications/me/unread-count | Số chưa đọc (chuông) | notification:read:own | G01 |
 | 3 | POST | /notifications/me/{notificationId}/read | Đánh dấu đã đọc | notification:read:own | G01 |
 | 4 | POST | /notifications/me/read-all | Đánh dấu tất cả đã đọc | notification:read:own | G01 |
@@ -2689,7 +2689,7 @@ DedupeKey \= eventId:channel:recipientUserId:audienceContext; riêng REFUND_RETR
 
 #### Chi tiết endpoint
 
-##### GET /notifications/me — Thông báo trong ứng dụng (Should)
+##### GET /notifications/me — Thông báo trong ứng dụng (Must)
 
 **Quyền: notification:read:own    UC: G01**
 
@@ -2751,6 +2751,7 @@ Base /internal/v1, chỉ gọi bởi service đã xác thực (mTLS hoặc token
 | Identity | GET /identity/customers/{id}/checkout-eligibility | Order, Payment | { userId, userStatus, customerStatus, paymentBlocked, hasPhone, addressCount, canCheckout, authzVersion }; xác minh quyền và Customer. |
 | Identity | GET /identity/customers/{id}/addresses/{addressId} | Order | Snapshot recipientName, recipientPhone, provinceCode, provinceName, wardCode, wardName, addressDetail; mã/tên từ cùng danh mục seed DB Identity, 404 nếu không thuộc Customer. |
 | Identity | POST /identity/customers/{id}/addresses/{addressId}/touch | Order | `{ checkoutSessionId }`; chỉ gọi sau commit và dùng lại cùng ID khi retry. Địa chỉ đã xác nhận xóa và thuộc đúng Customer trả `200` với `{ addressId, lastUsedAt: null, applied: false }`. Địa chỉ không rõ hoặc khác chủ trả `404`; lỗi touch giữ nguyên checkout đã commit. |
+| Identity | GET /identity/users/{userId} | Notification | { userId, accountType }; kiểm tra người nhận có tồn tại, không lấy email/PII, không cấp quyền từ accountType. 404 nếu không tồn tại; chỉ notification-service được gọi. |
 | Identity | GET /identity/users/{userId}/contact | Notification | { userId, email, fullName }; service credential allowlist, bỏ contact theo actorType. |
 | Product | POST /products/batch | Cart, Order | `{ productIds }` → productId, sellerId, giá, tên, media, sellable. Product kiểm tra service credential dành cho Cart hoặc Order. Lỗi nguồn xác minh Seller trả `503 SERVICE_UNAVAILABLE`. |
 | Product | POST /products/reviews/summary | Order | { customerId, productIds\[\] } ≤100 → \[{ productId, reviewId\|null, hasReviewed }\]; từ customerId của đơn đã xác minh, chỉ allow Order; không API public my-reviews. |
@@ -2793,7 +2794,27 @@ Identity dùng version này để nhận diện kết quả nghĩa vụ đã tha
 
 POST /internal/v1/notifications. Quyền INTERNAL, service credential có notification:create và allowlist producer/type. Request: { eventId, recipientUserId, audienceContext: CUSTOMER\|SELLER\|ACCOUNT, type: NotificationType, channels: \[EMAIL\|IN\_APP\], reference?: { type, id, code }, templateData: object }. Không nhận nội dung HTML, URL redirect hay email người nhận tự do từ public client; email lấy từ Identity qua userId.
 
-201 → data: { notificationIds\[\], status: "PENDING" }; retry cùng event/type/recipient/context/kênh và payload →200 cùng ID, khác payload →409 IDEMPOTENCY\_KEY\_REUSED. Commit Notification \+ dedupe trước khi trả; email xử lý bất đồng bộ J6. Mỗi kênh là một bản ghi để xóa in-app không ảnh hưởng email.
+Các thông báo nghiệp vụ phải có kênh IN\_APP; EMAIL là kênh bổ sung tùy chọn triển khai sau, không thay IN\_APP. Luồng email xác minh/đặt lại mật khẩu của Identity giữ riêng, không tạo bản IN\_APP chứa secret. In-app không phụ thuộc contact/email adapter để hoạt động.
+
+Triển khai in-app hiện tại chỉ nhận `channels: [IN_APP]`; yêu cầu EMAIL trả 400 thay vì giả vờ đã gửi. `eventId` là chuỗi không rỗng tối đa 160 ký tự. `templateData` chỉ nhận các field của mẫu bên dưới; không nhận title/content/HTML/resetUrl/token/redirect từ producer. `reference` nếu có dùng CHECKOUT_SESSION, ORDER, REFUND, WITHDRAWAL, SELLER, USER hoặc PRODUCT đúng loại thông báo; chỉ WITHDRAWAL có `code`. REFUND_RETRY_REQUIRED cần reference REFUND để khách mở trang đọc trạng thái/xác nhận.
+
+| Mẫu | Dữ liệu nội dung |
+|---|---|
+| CHECKOUT_PAID | checkoutSessionId, totalAmountVnd, orders[{orderId,sellerName,totalAmountVnd}]; tổng tiền khớp tổng đơn |
+| NEW_ORDER | orderId, sellerName, totalAmountVnd; chỉ đơn của Seller nhận |
+| PAYMENT_FAILED / CHECKOUT_EXPIRED | checkoutSessionId |
+| ORDER_DELIVERED / ORDER_CONFIRMED / ORDER_AUTO_CONFIRMED | orderId, sellerName |
+| ORDER_CANCELLED / ORDER_REJECTED / ORDER_AUTO_CANCELLED | orderId, sellerName; reasonCode/reasonNote nếu có |
+| REFUND_SUCCEEDED / REFUND_RETRY_REQUIRED | refundId, paymentId, checkoutSessionId, scope, amountVnd; ORDER cần orderId, hết lượt cần retryCycle >0 |
+| FUNDS_AVAILABLE | orderId, sellerAmountVnd |
+| WITHDRAWAL_COMPLETED | withdrawalId, withdrawalCode, amountVnd, availableAfterVnd |
+| SELLER_REGISTERED / SELLER_APPROVED / SELLER_REJECTED | reason nếu có; không gửi email xác thực qua mẫu này |
+| PRODUCT_REMOVED | productName, reason nếu có |
+| ACCOUNT_BANNED / ACCOUNT_UNBANNED / USER_DISABLED / USER_ENABLED | accountStatus, accessMode; reason/restoreUntil nếu có |
+
+CUSTOMER/SELLER phải khớp accountType của người nhận; ACCOUNT dùng cho thông báo trạng thái tài khoản. Kiểm tra người nhận qua Identity trước transaction ghi Notification. Trường tiền dùng số nguyên VND không âm. Dữ liệu tạo qua internal POST dùng thời điểm tiếp nhận; event dùng occurredAt để thông báo đến muộn không đẩy tin cũ lên đầu.
+
+201 → data: { notificationIds\[\], status: "PENDING" }; retry cùng event/type/recipient/context/kênh và payload →200 cùng ID, khác payload →409 IDEMPOTENCY\_KEY\_REUSED. Commit Notification \+ dedupe trước khi trả. Khi triển khai email, gửi bất đồng bộ qua J6; mỗi kênh là một bản ghi để xóa in-app không ảnh hưởng email.
 
 Allowlist: Identity chỉ seller lifecycle/account/reset; Product chỉ product moderation; Order chỉ checkout/order lifecycle; Payment chỉ payment/refund; Finance chỉ funds.available/withdrawal.completed. Producer phải suy ra recipientUserId từ dữ liệu nghiệp vụ sở hữu; Notification kiểm tra User có tồn tại, template phù hợp type và reference. 400 validation, 401 credential sai, 403 NOTIFICATION\_TYPE\_NOT\_ALLOWED, 404 User không tồn tại, 409 payload xung đột.
 
@@ -2838,25 +2859,27 @@ Event dùng Outbox, consumer Inbox chống lặp eventId; envelope thêm actor {
 | :---- | :---- | :---- | :---- |
 | payment.succeeded | Payment | paymentId, checkoutSessionId, amountVnd, completedAt | Order |
 | payment.failed | Payment | paymentId, checkoutSessionId, errorCode | Order |
-| checkout.paid | Order | checkoutSessionId, paymentId (UUID bắt buộc, từ Payment đã lưu trong checkout khi áp dụng PAID), customerId, source, paidAt, cartItems\[{ cartItemId, quantity }\], orders\[{ orderId, sellerId, totalAmountVnd, commissionBps }\] | Cart, Finance, Notification, Payment (snapshot kiểm tra Refund ORDER) |
+| checkout.paid | Order | checkoutSessionId, paymentId (UUID bắt buộc, từ Payment đã lưu trong checkout khi áp dụng PAID), customerId, source, paidAt, cartItems\[{ cartItemId, quantity }\], orders\[{ orderId, sellerId, sellerName, totalAmountVnd, commissionBps }\] | Cart, Finance, Notification, Payment (snapshot kiểm tra Refund ORDER) |
 | checkout.closed | Order | checkoutSessionId, customerId, closeReason (PAYMENT_FAILED \| EXPIRED), closedAt | Payment đóng luồng thu; Notification báo theo lý do |
 | order.packing | Order | orderId, sellerId | (Notification — tùy chọn) |
-| order.delivered | Order | orderId, customerId, sellerId, deliveredAt, customerConfirmDueAt | Notification |
-| order.cancelled | Order | orderId, checkoutSessionId, customerId, sellerId, totalAmountVnd, wasPaid, cancelledBy, reasonCode, reasonNote, refundReason | Payment (nếu wasPaid), Finance, Notification |
-| order.confirmed | Order | orderId, sellerId, customerId, confirmedAt, confirmedBy (CUSTOMER \| SYSTEM) | Finance, Notification |
-| refund.succeeded | Payment | refundId, paymentId, orderId, scope, amountVnd | Finance, Order, Notification |
+| order.delivered | Order | orderId, customerId, sellerId, sellerName, deliveredAt, customerConfirmDueAt | Notification |
+| order.cancelled | Order | orderId, checkoutSessionId, customerId, sellerId, sellerName, totalAmountVnd, wasPaid, cancelledBy, reasonCode, reasonNote, refundReason | Payment (nếu wasPaid), Finance, Notification |
+| order.confirmed | Order | orderId, sellerId, customerId, sellerName, confirmedAt, confirmedBy (CUSTOMER \| SYSTEM) | Finance, Notification |
+| refund.succeeded | Payment | refundId, paymentId, checkoutSessionId, customerId, orderId\|null, scope, amountVnd | Finance, Order, Notification |
 | refund.failed | Payment | refundId, paymentId, checkoutSessionId, customerId, orderId\|null, scope, amountVnd, errorCode, retryCycle, retryCount, retryExhausted | Notification chỉ gửi REFUND_RETRY_REQUIRED khi retryExhausted=true; dedupe refundId + retryCycle, hỗ trợ FULL_CHECKOUT không cần orderId. SUCCESS muộn vẫn áp dụng; link không tự retry |
 | funds.available | Finance | orderId, sellerId, sellerAmountVnd | Notification |
-
-Payment dùng snapshot `checkout.paid` để đối chiếu Payment SUCCESS, chủ checkout, Seller và số tiền từng Order trước khi tạo Refund ORDER từ `order.cancelled`. Khi lệnh hủy đến trước snapshot, Payment ghi Inbox chờ và xử lý tiếp khi nhận được snapshot. Các nghĩa vụ ORDER và FULL_CHECKOUT loại trừ nhau. Phát lại sự kiện hoặc nhận nhiều eventId cho cùng nghĩa vụ hợp lệ vẫn dùng một Refund.
-| withdrawal.completed | Finance | withdrawalId, sellerId, amountVnd, availableAfterVnd | Notification |
+| withdrawal.completed | Finance | withdrawalId, withdrawalCode, sellerId, amountVnd, availableAfterVnd | Notification |
 | seller.registered / approved / rejected | Identity | userId, sellerId (=userId), approvalStatus, authzVersion, reason? | Finance (approved), Notification |
 | seller.banned / seller.unbanned | Identity | userId,sellerId,status,accountStatus,accessMode,bannedAt,disabledAt,restoreUntil,authzVersion,reason | Order không tự hủy; J4 giữ nguyên. Finance không đóng băng available vì ban; Notification phân biệt quyền giới hạn/unban, nêu deadline nếu có. |
 | customer.banned / customer.unbanned | Identity | userId,customerId,accountStatus,accessMode,bannedAt,disabledAt,restoreUntil,authzVersion,reason | Notification theo userId/accountType độc lập; không hợp quyền tài khoản khác. |
-| product.removed | Product | productId, sellerId, reason | Notification |
+| product.removed | Product | productId, productName, sellerId, reason | Notification |
 | password.reset\_requested | Identity | userId, resetUrl (secret nội bộ, không log), expiresAt | Notification EMAIL; không lưu in-app, queue retention ngắn |
 | user.disabled / user.enabled | Identity | userId,accountType,accountStatus,accessMode,bannedAt,disabledAt,restoreUntil,authzVersion,reason | Không tự hủy Order/đóng băng available; Payment/Refund vẫn chạy. user.enabled do nghĩa vụ muộn có accountStatus BANNED, không là unban; chỉ lệnh unban phát *.unbanned. Notification dùng type hiện có, phân biệt quyền giới hạn với khôi phục đầy đủ. |
 | user.roles\_changed | Identity | userId, roleCodes hiện hành, authzVersion | Audit/đồng bộ policy; API vẫn hỏi quyền hiện hành |
+
+Payment dùng snapshot `checkout.paid` để đối chiếu Payment SUCCESS, chủ checkout, Seller và số tiền từng Order trước khi tạo Refund ORDER từ `order.cancelled`. Khi lệnh hủy đến trước snapshot, Payment ghi Inbox chờ và xử lý tiếp khi nhận được snapshot. Các nghĩa vụ ORDER và FULL_CHECKOUT loại trừ nhau. Phát lại sự kiện hoặc nhận nhiều eventId cho cùng nghĩa vụ hợp lệ vẫn dùng một Refund.
+
+Theo lựa chọn người dùng ngày 25/11/2026, producer bổ sung snapshot người nhận/tên cửa hàng và các mã hiển thị như bảng trên, thay vì để Notification gọi API tra cứu Order/Payment/Product. Không đọc chéo DB. Notification nhận event qua Kafka theo topic đúng eventType và kiểm tra producer allowlist; Kafka phải giới hạn quyền ghi topic cho producer tương ứng. Chỉ commit offset sau khi inbox và thông báo đã commit. Lỗi phụ thuộc/DB được thử lại; event thiếu hoặc sai dữ liệu ghi FAILED_REVIEW với mã lỗi và hash, không lưu/log raw payload. Không đăng ký consumer cho password.reset_requested/seller.reapplication_requested.
 
 ### 7.3 Job nền
 
@@ -2867,7 +2890,7 @@ Payment dùng snapshot `checkout.paid` để đối chiếu Payment SUCCESS, ch�
 | J3 (Must) | Order | Đơn DELIVERED quá customerConfirmDueAt → CONFIRMED (confirmedBy \= SYSTEM) | S-RECEIPT-07 |
 | J4 (Must) | Order | Đơn PAID/PACKING quá sellerActionDueAt → CANCELLED (refundReason \= SELLER\_TIMEOUT) | S-DELIVERY-07 |
 | J5 | Payment | Query kết quả chưa rõ; chỉ retry FAILED xác định, gồm 404 đủ điều kiện theo hợp đồng provider. Một lần đầu + tối đa 3 retry mỗi chu kỳ, chờ 1/5/15 phút từ lỗi trước với cùng Refund/key và attempt mới. Query không tính lượt. Hết lượt FAILED, thông báo Customer theo mỗi chu kỳ. SUCCESS muộn áp dụng nếu attempt còn chưa rõ. Nếu mâu thuẫn với FAILED, giữ để đối soát và dừng gửi tiếp. | P-RF-01 |
-| J6 | Notification | Một lần gửi đầu + tối đa 3 retry email sau 1/5/15 phút từ lỗi trước, chỉ lỗi tạm thời, tôn trọng Retry-After. Lỗi vĩnh viễn/token hết hạn dừng ngay; hết lượt FAILED, cùng thông báo/key, không đổi nghiệp vụ | P-19 |
+| J6 (email nghiệp vụ triển khai sau) | Notification | Khi triển khai email: một lần gửi đầu + tối đa 3 retry sau 1/5/15 phút từ lỗi trước, chỉ lỗi tạm thời, tôn trọng Retry-After. Lỗi vĩnh viễn/token hết hạn dừng ngay; hết lượt FAILED, cùng thông báo/key, không đổi nghiệp vụ. Không thay luồng email bảo mật của Identity | P-19 |
 | J7 — Đối soát trạng thái tài khoản bị cấm | Identity | Định kỳ đánh giá BANNED/DISABLED trong đợt cấm; hết nghĩa vụ đã xác minh → DISABLED, nghĩa vụ muộn → BANNED giới hạn. Không chuyển ACTIVE/không tự unban, không reset mốc/phát duplicate; kiểm tra version/đợt cấm trước commit | Retry an toàn, không đặt chu kỳ/backoff hoặc SLA mới |
 
 J1 theo lịch từng message SQS. Retry relay, DLQ và phát lại dùng expiresAt gốc. Chu kỳ job khác thuộc N-06; J5 tiếp tục tra cứu Refund chưa rõ sau khi luồng thu đóng.
@@ -2947,7 +2970,7 @@ Các quyết định tiền/tồn còn hiệu lực từ bản trước. Bản v
 | P-19 / P-RF-01 | Một lần đầu +3 retry, chờ 1/5/15 phút từ lỗi trước; email theo §7.3, Refund theo §6.5/7.3 |
 | P-21a/b/d | Enum hủy/từ chối §4.2, ghi chú ≤500; ba danh sách quản trị riêng reason 1–1.000, Khác có mô tả; §6.1/6.2 |
 | P-21e | Seed đúng 10 ngành hàng và ví dụ [parameters.md](parameters.md#danh-mục-ban-đầu--p-21e), UUID; bắt buộc có dù màn quản trị Should chưa làm; Category không có hoa hồng riêng |
-| P-22 / P-26 | In-app Should 50 gần nhất/30 ngày không mất dedupe/email; địa giới seed DB Identity hai cấp, nguồn/phiên bản ghi rõ khi chuẩn bị, chưa chọn dataset |
+| P-22 / P-26 | In-app Must 50 gần nhất/30 ngày không mất dedupe hoặc email nếu có; địa giới seed DB Identity hai cấp, nguồn/phiên bản ghi rõ khi chuẩn bị, chưa chọn dataset |
 | P-COM-01 | 500 bps = 5% đã chốt, không chỉ dùng test; snapshot Order |
 | N-06 | Chu kỳ đối soát còn mở; SQS đặt lịch từng ExpireCheckout theo P-01 |
 
@@ -3029,7 +3052,7 @@ O1–O3: Payment SUCCESS giữ nguyên; một Order invalid giao dịch chỉ ho
 
 P-RF-01: mỗi chu kỳ một lần đầu +3 retry FAILED sau 1/5/15 phút từ lỗi trước; PENDING/timeout chỉ query, không đếm retry. Hết lượt gửi một REFUND_RETRY_REQUIRED/refundId/retryCycle, giữ nghĩa vụ/pending. Hai tab cùng expectedRetryCycle chỉ mở một chu kỳ; replay cùng HTTP key trả kết quả cũ, key khác/snapshot cũ 409. Chu kỳ mới lại hết lượt gửi thông báo mới; SUCCESS muộn áp dụng đúng một lần, không phát lệnh/ledger trùng. Sai chủ 404, Seller/Admin 403; Customer BANNED vẫn retry đúng nghĩa vụ; FULL_CHECKOUT đóng có đường GET/retry không cần orderId.
 
-Biên tham số: reset sau 30 phút hoặc dùng lại trả RESET_TOKEN_INVALID; địa chỉ thứ 4 lỗi, xóa rồi thêm được; Product >9 tệp/>2 video/>5.000 ký tự và Review Should >5 tệp/>1 video/>1.000 ký tự bị từ chối. Dòng giỏ 100/dòng mới thứ 51 lỗi; thêm trùng cộng không quá 99, mua ngay 99 vẫn kiểm tra tồn. In-app Should chỉ 50 gần nhất/30 ngày nhưng dedupe/email/retry không bị xóa; P-19 dừng lỗi vĩnh viễn/token hết hạn, tôn trọng Retry-After. Bán chạy đúng 500 chưa đạt; tồn khả dụng 5 và thời gian còn 24 giờ đều thuộc cảnh báo.
+Biên tham số: reset sau 30 phút hoặc dùng lại trả RESET_TOKEN_INVALID; địa chỉ thứ 4 lỗi, xóa rồi thêm được; Product >9 tệp/>2 video/>5.000 ký tự và Review Should >5 tệp/>1 video/>1.000 ký tự bị từ chối. Dòng giỏ 100/dòng mới thứ 51 lỗi; thêm trùng cộng không quá 99, mua ngay 99 vẫn kiểm tra tồn. In-app Must hoạt động khi chưa triển khai email; chỉ 50 gần nhất/30 ngày, đọc/xóa đúng owner và replay không khôi phục bản đã xóa/hết hạn, không mất dedupe/email/retry nếu có. Khi có email, P-19 dừng lỗi vĩnh viễn/token hết hạn, tôn trọng Retry-After. Bán chạy đúng 500 chưa đạt; tồn khả dụng 5 và thời gian còn 24 giờ đều thuộc cảnh báo.
 
 Không còn public /catalog, PUT review, my-reviews hoặc public audit. Login vẫn một endpoint nhưng buộc accountType của tài khoản riêng. SellerPublic không có PII; Region 503 đúng khi lỗi, Notification delete/idempotency/allowlist giữ nguyên. Order/CheckoutSession dùng UUID, chỉ Withdrawal có withdrawalCode. dedupe/payload không gửi trùng.
 
