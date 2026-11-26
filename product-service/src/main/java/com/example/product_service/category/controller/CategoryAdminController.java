@@ -4,6 +4,7 @@ import com.example.product_service.category.dto.CategoryAdminResponse;
 import com.example.product_service.category.dto.CreateCategoryRequest;
 import com.example.product_service.category.dto.UpdateCategoryRequest;
 import com.example.product_service.category.service.CategoryService;
+import com.example.product_service.client.identity.IdentityClientAdapter;
 import com.example.product_service.common.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -22,10 +23,12 @@ import java.util.List;
 public class CategoryAdminController {
 
     private final CategoryService categoryService;
+    private final IdentityClientAdapter identityClientAdapter;
 
     @Operation(summary = "Xem tất cả danh mục bao gồm cả danh mục ẩn (kèm số lượng sản phẩm)")
     @GetMapping
     public ResponseEntity<ApiResponse<List<CategoryAdminResponse>>> getAllCategories() {
+        identityClientAdapter.requirePermission("category:manage");
         ApiResponse<List<CategoryAdminResponse>> response = categoryService.getAllCategories();
         return ResponseEntity.ok(response);
     }
@@ -33,6 +36,7 @@ public class CategoryAdminController {
     @Operation(summary = "Thêm mới danh mục")
     @PostMapping
     public ResponseEntity<ApiResponse<CategoryAdminResponse>> createCategory(@Valid @RequestBody CreateCategoryRequest request) {
+        identityClientAdapter.requirePermission("category:manage");
         ApiResponse<CategoryAdminResponse> response = categoryService.createCategory(request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(response);
@@ -43,6 +47,7 @@ public class CategoryAdminController {
     public ResponseEntity<ApiResponse<CategoryAdminResponse>> updateCategory(
             @PathVariable String categoryId,
             @Valid @RequestBody UpdateCategoryRequest request) {
+        identityClientAdapter.requirePermission("category:manage");
         ApiResponse<CategoryAdminResponse> response = categoryService.updateCategory(categoryId, request);
         return ResponseEntity.ok(response);
     }
@@ -50,6 +55,7 @@ public class CategoryAdminController {
     @Operation(summary = "Xóa danh mục (chỉ xóa được khi danh mục chưa gắn với sản phẩm nào)")
     @DeleteMapping("/{categoryId}")
     public ResponseEntity<Void> deleteCategory(@PathVariable String categoryId) {
+        identityClientAdapter.requirePermission("category:manage");
         categoryService.deleteCategory(categoryId);
         return ResponseEntity
                 .status(HttpStatus.NO_CONTENT)

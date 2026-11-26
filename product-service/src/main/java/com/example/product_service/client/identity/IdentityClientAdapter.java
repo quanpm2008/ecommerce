@@ -2,6 +2,7 @@ package com.example.product_service.client.identity;
 
 import com.example.product_service.client.identity.dto.SellerStatusDto;
 import com.example.product_service.common.response.ApiResponse;
+import com.example.product_service.media.common.MediaPurpose;
 import com.example.product_service.product.dto.SellerPublicDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,6 +25,42 @@ public class IdentityClientAdapter {
     private final IdentityClient identityClient;
 
     public UUID requireSeller() {
+        IdentityClient.SellerAuthorization auth = fetchAuthorizationContext();
+        if (!"SELLER".equals(auth.accountType()) || !"ACTIVE".equals(auth.accountStatus())
+                || auth.permissions() == null || !auth.permissions().contains("product:manage:own")) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+        }
+        return auth.userId();
+    }
+
+    public UUID requirePermission(String permission) {
+        IdentityClient.SellerAuthorization auth = fetchAuthorizationContext();
+        if (!"ACTIVE".equals(auth.accountStatus())
+                || auth.permissions() == null || !auth.permissions().contains(permission)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+        }
+        return auth.userId();
+    }
+
+    public UUID requireCustomerForReview() {
+        return requirePermission("review:write:own");
+    }
+
+    public void requireMediaUploadPermission(List<MediaPurpose> purposes) {
+        if (purposes == null || purposes.isEmpty()) {
+            return;
+        }
+        boolean needsSeller = purposes.stream().anyMatch(p -> p == MediaPurpose.PRODUCT_MEDIA);
+        boolean needsReview = purposes.stream().anyMatch(p -> p == MediaPurpose.REVIEW_MEDIA);
+        if (needsSeller) {
+            requireSeller();
+        }
+        if (needsReview) {
+            requireCustomerForReview();
+        }
+    }
+
+    private IdentityClient.SellerAuthorization fetchAuthorizationContext() {
         IdentityClient.SellerAuthorization auth;
         try {
             var reply = identityClient.authorizationContext();
@@ -39,11 +76,7 @@ public class IdentityClientAdapter {
         if (!auth.sessionActive() || auth.userId() == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
         }
-        if (!"SELLER".equals(auth.accountType()) || !"ACTIVE".equals(auth.accountStatus())
-                || auth.permissions() == null || !auth.permissions().contains("product:manage:own")) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN);
-        }
-        return auth.userId();
+        return auth;
     }
 
     public boolean requireCurrentSellability(UUID sellerId) {

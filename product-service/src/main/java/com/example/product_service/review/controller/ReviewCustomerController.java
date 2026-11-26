@@ -1,5 +1,6 @@
 package com.example.product_service.review.controller;
 
+import com.example.product_service.client.identity.IdentityClientAdapter;
 import com.example.product_service.common.response.ApiResponse;
 import com.example.product_service.review.dto.CreateReviewRequest;
 import com.example.product_service.review.dto.ReviewResponse;
@@ -21,13 +22,14 @@ import java.util.UUID;
 public class ReviewCustomerController {
 
     private final ReviewService reviewService;
+    private final IdentityClientAdapter identityClientAdapter;
 
     @Operation(summary = "Tạo đánh giá sản phẩm (xác minh điều kiện mua hàng từ Order Service)")
     @PostMapping
     public ResponseEntity<ApiResponse<ReviewResponse>> createReview(
-            @RequestHeader("X-User-Id") UUID customerId,
             @PathVariable UUID productId,
             @Valid @RequestBody CreateReviewRequest request) {
+        UUID customerId = identityClientAdapter.requireCustomerForReview();
         ReviewResponse response = reviewService.createReview(customerId, productId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.of(response));
     }
