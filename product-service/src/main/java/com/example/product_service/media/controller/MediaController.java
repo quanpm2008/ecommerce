@@ -1,5 +1,6 @@
 package com.example.product_service.media.controller;
 
+import com.example.product_service.client.identity.IdentityClientAdapter;
 import com.example.product_service.common.response.ApiResponse;
 import com.example.product_service.media.dto.request.UploadUrlItemRequest;
 import com.example.product_service.media.dto.response.UploadUrlResponse;
@@ -26,12 +27,15 @@ import java.util.List;
 public class MediaController {
 
     private final MediaService mediaService;
+    private final IdentityClientAdapter identityClientAdapter;
 
     @Operation(summary = "Tạo URL upload media (ảnh/video) kèm hạn sử dụng")
     @PostMapping("/upload-urls")
     public ResponseEntity<ApiResponse<List<UploadUrlResponse>>> getUploadUrls(
             @RequestBody @NotEmpty List<@Valid UploadUrlItemRequest> files
     ) {
+        identityClientAdapter.requireMediaUploadPermission(
+                files.stream().map(UploadUrlItemRequest::getPurpose).toList());
         List<UploadUrlResponse> responses = mediaService.generateUploadUrls(files);
         return ResponseEntity.ok(ApiResponse.of(responses));
     }

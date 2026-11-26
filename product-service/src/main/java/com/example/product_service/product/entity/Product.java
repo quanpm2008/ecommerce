@@ -3,6 +3,7 @@ package com.example.product_service.product.entity;
 import com.example.product_service.category.entity.Category;
 import com.example.product_service.product.dto.model.MediaItem;
 import com.example.product_service.product.enums.ProductStatus;
+import com.example.product_service.product.validator.VietnameseTextNormalizer;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -42,6 +43,9 @@ public class Product {
     @Column(name = "product_name", nullable = false, length = 255)
     private String productName;
 
+    @Column(name = "normalized_name", length = 255)
+    private String normalizedName;
+
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
@@ -70,5 +74,11 @@ public class Product {
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    @PrePersist
+    @PreUpdate
+    private void syncNormalizedName() {
+        this.normalizedName = VietnameseTextNormalizer.normalize(this.productName);
+    }
 
 }

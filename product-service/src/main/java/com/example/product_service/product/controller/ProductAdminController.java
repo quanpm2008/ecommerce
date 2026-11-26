@@ -1,5 +1,6 @@
 package com.example.product_service.product.controller;
 
+import com.example.product_service.client.identity.IdentityClientAdapter;
 import com.example.product_service.common.response.ApiPageResponse;
 import com.example.product_service.common.response.ApiResponse;
 import com.example.product_service.product.dto.request.RemoveProductRequest;
@@ -25,6 +26,7 @@ import java.util.UUID;
 public class ProductAdminController {
 
     private final ProductService productService;
+    private final IdentityClientAdapter identityClientAdapter;
 
     @Operation(summary = "Tra cứu danh sách sản phẩm toàn hệ thống (kèm thông tin kiểm duyệt, hạn khôi phục)")
     @GetMapping
@@ -36,6 +38,8 @@ public class ProductAdminController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "createdAt,desc") String sort) {
+
+        identityClientAdapter.requirePermission("operations:read:any");
 
         int zeroBasedPage = Math.max(page - 1, 0);
 
@@ -49,7 +53,7 @@ public class ProductAdminController {
     @Operation(summary = "Xem chi tiết sản phẩm cho Admin")
     @GetMapping("/{productId}")
     public ResponseEntity<ApiResponse<AdminProductResponse>> getAdminProductDetail(@PathVariable UUID productId) {
-
+        identityClientAdapter.requirePermission("operations:read:any");
         return ResponseEntity.ok(ApiResponse.of(productService.getAdminProductDetail(productId)));
     }
 
@@ -58,14 +62,14 @@ public class ProductAdminController {
     public ResponseEntity<ApiResponse<AdminProductResponse>> removeProduct(
             @PathVariable UUID productId,
             @Valid @RequestBody RemoveProductRequest request) {
-
+        identityClientAdapter.requirePermission("product:moderate");
         return ResponseEntity.ok(ApiResponse.of(productService.removeProductByAdmin(productId, request)));
     }
 
     @Operation(summary = "Khôi phục sản phẩm đã bị gỡ về trạng thái Tạm ẩn (HIDDEN) trong thời hạn 30 ngày")
     @PostMapping("/{productId}/restore")
     public ResponseEntity<ApiResponse<AdminProductResponse>> restoreProduct(@PathVariable UUID productId) {
-
+        identityClientAdapter.requirePermission("product:moderate");
         return ResponseEntity.ok(ApiResponse.of(productService.restoreProductByAdmin(productId)));
     }
 }

@@ -11,6 +11,7 @@ import com.example.product_service.client.order.OrderInventoryClientAdapter;
 import com.example.product_service.client.order.dto.InventoryDetailDto;
 import com.example.product_service.common.response.ApiPageResponse;
 import com.example.product_service.common.response.PageMetaResponse;
+import com.example.product_service.media.service.S3MediaStorage;
 import com.example.product_service.product.dto.CategorySummaryDto;
 import com.example.product_service.product.dto.SellerPublicDto;
 import com.example.product_service.product.dto.request.CreateProductRequest;
@@ -57,6 +58,7 @@ public class ProductServiceImpl implements ProductService {
     private final NotificationClient notificationClient;
     private final ProductInventoryProvision inventoryProvision;
     private final ProductSaleEvidence saleEvidence;
+    private final S3MediaStorage s3MediaStorage;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     @Override
@@ -64,13 +66,20 @@ public class ProductServiceImpl implements ProductService {
     public ApiPageResponse<ProductCardResponse> searchPublicProducts(
             String q, UUID categoryId, UUID sellerId, Long minPriceVnd, Long maxPriceVnd, Pageable pageable) {
 
-        List<UUID> allowedSellers = null;
+        if (minPriceVnd != null && maxPriceVnd != null && minPriceVnd > maxPriceVnd) {
+            throw new IllegalArgumentException("minPriceVnd không được lớn hơn maxPriceVnd");
+        }
+        if (pageable.getPageSize() > 100) {
+            throw new IllegalArgumentException("size tối đa là 100");
+        }
+
+        List<UUID> allowedSellers;
         if (sellerId != null) {
             if (!identityClientAdapter.isSellerSellable(sellerId)) {
                 return ApiPageResponse.of(
                         Collections.emptyList(),
                         PageMetaResponse.builder()
-                                .page(1)
+                                .page(pageable.getPageNumber() + 1)
                                 .size(pageable.getPageSize())
                                 .totalItems(0L)
                                 .totalPages(0)
@@ -78,10 +87,42 @@ public class ProductServiceImpl implements ProductService {
                 );
             }
             allowedSellers = List.of(sellerId);
+        } else {
+            List<UUID> candidateSellers = productRepository.findDistinctSellerIdsByStatus(ProductStatus.SELLING);
+            if (candidateSellers.isEmpty()) {
+                return ApiPageResponse.of(
+                        Collections.emptyList(),
+                        PageMetaResponse.builder()
+                                .page(pageable.getPageNumber() + 1)
+                                .size(pageable.getPageSize())
+                                .totalItems(0L)
+                                .totalPages(0)
+                                .build()
+                );
+            }
+            Map<UUID, Boolean> sellableMap = identityClientAdapter.getSellableMap(candidateSellers);
+            allowedSellers = candidateSellers.stream()
+                    .filter(id -> Boolean.TRUE.equals(sellableMap.get(id)))
+                    .toList();
+            if (allowedSellers.isEmpty()) {
+                return ApiPageResponse.of(
+                        Collections.emptyList(),
+                        PageMetaResponse.builder()
+                                .page(pageable.getPageNumber() + 1)
+                                .size(pageable.getPageSize())
+                                .totalItems(0L)
+                                .totalPages(0)
+                                .build()
+                );
+            }
         }
 
         Specification<Product> spec = ProductSpecification.filterPublic(q, categoryId, sellerId, minPriceVnd, maxPriceVnd, allowedSellers);
-        Page<Product> page = productRepository.findAll(spec, pageable);
+        var ratingSort = pageable.getSort().getOrderFor("ratingAverage");
+        Pageable queryPageable = ratingSort != null
+                ? PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt"))
+                : pageable;
+        Page<Product> page = productRepository.findAll(spec, queryPageable);
 
         Map<UUID, Integer> availabilityMap = orderInventoryClientAdapter.getAvailabilityMap(
                 page.getContent().stream().map(Product::getProductId).toList());
@@ -89,6 +130,15 @@ public class ProductServiceImpl implements ProductService {
         List<ProductCardResponse> cards = page.getContent().stream()
                 .map(p -> toProductCardResponse(p, availabilityMap.getOrDefault(p.getProductId(), 0)))
                 .toList();
+        if (ratingSort != null) {
+            var comparator = java.util.Comparator.comparing(
+                    ProductCardResponse::getRatingAverage,
+                    java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()));
+            if (ratingSort.isDescending()) {
+                comparator = comparator.reversed();
+            }
+            cards = cards.stream().sorted(comparator).toList();
+        }
 
         return ApiPageResponse.of(cards, PageMetaResponse.fromPage(page));
     }
@@ -100,8 +150,8 @@ public class ProductServiceImpl implements ProductService {
         Product p = productRepository.findById(productId)
                 .orElseThrow(() -> new ProductNotFoundException("Không tìm thấy sản phẩm với mã: " + productId));
 
-        if (p.getStatus() == ProductStatus.REMOVED) {
-            throw new ProductRemovedByAdminException("Sản phẩm đã bị gỡ bỏ bởi Quản trị viên.");
+        if (p.getStatus() != ProductStatus.SELLING || !identityClientAdapter.isSellerSellable(p.getSellerId())) {
+            throw new ProductNotFoundException("Sản phẩm không còn bán hoặc không tồn tại: " + productId);
         }
 
         Category category = categoryRepository.findById(p.getCategoryId())
@@ -117,7 +167,7 @@ public class ProductServiceImpl implements ProductService {
                 .productId(p.getProductId())
                 .productName(p.getProductName())
                 .priceVnd(p.getPriceVnd())
-                .coverImageUrl(productValidator.resolveCoverImageUrl(p.getMedia()))
+                .coverImageUrl(s3MediaStorage.resolveReadUrl(productValidator.resolveCoverImageUrl(p.getMedia())))
                 .ratingAverage(reviewSummary.getRatingAverage())
                 .ratingCount(reviewSummary.getRatingCount())
                 .stockStatus(availableQty > 0 ? "IN_STOCK" : "OUT_OF_STOCK")
@@ -128,7 +178,7 @@ public class ProductServiceImpl implements ProductService {
                         .build())
                 .media(p.getMedia())
                 .availableQuantity(availableQty)
-                .maxPerOrder(Math.min(10, Math.max(0, availableQty)))
+                .maxPerOrder(Math.min(99, Math.max(0, availableQty)))
                 .seller(sellerPublic)
                 .build();
     }
@@ -144,11 +194,20 @@ public class ProductServiceImpl implements ProductService {
 
         List<Product> related = productRepository.findByCategoryIdAndStatusAndProductIdNot(
                 p.getCategoryId(), ProductStatus.SELLING, productId, PageRequest.of(0, fetchLimit));
+        if (related.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Map<UUID, Boolean> sellableMap = identityClientAdapter.getSellableMap(
+                related.stream().map(Product::getSellerId).distinct().toList());
+        List<Product> sellableRelated = related.stream()
+                .filter(r -> Boolean.TRUE.equals(sellableMap.get(r.getSellerId())))
+                .toList();
 
         Map<UUID, Integer> availabilityMap = orderInventoryClientAdapter.getAvailabilityMap(
-                related.stream().map(Product::getProductId).toList());
+                sellableRelated.stream().map(Product::getProductId).toList());
 
-        return related.stream()
+        return sellableRelated.stream()
                 .map(r -> toProductCardResponse(r, availabilityMap.getOrDefault(r.getProductId(), 0)))
                 .toList();
     }
@@ -170,9 +229,24 @@ public class ProductServiceImpl implements ProductService {
 
         List<SellerProductResponse> responses = page.getContent().stream()
                 .map(p -> toSellerProductResponse(p, catNames.get(p.getCategoryId()), detailMap.get(p.getProductId())))
+                .filter(item -> matchesStockFilter(item, stock))
                 .toList();
 
         return ApiPageResponse.of(responses, PageMetaResponse.fromPage(page));
+    }
+
+    private boolean matchesStockFilter(SellerProductResponse item, String stock) {
+        if (stock == null || stock.isBlank()) {
+            return true;
+        }
+        int available = item.getAvailableQuantity() != null ? item.getAvailableQuantity() : 0;
+        if ("OUT_OF_STOCK".equalsIgnoreCase(stock.trim())) {
+            return available <= 0;
+        }
+        if ("IN_STOCK".equalsIgnoreCase(stock.trim())) {
+            return available > 0;
+        }
+        return true;
     }
 
     @Override
@@ -341,6 +415,8 @@ public class ProductServiceImpl implements ProductService {
     @Transactional
     public AdminProductResponse removeProductByAdmin(UUID productId, RemoveProductRequest request) {
 
+        String reason = validateRemovalReason(request.getReason());
+
         Product p = productRepository.findById(productId)
                 .orElseThrow(() -> new ProductNotFoundException("Không tìm thấy sản phẩm với mã: " + productId));
 
@@ -350,7 +426,7 @@ public class ProductServiceImpl implements ProductService {
         }
 
         p.setStatus(ProductStatus.REMOVED);
-        p.setRemovalReason(request.getReason());
+        p.setRemovalReason(reason);
         p.setRemovedAt(OffsetDateTime.now());
 
         Product saved = productRepository.saveAndFlush(p);
@@ -365,7 +441,7 @@ public class ProductServiceImpl implements ProductService {
                     .channels(List.of("IN_APP"))
                     .templateData(Map.of(
                             "productName", p.getProductName(),
-                            "reason", request.getReason()
+                            "reason", reason
                     ))
                     .build());
         } catch (Exception e) {
@@ -375,6 +451,19 @@ public class ProductServiceImpl implements ProductService {
         String catName = categoryRepository.findById(p.getCategoryId()).map(Category::getCategoryName).orElse("N/A");
 
         return toAdminProductResponse(saved, catName, 0, true);
+    }
+
+    private String validateRemovalReason(String rawReason) {
+        String trimmed = rawReason == null ? "" : rawReason.trim();
+        if (trimmed.isEmpty() || trimmed.length() > 1000) {
+            throw new IllegalArgumentException("Lý do gỡ sản phẩm phải từ 1 đến 1.000 ký tự.");
+        }
+        if ("Khác".equalsIgnoreCase(trimmed)
+                || (trimmed.toLowerCase(java.util.Locale.ROOT).startsWith("khác:")
+                && trimmed.substring(5).trim().isEmpty())) {
+            throw new IllegalArgumentException("Chọn lý do Khác phải nhập mô tả bổ sung.");
+        }
+        return trimmed;
     }
 
     @Override
@@ -388,11 +477,8 @@ public class ProductServiceImpl implements ProductService {
             throw new InvalidStateTransitionException("Chỉ sản phẩm REMOVED mới có thể khôi phục.");
         }
 
-        if (p.getRemovedAt() != null) {
-            long daysPassed = Duration.between(p.getRemovedAt(), OffsetDateTime.now()).toDays();
-            if (daysPassed > 30) {
-                throw new RestoreWindowExpiredException("Đã quá thời hạn 30 ngày khôi phục.");
-            }
+        if (p.getRemovedAt() != null && p.getRemovedAt().plusDays(30).isBefore(OffsetDateTime.now())) {
+            throw new RestoreWindowExpiredException("Đã quá thời hạn 30 ngày khôi phục.");
         }
 
         p.setStatus(ProductStatus.HIDDEN);
@@ -430,7 +516,7 @@ public class ProductServiceImpl implements ProductService {
                             .sellerId(p.getSellerId())
                             .priceVnd(p.getPriceVnd())
                             .productName(p.getProductName())
-                            .coverImageUrl(productValidator.resolveCoverImageUrl(p.getMedia()))
+                            .coverImageUrl(s3MediaStorage.resolveReadUrl(productValidator.resolveCoverImageUrl(p.getMedia())))
                             .media(p.getMedia())
                             .status(p.getStatus())
                             .sellable(isSellable)
@@ -448,7 +534,7 @@ public class ProductServiceImpl implements ProductService {
                 .productId(p.getProductId())
                 .productName(p.getProductName())
                 .priceVnd(p.getPriceVnd())
-                .coverImageUrl(productValidator.resolveCoverImageUrl(p.getMedia()))
+                .coverImageUrl(s3MediaStorage.resolveReadUrl(productValidator.resolveCoverImageUrl(p.getMedia())))
                 .ratingAverage(summary.getRatingAverage())
                 .ratingCount(summary.getRatingCount())
                 .stockStatus(availableQty > 0 ? "IN_STOCK" : "OUT_OF_STOCK")
@@ -470,7 +556,7 @@ public class ProductServiceImpl implements ProductService {
                 .category(CategorySummaryDto.builder().categoryId(p.getCategoryId()).categoryName(catName).build())
                 .priceVnd(p.getPriceVnd())
                 .status(p.getStatus())
-                .coverImageUrl(productValidator.resolveCoverImageUrl(p.getMedia()))
+                .coverImageUrl(s3MediaStorage.resolveReadUrl(productValidator.resolveCoverImageUrl(p.getMedia())))
                 .media(p.getMedia())
                 .description(p.getDescription())
                 .onHandQuantity(onHand)
@@ -502,7 +588,7 @@ public class ProductServiceImpl implements ProductService {
                 .productId(p.getProductId())
                 .productName(p.getProductName())
                 .priceVnd(p.getPriceVnd())
-                .coverImageUrl(productValidator.resolveCoverImageUrl(p.getMedia()))
+                .coverImageUrl(s3MediaStorage.resolveReadUrl(productValidator.resolveCoverImageUrl(p.getMedia())))
                 .ratingAverage(summary.getRatingAverage())
                 .ratingCount(summary.getRatingCount())
                 .stockStatus(availableQty > 0 ? "IN_STOCK" : "OUT_OF_STOCK")
