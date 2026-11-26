@@ -116,7 +116,11 @@ public class ProductServiceImpl implements ProductService {
         }
 
         Specification<Product> spec = ProductSpecification.filterPublic(q, categoryId, sellerId, minPriceVnd, maxPriceVnd, allowedSellers);
-        Page<Product> page = productRepository.findAll(spec, pageable);
+        var ratingSort = pageable.getSort().getOrderFor("ratingAverage");
+        Pageable queryPageable = ratingSort != null
+                ? PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt"))
+                : pageable;
+        Page<Product> page = productRepository.findAll(spec, queryPageable);
 
         Map<UUID, Integer> availabilityMap = orderInventoryClientAdapter.getAvailabilityMap(
                 page.getContent().stream().map(Product::getProductId).toList());
@@ -124,6 +128,15 @@ public class ProductServiceImpl implements ProductService {
         List<ProductCardResponse> cards = page.getContent().stream()
                 .map(p -> toProductCardResponse(p, availabilityMap.getOrDefault(p.getProductId(), 0)))
                 .toList();
+        if (ratingSort != null) {
+            var comparator = java.util.Comparator.comparing(
+                    ProductCardResponse::getRatingAverage,
+                    java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()));
+            if (ratingSort.isDescending()) {
+                comparator = comparator.reversed();
+            }
+            cards = cards.stream().sorted(comparator).toList();
+        }
 
         return ApiPageResponse.of(cards, PageMetaResponse.fromPage(page));
     }
@@ -214,9 +227,24 @@ public class ProductServiceImpl implements ProductService {
 
         List<SellerProductResponse> responses = page.getContent().stream()
                 .map(p -> toSellerProductResponse(p, catNames.get(p.getCategoryId()), detailMap.get(p.getProductId())))
+                .filter(item -> matchesStockFilter(item, stock))
                 .toList();
 
         return ApiPageResponse.of(responses, PageMetaResponse.fromPage(page));
+    }
+
+    private boolean matchesStockFilter(SellerProductResponse item, String stock) {
+        if (stock == null || stock.isBlank()) {
+            return true;
+        }
+        int available = item.getAvailableQuantity() != null ? item.getAvailableQuantity() : 0;
+        if ("OUT_OF_STOCK".equalsIgnoreCase(stock.trim())) {
+            return available <= 0;
+        }
+        if ("IN_STOCK".equalsIgnoreCase(stock.trim())) {
+            return available > 0;
+        }
+        return true;
     }
 
     @Override

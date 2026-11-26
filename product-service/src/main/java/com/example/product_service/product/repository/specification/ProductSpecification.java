@@ -2,6 +2,7 @@ package com.example.product_service.product.repository.specification;
 
 import com.example.product_service.product.entity.Product;
 import com.example.product_service.product.enums.ProductStatus;
+import com.example.product_service.product.validator.VietnameseTextNormalizer;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.jpa.domain.Specification;
 
@@ -36,8 +37,7 @@ public class ProductSpecification {
                 predicates.add(cb.equal(root.get("sellerId"), sellerId));
             }
             if (search != null && !search.trim().isEmpty()) {
-                String pattern = "%" + search.trim().toLowerCase() + "%";
-                predicates.add(cb.like(cb.lower(root.get("productName")), pattern));
+                predicates.add(buildNameSearchPredicate(root, cb, search));
             }
             if (minPriceVnd != null) {
                 predicates.add(cb.greaterThanOrEqualTo(root.get("priceVnd"), minPriceVnd));
@@ -64,8 +64,7 @@ public class ProductSpecification {
                 predicates.add(cb.equal(root.get("categoryId"), categoryId));
             }
             if (search != null && !search.trim().isEmpty()) {
-                String pattern = "%" + search.trim().toLowerCase() + "%";
-                predicates.add(cb.like(cb.lower(root.get("productName")), pattern));
+                predicates.add(buildNameSearchPredicate(root, cb, search));
             }
             return cb.and(predicates.toArray(new Predicate[0]));
         };
@@ -88,10 +87,21 @@ public class ProductSpecification {
                 predicates.add(cb.equal(root.get("categoryId"), categoryId));
             }
             if (search != null && !search.trim().isEmpty()) {
-                String pattern = "%" + search.trim().toLowerCase() + "%";
-                predicates.add(cb.like(cb.lower(root.get("productName")), pattern));
+                predicates.add(buildNameSearchPredicate(root, cb, search));
             }
             return cb.and(predicates.toArray(new Predicate[0]));
         };
+    }
+
+    private static Predicate buildNameSearchPredicate(
+            jakarta.persistence.criteria.Root<Product> root,
+            jakarta.persistence.criteria.CriteriaBuilder cb,
+            String search) {
+        String normalizedPattern = "%" + VietnameseTextNormalizer.normalize(search) + "%";
+        String rawPattern = "%" + search.trim().toLowerCase() + "%";
+        return cb.or(
+                cb.like(root.get("normalizedName"), normalizedPattern),
+                cb.like(cb.lower(root.get("productName")), rawPattern)
+        );
     }
 }
