@@ -413,6 +413,8 @@ public class ProductServiceImpl implements ProductService {
     @Transactional
     public AdminProductResponse removeProductByAdmin(UUID productId, RemoveProductRequest request) {
 
+        String reason = validateRemovalReason(request.getReason());
+
         Product p = productRepository.findById(productId)
                 .orElseThrow(() -> new ProductNotFoundException("Không tìm thấy sản phẩm với mã: " + productId));
 
@@ -422,7 +424,7 @@ public class ProductServiceImpl implements ProductService {
         }
 
         p.setStatus(ProductStatus.REMOVED);
-        p.setRemovalReason(request.getReason());
+        p.setRemovalReason(reason);
         p.setRemovedAt(OffsetDateTime.now());
 
         Product saved = productRepository.saveAndFlush(p);
@@ -437,7 +439,7 @@ public class ProductServiceImpl implements ProductService {
                     .channels(List.of("IN_APP"))
                     .templateData(Map.of(
                             "productName", p.getProductName(),
-                            "reason", request.getReason()
+                            "reason", reason
                     ))
                     .build());
         } catch (Exception e) {
@@ -447,6 +449,19 @@ public class ProductServiceImpl implements ProductService {
         String catName = categoryRepository.findById(p.getCategoryId()).map(Category::getCategoryName).orElse("N/A");
 
         return toAdminProductResponse(saved, catName, 0, true);
+    }
+
+    private String validateRemovalReason(String rawReason) {
+        String trimmed = rawReason == null ? "" : rawReason.trim();
+        if (trimmed.isEmpty() || trimmed.length() > 1000) {
+            throw new IllegalArgumentException("Lý do gỡ sản phẩm phải từ 1 đến 1.000 ký tự.");
+        }
+        if ("Khác".equalsIgnoreCase(trimmed)
+                || (trimmed.toLowerCase(java.util.Locale.ROOT).startsWith("khác:")
+                && trimmed.substring(5).trim().isEmpty())) {
+            throw new IllegalArgumentException("Chọn lý do Khác phải nhập mô tả bổ sung.");
+        }
+        return trimmed;
     }
 
     @Override
@@ -460,11 +475,8 @@ public class ProductServiceImpl implements ProductService {
             throw new InvalidStateTransitionException("Chỉ sản phẩm REMOVED mới có thể khôi phục.");
         }
 
-        if (p.getRemovedAt() != null) {
-            long daysPassed = Duration.between(p.getRemovedAt(), OffsetDateTime.now()).toDays();
-            if (daysPassed > 30) {
-                throw new RestoreWindowExpiredException("Đã quá thời hạn 30 ngày khôi phục.");
-            }
+        if (p.getRemovedAt() != null && p.getRemovedAt().plusDays(30).isBefore(OffsetDateTime.now())) {
+            throw new RestoreWindowExpiredException("Đã quá thời hạn 30 ngày khôi phục.");
         }
 
         p.setStatus(ProductStatus.HIDDEN);

@@ -25,7 +25,7 @@ public class UpdateProductRequest {
     private UUID categoryId;
 
     @NotNull
-    @Min(value = 0)
+    @Min(value = 1)
     private Long priceVnd;
 
     @Size(max = 5000)
