@@ -31,6 +31,9 @@ public interface ProductRepository extends JpaRepository<Product, UUID>,
 
     List<Product> findByProductIdIn(List<UUID> productIds);
 
+    @Query("select distinct p.sellerId from Product p where p.status = :status")
+    List<UUID> findDistinctSellerIdsByStatus(ProductStatus status);
+
     @Modifying
     @Query(value = "update products set status = 'SELLING', updated_at = statement_timestamp() where product_id = :productId and seller_id = :sellerId and status = 'HIDDEN'",
             nativeQuery = true)

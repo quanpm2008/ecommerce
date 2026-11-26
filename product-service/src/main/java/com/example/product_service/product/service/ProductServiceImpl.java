@@ -64,13 +64,20 @@ public class ProductServiceImpl implements ProductService {
     public ApiPageResponse<ProductCardResponse> searchPublicProducts(
             String q, UUID categoryId, UUID sellerId, Long minPriceVnd, Long maxPriceVnd, Pageable pageable) {
 
-        List<UUID> allowedSellers = null;
+        if (minPriceVnd != null && maxPriceVnd != null && minPriceVnd > maxPriceVnd) {
+            throw new IllegalArgumentException("minPriceVnd không được lớn hơn maxPriceVnd");
+        }
+        if (pageable.getPageSize() > 100) {
+            throw new IllegalArgumentException("size tối đa là 100");
+        }
+
+        List<UUID> allowedSellers;
         if (sellerId != null) {
             if (!identityClientAdapter.isSellerSellable(sellerId)) {
                 return ApiPageResponse.of(
                         Collections.emptyList(),
                         PageMetaResponse.builder()
-                                .page(1)
+                                .page(pageable.getPageNumber() + 1)
                                 .size(pageable.getPageSize())
                                 .totalItems(0L)
                                 .totalPages(0)
@@ -78,6 +85,34 @@ public class ProductServiceImpl implements ProductService {
                 );
             }
             allowedSellers = List.of(sellerId);
+        } else {
+            List<UUID> candidateSellers = productRepository.findDistinctSellerIdsByStatus(ProductStatus.SELLING);
+            if (candidateSellers.isEmpty()) {
+                return ApiPageResponse.of(
+                        Collections.emptyList(),
+                        PageMetaResponse.builder()
+                                .page(pageable.getPageNumber() + 1)
+                                .size(pageable.getPageSize())
+                                .totalItems(0L)
+                                .totalPages(0)
+                                .build()
+                );
+            }
+            Map<UUID, Boolean> sellableMap = identityClientAdapter.getSellableMap(candidateSellers);
+            allowedSellers = candidateSellers.stream()
+                    .filter(id -> Boolean.TRUE.equals(sellableMap.get(id)))
+                    .toList();
+            if (allowedSellers.isEmpty()) {
+                return ApiPageResponse.of(
+                        Collections.emptyList(),
+                        PageMetaResponse.builder()
+                                .page(pageable.getPageNumber() + 1)
+                                .size(pageable.getPageSize())
+                                .totalItems(0L)
+                                .totalPages(0)
+                                .build()
+                );
+            }
         }
 
         Specification<Product> spec = ProductSpecification.filterPublic(q, categoryId, sellerId, minPriceVnd, maxPriceVnd, allowedSellers);
@@ -100,8 +135,8 @@ public class ProductServiceImpl implements ProductService {
         Product p = productRepository.findById(productId)
                 .orElseThrow(() -> new ProductNotFoundException("Không tìm thấy sản phẩm với mã: " + productId));
 
-        if (p.getStatus() == ProductStatus.REMOVED) {
-            throw new ProductRemovedByAdminException("Sản phẩm đã bị gỡ bỏ bởi Quản trị viên.");
+        if (p.getStatus() != ProductStatus.SELLING || !identityClientAdapter.isSellerSellable(p.getSellerId())) {
+            throw new ProductNotFoundException("Sản phẩm không còn bán hoặc không tồn tại: " + productId);
         }
 
         Category category = categoryRepository.findById(p.getCategoryId())
@@ -128,7 +163,7 @@ public class ProductServiceImpl implements ProductService {
                         .build())
                 .media(p.getMedia())
                 .availableQuantity(availableQty)
-                .maxPerOrder(Math.min(10, Math.max(0, availableQty)))
+                .maxPerOrder(Math.min(99, Math.max(0, availableQty)))
                 .seller(sellerPublic)
                 .build();
     }
@@ -144,11 +179,20 @@ public class ProductServiceImpl implements ProductService {
 
         List<Product> related = productRepository.findByCategoryIdAndStatusAndProductIdNot(
                 p.getCategoryId(), ProductStatus.SELLING, productId, PageRequest.of(0, fetchLimit));
+        if (related.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Map<UUID, Boolean> sellableMap = identityClientAdapter.getSellableMap(
+                related.stream().map(Product::getSellerId).distinct().toList());
+        List<Product> sellableRelated = related.stream()
+                .filter(r -> Boolean.TRUE.equals(sellableMap.get(r.getSellerId())))
+                .toList();
 
         Map<UUID, Integer> availabilityMap = orderInventoryClientAdapter.getAvailabilityMap(
-                related.stream().map(Product::getProductId).toList());
+                sellableRelated.stream().map(Product::getProductId).toList());
 
-        return related.stream()
+        return sellableRelated.stream()
                 .map(r -> toProductCardResponse(r, availabilityMap.getOrDefault(r.getProductId(), 0)))
                 .toList();
     }
