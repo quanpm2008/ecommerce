@@ -191,9 +191,7 @@ services:
 
   payment-service:
     <<: *eureka-client
-    build:
-      context: .
-      dockerfile: payment-service/Dockerfile
+    build: ./payment-service
     volumes:
       - ./payment-service/src:/app/src:ro
     environment:
@@ -208,16 +206,28 @@ services:
       PAYMENT_PROVIDER_CREDENTIAL: ${PAYMENT_PROVIDER_CREDENTIAL:-demo-provider-dev-key-0123456789}
       PAYMENT_PROVIDER_WEBHOOK_SECRET: ${PAYMENT_PROVIDER_WEBHOOK_SECRET:-demo-provider-webhook-secret-0123456789}
       PAYMENT_REFUND_QUERY_INTERVAL: ${PAYMENT_REFUND_QUERY_INTERVAL:-PT5S}
-      SIMULATOR_PORT: ${SIMULATOR_PORT:-8089}
-      SIMULATOR_PUBLIC_ORIGIN: ${SIMULATOR_PUBLIC_ORIGIN:-http://localhost:8089}
-      SIMULATOR_FRONTEND_RETURN_URL: ${SIMULATOR_FRONTEND_RETURN_URL:-http://localhost:5173/checkout}
-      SIMULATOR_WEBHOOK_URL: ${SIMULATOR_WEBHOOK_URL:-http://127.0.0.1:8086/api/v1/payments/webhooks/demo-provider}
-      SIMULATOR_STATE_FILE: ${SIMULATOR_STATE_FILE:-/tmp/payment-simulator-state.json}
       PAYMENT_IDENTITY_BASE_URL: http://identity-service:8083
       PAYMENT_IDENTITY_SERVICE_TOKEN: ${PHASE4_PAYMENT_TO_IDENTITY_TOKEN:-}
     ports:
       - "8086:8086"
       - "8089:8089"
+
+  payment-simulator:
+    build: ./payment-simulator
+    network_mode: "service:payment-service"
+    depends_on:
+      payment-service:
+        condition: service_started
+    environment:
+      SIMULATOR_PORT: ${SIMULATOR_PORT:-8089}
+      SIMULATOR_PUBLIC_ORIGIN: ${SIMULATOR_PUBLIC_ORIGIN:-http://localhost:8089}
+      SIMULATOR_FRONTEND_RETURN_URL: ${SIMULATOR_FRONTEND_RETURN_URL:-http://localhost:5173/checkout}
+      SIMULATOR_CREDENTIAL_HEADER: ${PAYMENT_PROVIDER_CREDENTIAL_HEADER:-X-Provider-Key}
+      SIMULATOR_CREDENTIAL: ${PAYMENT_PROVIDER_CREDENTIAL:-demo-provider-dev-key-0123456789}
+      SIMULATOR_WEBHOOK_URL: ${SIMULATOR_WEBHOOK_URL:-http://127.0.0.1:8086/api/v1/payments/webhooks/demo-provider}
+      SIMULATOR_WEBHOOK_SECRET: ${PAYMENT_PROVIDER_WEBHOOK_SECRET:-demo-provider-webhook-secret-0123456789}
+      SIMULATOR_STATE_FILE: ${SIMULATOR_STATE_FILE:-/tmp/payment-simulator-state.json}
+    restart: unless-stopped
 
   product-service:
     <<: *eureka-client

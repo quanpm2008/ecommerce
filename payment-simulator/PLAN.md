@@ -24,10 +24,10 @@ Deploy a standalone external Payment Provider Simulator (`payment-simulator`) ou
   - `WebhookDispatcher`: async HMAC-SHA256 (`X-Webhook-Timestamp`, `X-Webhook-Signature`) webhook delivery with retry backoff until `204`/`200`/`409`.
   - `PaymentPageRenderer`: HTML5 UI for `/pay/{token}` with simulation badge (`Giả lập — không phát sinh tiền thật`) and Confirm (`SUCCESS`) / Decline (`FAILED`) actions.
   - `SimulatorServer`: HTTP endpoints for Provider API, Customer UI, and `/__sim/*` scenario controls.
-- **Container & Compose wiring:**
-  - `payment-service/entrypoint.sh`: starts `payment-simulator.jar` in background and `mvn -B spring-boot:run` in foreground with trap cleanup.
-  - `payment-service/Dockerfile`: builds from repo root context (`.`), packages `payment-simulator`, copies `entrypoint.sh`, exposes `8086` and `8089`.
-  - `compose.yaml` & `up.sh`: sets `payment-service` build context to `.`, configures `PAYMENT_PROVIDER_*` + `SIMULATOR_*` env vars and publishes `8089:8089`.
+- **Container & Compose wiring (Option A — separate container sharing loopback network):**
+  - `payment-simulator/Dockerfile`: standalone Maven/Java 21 image building `payment-simulator.jar` and running `java -jar target/payment-simulator.jar`.
+  - `payment-service/Dockerfile`: clean `payment-service`-only image (`mvn spring-boot:run`).
+  - `compose.yaml` & `up.sh`: defines separate `payment-simulator` service with `network_mode: "service:payment-service"`, keeping loopback `127.0.0.1:8089` / `127.0.0.1:8086` and publishing ports `8086:8086`, `8089:8089` on `payment-service`.
 
 ## Checklist
 
@@ -42,9 +42,9 @@ Deploy a standalone external Payment Provider Simulator (`payment-simulator`) ou
 - [x] Atomic JSON snapshot persistence (`JsonStateStore`) surviving process restart
 
 ### 2. Container & Runtime Wiring
-- [x] `payment-service/entrypoint.sh` launching simulator + Spring Boot service
-- [x] `payment-service/Dockerfile` building shaded jar from root context and exposing `8086`, `8089`
-- [x] `compose.yaml` & `up.sh` wiring `PAYMENT_PROVIDER_*`, `PAYMENT_REFUND_QUERY_INTERVAL`, `SIMULATOR_*`, port `8089:8089`, and root build context
+- [x] `payment-simulator/Dockerfile` building and running standalone `payment-simulator.jar`
+- [x] `payment-service/Dockerfile` restored to standalone `payment-service` container
+- [x] `compose.yaml` & `up.sh` running `payment-simulator` as a separate container (`network_mode: "service:payment-service"`) with `PAYMENT_PROVIDER_*`, `PAYMENT_REFUND_QUERY_INTERVAL`, `SIMULATOR_*`, and ports `8086:8086`, `8089:8089`
 
 ### 3. Validation
 - [x] `mvn -B test package -f payment-simulator/pom.xml` (`SimulatorServerTests`: 2/2 passed)
