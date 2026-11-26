@@ -7,6 +7,7 @@ import com.example.product_service.client.notification.NotificationClient;
 import com.example.product_service.client.order.OrderInventoryClientAdapter;
 import com.example.product_service.client.order.dto.InventoryDetailDto;
 import com.example.product_service.media.common.MediaType;
+import com.example.product_service.media.service.S3MediaStorage;
 import com.example.product_service.product.dto.SellerPublicDto;
 import com.example.product_service.product.dto.model.MediaItem;
 import com.example.product_service.product.dto.request.RemoveProductRequest;
@@ -50,11 +51,13 @@ class ProductServiceImplTests {
     @Mock NotificationClient notificationClient;
     @Mock ProductInventoryProvision inventoryProvision;
     @Mock ProductSaleEvidence saleEvidence;
+    @Mock S3MediaStorage s3MediaStorage;
 
     private ProductServiceImpl service;
 
     @BeforeEach
     void setUp() {
+        lenient().when(s3MediaStorage.resolveReadUrl(anyString())).thenAnswer(inv -> inv.getArgument(0));
         service = new ProductServiceImpl(
                 productRepository,
                 categoryRepository,
@@ -65,6 +68,7 @@ class ProductServiceImplTests {
                 notificationClient,
                 inventoryProvision,
                 saleEvidence,
+                s3MediaStorage,
                 new ObjectMapper()
         );
     }
