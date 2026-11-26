@@ -5,6 +5,7 @@ import com.example.product_service.client.order.dto.ReviewEligibilityDto;
 import com.example.product_service.common.response.ApiPageWithSummaryResponse;
 import com.example.product_service.media.common.MediaType;
 import com.example.product_service.product.dto.model.MediaItem;
+import com.example.product_service.product.exception.ProductMediaInvalidException;
 import com.example.product_service.product.exception.ProductNotFoundException;
 import com.example.product_service.product.repository.ProductRepository;
 import com.example.product_service.review.dto.*;
@@ -56,17 +57,28 @@ public class ReviewServiceImpl implements ReviewService {
 
         List<MediaItem> mediaList = new ArrayList<>();
         if (request.getMediaObjectKeys() != null) {
+            if (request.getMediaObjectKeys().size() > 5) {
+                throw new ProductMediaInvalidException("Đánh giá có tối đa 5 media.");
+            }
+            int videoCount = 0;
             for (int i = 0; i < request.getMediaObjectKeys().size(); i++) {
                 String key = request.getMediaObjectKeys().get(i);
-                MediaType type = (key != null && (key.endsWith(".mp4") || key.endsWith(".mov")))
+                String lower = key != null ? key.toLowerCase(Locale.ROOT) : "";
+                MediaType type = (lower.endsWith(".mp4") || lower.endsWith(".mov"))
                         ? MediaType.VIDEO
                         : MediaType.IMAGE;
+                if (type == MediaType.VIDEO) {
+                    videoCount++;
+                }
                 mediaList.add(MediaItem.builder()
                         .objectKey(key)
                         .mediaType(type)
                         .sortOrder(i + 1)
                         .isCover(false)
                         .build());
+            }
+            if (videoCount > 1) {
+                throw new ProductMediaInvalidException("Đánh giá chỉ được phép có tối đa 1 video.");
             }
         }
         Review review = Review.builder()

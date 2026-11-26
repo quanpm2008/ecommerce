@@ -49,6 +49,9 @@ public class DataSeeder implements CommandLineRunner {
     public static final UUID CATEGORY_HOME_ID = UUID.fromString("c5555555-1111-1111-1111-111111111111");
     public static final UUID CATEGORY_BEAUTY_ID = UUID.fromString("c6666666-1111-1111-1111-111111111111");
     public static final UUID CATEGORY_SPORTS_ID = UUID.fromString("c7777777-1111-1111-1111-111111111111");
+    public static final UUID CATEGORY_HEALTH_ID = UUID.fromString("c9999999-1111-1111-1111-111111111111");
+    public static final UUID CATEGORY_MOTHER_BABY_ID = UUID.fromString("caaaaaaa-1111-1111-1111-111111111111");
+    public static final UUID CATEGORY_FOOD_BEVERAGE_ID = UUID.fromString("cbbbbbbb-1111-1111-1111-111111111111");
     public static final UUID CATEGORY_HIDDEN_ID = UUID.fromString("c8888888-5555-5555-5555-555555555555");
 
     // ==========================================
@@ -85,13 +88,16 @@ public class DataSeeder implements CommandLineRunner {
                 "VALUES (?, ?, ?, ?, ?) ON CONFLICT (category_id) DO NOTHING";
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 
-        insertCategory(sql, CATEGORY_FASHION_ID, "Thời trang & Phụ kiện", "VISIBLE", now);
-        insertCategory(sql, CATEGORY_ELECTRONICS_ID, "Điện thoại & Thiết bị điện tử", "VISIBLE", now);
-        insertCategory(sql, CATEGORY_COMPUTERS_ID, "Máy tính & Thiết bị IT", "VISIBLE", now);
-        insertCategory(sql, CATEGORY_BOOKS_ID, "Sách & Văn phòng phẩm", "VISIBLE", now);
+        insertCategory(sql, CATEGORY_FASHION_ID, "Thời trang", "VISIBLE", now);
+        insertCategory(sql, CATEGORY_ELECTRONICS_ID, "Điện thoại & Phụ kiện", "VISIBLE", now);
+        insertCategory(sql, CATEGORY_COMPUTERS_ID, "Máy tính & Thiết bị điện tử", "VISIBLE", now);
         insertCategory(sql, CATEGORY_HOME_ID, "Nhà cửa & Đời sống", "VISIBLE", now);
-        insertCategory(sql, CATEGORY_BEAUTY_ID, "Sức khỏe & Sắc đẹp", "VISIBLE", now);
-        insertCategory(sql, CATEGORY_SPORTS_ID, "Thể thao & Dã ngoại", "VISIBLE", now);
+        insertCategory(sql, CATEGORY_BEAUTY_ID, "Sắc đẹp & Chăm sóc cá nhân", "VISIBLE", now);
+        insertCategory(sql, CATEGORY_HEALTH_ID, "Sức khỏe", "VISIBLE", now);
+        insertCategory(sql, CATEGORY_MOTHER_BABY_ID, "Mẹ & Bé", "VISIBLE", now);
+        insertCategory(sql, CATEGORY_FOOD_BEVERAGE_ID, "Thực phẩm & Đồ uống", "VISIBLE", now);
+        insertCategory(sql, CATEGORY_BOOKS_ID, "Sách & Văn phòng phẩm", "VISIBLE", now);
+        insertCategory(sql, CATEGORY_SPORTS_ID, "Thể thao & Ngoài trời", "VISIBLE", now);
         insertCategory(sql, CATEGORY_HIDDEN_ID, "Danh mục thử nghiệm (Đang ẩn)", "HIDDEN", now);
     }
 
