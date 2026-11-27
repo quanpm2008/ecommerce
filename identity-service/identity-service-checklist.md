@@ -74,7 +74,7 @@ Endpoint paths are shown as the public path after `/api/v1` (e.g. `/identity/aut
 - [x] New subject + unused email → creates User GOOGLE + Customer + CUSTOMER, `isNewAccount=true`; known subject → same account, `isNewAccount=false`
 - [x] Email already registered with a password → 409 `WRONG_AUTH_METHOD`, accounts never merged
 - [x] 401 `GOOGLE_AUTH_FAILED` on invalid token
-- [ ] Verified against real Google (needs a client id and a browser; only faked/locally signed tokens so far)
+- [x] Verified against real Google 2026-11-27 (project client id, GIS button on `http://localhost:5173`): new account `isNewAccount=true`, same account again `false` and the first session's access token → 401
 
 **Password**
 - [x] `POST /identity/auth/password/forgot` returns the same 202 response whether the email exists, is Google, or is a pending seller (G-05); rate limited (429 `RATE_LIMITED`)

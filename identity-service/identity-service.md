@@ -106,7 +106,7 @@ The "Identity & Seller" service. It owns `User`, `Customer`, `Seller`, `Customer
 
 ## Not implemented yet
 
-Tracked in [identity-service-checklist.md](identity-service-checklist.md). Sections 0–9 are done except real-Google verification of Google sign-in in section 3 and publishing in section 9 (no broker chosen yet); sections 10–11 are open. Tick items there as they are verified.
+Tracked in [identity-service-checklist.md](identity-service-checklist.md). Sections 0–9 are done except publishing in section 9 (no broker chosen yet); sections 10–11 are open. Tick items there as they are verified.
 
 ## Notes / open issues
 
@@ -117,7 +117,7 @@ Tracked in [identity-service-checklist.md](identity-service-checklist.md). Secti
 - The refresh token's expiry slides on every rotation (7 days from the last refresh), so an active session never expires. The spec only says "7 days"; add an absolute session limit if needed.
 - `iss`/`aud` values (`ecommerce-identity` / `ecommerce-api`) are our choice, not the spec's; the gateway and every service must verify the same values and fetch keys from `http://identity-service:8083/.well-known/jwks.json` (Docker) or `http://localhost:8083/...` (host).
 - The API's register example shows `authzVersion: 1`; ours is 2 because granting CUSTOMER bumps it (step 2 rule). Harmless, but FE should not assume 1.
-- Google sign-in is tested only with a fake Google and locally signed tokens; it has not been run against real Google (needs `IDENTITY_GOOGLE_CLIENT_ID` and the SPA's Google Identity Services button).
+- Google sign-in needs the web client's Authorized JavaScript origins to list the SPA origin (`http://localhost` and `http://localhost:5173` in dev), otherwise Google answers `Error 401: invalid_client / no registered origin` before identity is called.
 - Rate limits live in memory per instance and reset on restart; login has no brute-force limit yet (not in the checklist). The gateway is expected to add shared limits.
 - The `password.reset_requested` outbox row holds the raw reset URL (Notification needs it) until it is published; the relay then blanks it. With no broker yet, those rows keep the URL until their token expires (30 min) and beyond; a broker, or a cleanup of expired PENDING reset events, closes that.
 - No message broker yet (team decision in step 9): every event stays PENDING in `outbox_events`, so Finance won't create wallets and Notification won't send mail until a broker and an `EventPublisher` for it are added. The relay, ordering, versions and redaction are in place and tested.
@@ -174,3 +174,4 @@ Tracked in [identity-service-checklist.md](identity-service-checklist.md). Secti
 | 2026-11-27 | Package by layer (SAD §Package by Layer, REQ-ENG-007): all main/test classes moved from feature packages to `controller`/`controller.internal`/`service`/`repository`/`entity`/`dto`/`exception`/`security`/`config`/`client`/`messaging`; only cross-package members widened to public; no behavior or contract change (`mvn test`: 297/297 after updating `IdentityServiceApplicationTests` for V12 `seller_sale_evidence`, API §7 sale-evidence). `openapi.json` regenerated: adds the already-merged `POST /internal/v1/identity/sellers/sale-evidence`. |
 | 2026-11-27 | Google sign-in `POST /auth/google` (API §6.1, Should): local ID-token verification against Google's JWKS, create-or-sign-in of GOOGLE customers, `WRONG_AUTH_METHOD` for password emails, `GOOGLE_AUTH_FAILED`; `IDENTITY_GOOGLE_CLIENT_ID` in compose/.env.example; gateway sensitive rate-limit tier covers the path. Tests: `GoogleJwksIdTokensTests`, `GoogleSignInEndpointsTests`; `mvn test` 307/307. Not yet run against real Google. |
 | 2026-11-27 | GAP-IDN-005 / decision 0003: V13 moves the session onto `users` (three columns, all-or-none, unique), recreates `rotated_refresh_tokens` with `user_id`, drops `auth_sessions` (every old session ends; users sign in again). A new login (password or Google) replaces the previous session. Table audit: the other 19 tables are DB §2/§6 or backed by P-26 / API §7 / §7.1 / #30–31. `mvn test` 312/312, OpenAPI unchanged. |
+| 2026-11-27 | Google sign-in checked against real Google (project OAuth client, GIS button, identity on the host with a throwaway Postgres): real ID token → 200 `isNewAccount=true` (CUSTOMER, GOOGLE, no password/phone, HttpOnly refresh cookie, no refresh token in JSON); second sign-in → `false`, same user, first access token 401, second 200. |
