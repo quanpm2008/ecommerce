@@ -137,6 +137,8 @@ services:
       IDENTITY_KAFKA_ENABLED: "true"
       IDENTITY_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       IDENTITY_INTERNAL_TOKEN_NOTIFICATION: ${IDENTITY_INTERNAL_TOKEN_NOTIFICATION:-notification-service-dev-token-0123456789abcdef}
+      # Google sign-in (customers): the web app's OAuth client id; empty = off (POST /auth/google answers 503).
+      IDENTITY_GOOGLE_CLIENT_ID: ${IDENTITY_GOOGLE_CLIENT_ID:-}
     ports:
       - "18083:8083"
 

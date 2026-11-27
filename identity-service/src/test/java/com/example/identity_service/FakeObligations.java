@@ -1,10 +1,10 @@
 package com.example.identity_service;
 
-import com.example.identity_service.common.error.ApiException;
-import com.example.identity_service.common.error.ErrorCode;
-import com.example.identity_service.obligation.AccountObligations;
-import com.example.identity_service.obligation.ObligationSource;
-import com.example.identity_service.user.User;
+import com.example.identity_service.exception.ApiException;
+import com.example.identity_service.exception.ErrorCode;
+import com.example.identity_service.dto.AccountObligations;
+import com.example.identity_service.client.ObligationSource;
+import com.example.identity_service.entity.User;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;

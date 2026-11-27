@@ -1,5 +1,6 @@
 classDiagram
 direction BT
+%% 2026-11-27: AuthSession/AuthSessionRepository were removed (V13, decision 0003); the session is on User. This diagram still shows them.
 %% Đặc tả Thẻ 15 đã đổi; đồ thị hiện trạng implementation chưa được kiểm chứng theo contract mới.
 %% Authority: ../docs/requirements/coverage.md#the-15 — không đổi tên lớp/route thực tế từ đặc tả.
 class AccessMode {

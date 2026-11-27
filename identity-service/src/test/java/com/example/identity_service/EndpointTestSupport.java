@@ -1,11 +1,11 @@
 package com.example.identity_service;
 
-import com.example.identity_service.auth.AuthController;
-import com.example.identity_service.rbac.RoleAssignments;
-import com.example.identity_service.rbac.RoleCode;
-import com.example.identity_service.user.AccountType;
-import com.example.identity_service.user.User;
-import com.example.identity_service.user.UserRepository;
+import com.example.identity_service.controller.AuthController;
+import com.example.identity_service.service.RoleAssignments;
+import com.example.identity_service.entity.RoleCode;
+import com.example.identity_service.entity.AccountType;
+import com.example.identity_service.entity.User;
+import com.example.identity_service.repository.UserRepository;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,7 +46,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 		"identity.internal.clients.payment-service=too-short" })
 @AutoConfigureMockMvc
 @Import({ TestcontainersConfiguration.class, TestClockConfiguration.class, SeaweedfsTestConfiguration.class,
-		FakeObligations.Configuration.class })
+		FakeObligations.Configuration.class, FakeGoogleIdTokens.Configuration.class })
 public abstract class EndpointTestSupport {
 
 	protected static final String API = "/api/v1/identity";
@@ -71,6 +71,9 @@ public abstract class EndpointTestSupport {
 
 	@Autowired
 	protected FakeObligations obligations;
+
+	@Autowired
+	protected FakeGoogleIdTokens google;
 
 	@Autowired
 	protected RoleAssignments roleAssignments;

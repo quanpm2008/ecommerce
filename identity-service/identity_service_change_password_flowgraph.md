@@ -1,6 +1,6 @@
 # identity-service — change password flow
 
-How `PUT /api/v1/identity/users/me/password` changes the caller's password: `AccountController.changePassword` → `PasswordService.change` (`src/main/java/com/example/identity_service/auth/PasswordService.java`). Spec: API §6.1 "Đổi mật khẩu", UC-A04.
+How `PUT /api/v1/identity/users/me/password` changes the caller's password: `AccountController.changePassword` → `PasswordService.change` (`src/main/java/com/example/identity_service/service/PasswordService.java`). Spec: API §6.1 "Đổi mật khẩu", UC-A04.
 
 Request body: `{ currentPassword, newPassword, confirmPassword }`. Success is `204 No Content`, and the client must log in again because every session of the user, including the current one, is revoked.
 

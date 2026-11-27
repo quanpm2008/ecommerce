@@ -27,7 +27,7 @@ Endpoint paths are shown as the public path after `/api/v1` (e.g. `/identity/aut
 - [x] `roles`, `permissions`, `user_roles` (PK `user_id, role_id`, `revoked_at`), `role_permissions` (PK `role_id, permission_id`)
 - [x] Seed contains exactly the roles CUSTOMER, SELLER, ADMIN and the permission matrix from API §3.2.1
 - [x] Baseline policy (`account:read:own`, `account:update:own`, `seller:application:own`, create own Customer) applies to every ACTIVE user without a role
-- [x] Support tables exist: `auth_sessions` (`refresh_token_hash` unique), `password_reset_tokens` (`token_hash` unique, `used_at`), `admin_audit_log`, `outbox_events`
+- [x] Support tables exist: session on `users` (`refresh_token_hash`/`session_id` unique, all-or-none; V13 replaced `auth_sessions`), `password_reset_tokens` (`token_hash` unique, `used_at`), `admin_audit_log`, `outbox_events`
 - [x] Admin user can be bootstrapped (LOCAL + ADMIN role) without any public endpoint
 - [x] No `LoginIdentifier` or `AdminAccount` table
 
@@ -69,11 +69,12 @@ Endpoint paths are shown as the public path after `/api/v1` (e.g. `/identity/aut
 - [x] Logout revokes only the current session; expired or already-logged-out token still returns 204
 - [x] Cannot log out someone else's session with your own access token
 
-**`POST /identity/auth/google`** (Should; deferred, needs a Google client id)
-- [ ] Verifies the Google ID token (issuer, audience, email verified)
-- [ ] New subject + unused email → creates User GOOGLE + Customer + CUSTOMER, `isNewAccount=true`
-- [ ] Email already registered with a password → 409 `WRONG_AUTH_METHOD`, accounts never merged
-- [ ] 401 `GOOGLE_AUTH_FAILED` on invalid token
+**`POST /identity/auth/google`** (Should; on only with `IDENTITY_GOOGLE_CLIENT_ID`)
+- [x] Verifies the Google ID token (signature against Google's keys, exp, issuer, audience, email verified): `client.GoogleJwksIdTokensTests`
+- [x] New subject + unused email → creates User GOOGLE + Customer + CUSTOMER, `isNewAccount=true`; known subject → same account, `isNewAccount=false`
+- [x] Email already registered with a password → 409 `WRONG_AUTH_METHOD`, accounts never merged
+- [x] 401 `GOOGLE_AUTH_FAILED` on invalid token
+- [x] Verified against real Google 2026-11-27 (project client id, GIS button on `http://localhost:5173`): new account `isNewAccount=true`, same account again `false` and the first session's access token → 401
 
 **Password**
 - [x] `POST /identity/auth/password/forgot` returns the same 202 response whether the email exists, is Google, or is a pending seller (G-05); rate limited (429 `RATE_LIMITED`)
