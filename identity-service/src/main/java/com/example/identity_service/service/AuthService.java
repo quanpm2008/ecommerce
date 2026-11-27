@@ -1,6 +1,8 @@
 package com.example.identity_service.service;
 
+import com.example.identity_service.client.GoogleIdTokens;
 import com.example.identity_service.dto.AuthRequests;
+import com.example.identity_service.dto.GoogleAuthTokens;
 import com.example.identity_service.dto.AuthTokens;
 import com.example.identity_service.dto.SellerRegistration;
 import com.example.identity_service.dto.UserSelfProfile;
@@ -29,6 +31,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -67,6 +70,10 @@ public class AuthService {
 	private final ShopNames shopNames;
 
 	private final Clock clock;
+
+	private final GoogleIdTokens google;
+
+	private final TransactionTemplate tx;
 
 	/** Compared against when the email is unknown, so a miss costs as much time as a wrong password. */
 	private final String unknownUserHash = "{bcrypt}" + new BCryptPasswordEncoder().encode(OpaqueTokens.generate());
@@ -142,6 +149,56 @@ public class AuthService {
 		if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
 			throw new ApiException(ErrorCode.INVALID_CREDENTIALS);
 		}
+		return startSession(user);
+	}
+
+	/**
+	 * Google sign-in for customers (API §6.1, UC-A01.ALT-01/04/05, UC-A03.ALT-06). A known Google subject signs in to
+	 * its account; otherwise a new CUSTOMER account (GOOGLE, no password, no phone) is created with Customer + role
+	 * CUSTOMER. An email already used by a password account is never linked: 409 {@code WRONG_AUTH_METHOD} with the
+	 * method to use. Then the same rules as {@link #login}: ban reconciliation, disabled, one session per user.
+	 */
+	public GoogleAuthTokens.Issued google(String idToken) {
+		GoogleIdTokens.GoogleIdentity identity = google.verify(idToken);
+		Optional<User> known = users.findByGoogleSubject(identity.subject());
+		boolean created = known.isEmpty();
+		User user = known.orElseGet(() -> createGoogleCustomer(identity));
+		return GoogleAuthTokens.of(startSession(user), created);
+	}
+
+	private User createGoogleCustomer(GoogleIdTokens.GoogleIdentity identity) {
+		String email = User.normalizeEmail(identity.email());
+		users.findByEmail(email).ifPresent(existing -> {
+			// A Google account with this email but another subject is not the same Google account either.
+			if (existing.getAuthMethod() != AuthMethod.GOOGLE) {
+				throw new ApiException(ErrorCode.WRONG_AUTH_METHOD, ErrorCode.WRONG_AUTH_METHOD.defaultMessage(),
+						List.of(Map.of("authMethod", existing.getAuthMethod().name())));
+			}
+			throw new ApiException(ErrorCode.GOOGLE_AUTH_FAILED);
+		});
+		try {
+			return tx.execute(status -> {
+				User user = saveNewUser(User.google(email, identity.subject(), fullNameOf(identity, email)));
+				customers.save(new Customer(user));
+				roleAssignments.grant(user, RoleCode.CUSTOMER, null);
+				return user;
+			});
+		}
+		catch (DataIntegrityViolationException | ApiException raced) {
+			// Two first sign-ins of one Google account at once: the other one created it.
+			return users.findByGoogleSubject(identity.subject()).orElseThrow(() -> raced);
+		}
+	}
+
+	/** Google's {@code name}, else the email's local part; at most 150 characters (DB §3.1.1). */
+	private static String fullNameOf(GoogleIdTokens.GoogleIdentity identity, String email) {
+		String name = identity.name() == null || identity.name().isBlank() ? email.substring(0, email.indexOf('@'))
+				: identity.name().strip();
+		return name.length() > 150 ? name.substring(0, 150) : name;
+	}
+
+	/** After the credentials are proven: sign-in rules, ban reconciliation (G-14), then a new session. */
+	private AuthTokens.Issued startSession(User user) {
 		signIn.check(user);
 		signIn.reconcile(user.getUserId());
 		user = users.findById(user.getUserId()).orElseThrow();

@@ -218,6 +218,8 @@ openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/identity-
 IDENTITY_TOKEN_SIGNING_KEY="$(cat /tmp/identity-signing-key.pem)" mvn spring-boot:run
 ```
 
+Google sign-in for customers (`POST /api/v1/identity/auth/google`) is off until `IDENTITY_GOOGLE_CLIENT_ID` is set to the web app's Google OAuth client id (then the SPA sends the ID token from Google Identity Services); without it the endpoint returns 503.
+
 Password reset emails link to `IDENTITY_PASSWORD_RESET_LINK_BASE` (default `http://localhost:5173/reset-password`) with `?token=...` appended; set it to the FE's reset page.
 
 Quick check of the auth flow against identity-service directly (with the stack in Docker, the same paths also work through the gateway: `B=http://localhost:8081/api/v1/identity/auth`):

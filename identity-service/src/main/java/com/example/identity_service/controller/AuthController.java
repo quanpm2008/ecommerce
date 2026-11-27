@@ -2,6 +2,7 @@ package com.example.identity_service.controller;
 
 import com.example.identity_service.dto.AuthRequests;
 import com.example.identity_service.dto.AuthTokens;
+import com.example.identity_service.dto.GoogleAuthTokens;
 import com.example.identity_service.dto.SellerRegistration;
 import com.example.identity_service.service.AuthService;
 import com.example.identity_service.service.PasswordService;
@@ -37,6 +38,7 @@ import java.util.Map;
 
 import static com.example.identity_service.exception.ErrorCode.ACCOUNT_DISABLED;
 import static com.example.identity_service.exception.ErrorCode.EMAIL_ALREADY_USED;
+import static com.example.identity_service.exception.ErrorCode.GOOGLE_AUTH_FAILED;
 import static com.example.identity_service.exception.ErrorCode.INVALID_CREDENTIALS;
 import static com.example.identity_service.exception.ErrorCode.INVALID_REFRESH_TOKEN;
 import static com.example.identity_service.exception.ErrorCode.INVALID_STATE_TRANSITION;
@@ -47,6 +49,7 @@ import static com.example.identity_service.exception.ErrorCode.RESET_TOKEN_INVAL
 import static com.example.identity_service.exception.ErrorCode.SELLER_NAME_ALREADY_USED;
 import static com.example.identity_service.exception.ErrorCode.SELLER_PENDING_APPROVAL;
 import static com.example.identity_service.exception.ErrorCode.SELLER_REJECTED;
+import static com.example.identity_service.exception.ErrorCode.SERVICE_UNAVAILABLE;
 import static com.example.identity_service.exception.ErrorCode.WRONG_AUTH_METHOD;
 
 /**
@@ -142,6 +145,21 @@ public class AuthController {
 			HttpServletRequest request) {
 		rateLimiter.check("login", request.getRemoteAddr(), limits.login());
 		return withCookie(auth.login(body));
+	}
+
+	@Operation(summary = "Sign in with Google (customers)", description = "Takes the `idToken` from Google Identity "
+			+ "Services. A known Google account signs in; a new one becomes a CUSTOMER account (no password, no phone: "
+			+ "the customer adds a phone before checkout) and `isNewAccount` is true. An email already registered with a "
+			+ "password is never linked (409, `details[0].authMethod`). Same session, ban and cookie rules as login; "
+			+ "limited per client IP together with login.")
+	@ErrorCodes({ GOOGLE_AUTH_FAILED, WRONG_AUTH_METHOD, ACCOUNT_DISABLED, RATE_LIMITED, SERVICE_UNAVAILABLE })
+	@PostMapping("/google")
+	ResponseEntity<ApiResponse<GoogleAuthTokens>> google(@Valid @RequestBody AuthRequests.GoogleSignIn body,
+			HttpServletRequest request) {
+		rateLimiter.check("login", request.getRemoteAddr(), limits.login());
+		GoogleAuthTokens.Issued issued = auth.google(body.idToken());
+		return ResponseEntity.ok().header(HttpHeaders.SET_COOKIE, cookies.issue(issued.refreshToken()).toString())
+				.body(ApiResponse.of(issued.body()));
 	}
 
 	@Operation(summary = "Refresh tokens", description = "Reads only the `refresh_token` cookie (no body) and needs an "

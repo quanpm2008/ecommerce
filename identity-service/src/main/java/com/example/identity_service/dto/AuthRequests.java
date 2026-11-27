@@ -37,6 +37,10 @@ public final class AuthRequests {
 	public record Login(@NotBlank String email, @NotBlank String password, @NotNull AccountType accountType) {
 	}
 
+	/** {@code idToken}: the Google ID token (a JWT) from Google Identity Services. */
+	public record GoogleSignIn(@NotBlank @Size(max = 4096) String idToken) {
+	}
+
 	public record ForgotPassword(@NotBlank String email) {
 	}
 

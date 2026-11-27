@@ -69,11 +69,12 @@ Endpoint paths are shown as the public path after `/api/v1` (e.g. `/identity/aut
 - [x] Logout revokes only the current session; expired or already-logged-out token still returns 204
 - [x] Cannot log out someone else's session with your own access token
 
-**`POST /identity/auth/google`** (Should; deferred, needs a Google client id)
-- [ ] Verifies the Google ID token (issuer, audience, email verified)
-- [ ] New subject + unused email → creates User GOOGLE + Customer + CUSTOMER, `isNewAccount=true`
-- [ ] Email already registered with a password → 409 `WRONG_AUTH_METHOD`, accounts never merged
-- [ ] 401 `GOOGLE_AUTH_FAILED` on invalid token
+**`POST /identity/auth/google`** (Should; on only with `IDENTITY_GOOGLE_CLIENT_ID`)
+- [x] Verifies the Google ID token (signature against Google's keys, exp, issuer, audience, email verified): `client.GoogleJwksIdTokensTests`
+- [x] New subject + unused email → creates User GOOGLE + Customer + CUSTOMER, `isNewAccount=true`; known subject → same account, `isNewAccount=false`
+- [x] Email already registered with a password → 409 `WRONG_AUTH_METHOD`, accounts never merged
+- [x] 401 `GOOGLE_AUTH_FAILED` on invalid token
+- [ ] Verified against real Google (needs a client id and a browser; only faked/locally signed tokens so far)
 
 **Password**
 - [x] `POST /identity/auth/password/forgot` returns the same 202 response whether the email exists, is Google, or is a pending seller (G-05); rate limited (429 `RATE_LIMITED`)

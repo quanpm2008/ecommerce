@@ -46,7 +46,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 		"identity.internal.clients.payment-service=too-short" })
 @AutoConfigureMockMvc
 @Import({ TestcontainersConfiguration.class, TestClockConfiguration.class, SeaweedfsTestConfiguration.class,
-		FakeObligations.Configuration.class })
+		FakeObligations.Configuration.class, FakeGoogleIdTokens.Configuration.class })
 public abstract class EndpointTestSupport {
 
 	protected static final String API = "/api/v1/identity";
@@ -71,6 +71,9 @@ public abstract class EndpointTestSupport {
 
 	@Autowired
 	protected FakeObligations obligations;
+
+	@Autowired
+	protected FakeGoogleIdTokens google;
 
 	@Autowired
 	protected RoleAssignments roleAssignments;

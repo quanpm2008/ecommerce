@@ -854,6 +854,97 @@
         "tags" : [ "Admin" ]
       }
     },
+    "/api/v1/identity/auth/google" : {
+      "post" : {
+        "description" : "Takes the `idToken` from Google Identity Services. A known Google account signs in; a new one becomes a CUSTOMER account (no password, no phone: the customer adds a phone before checkout) and `isNewAccount` is true. An email already registered with a password is never linked (409, `details[0].authMethod`). Same session, ban and cookie rules as login; limited per client IP together with login.",
+        "operationId" : "google",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/GoogleSignIn"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseGoogleAuthTokens"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description" : "- `VALIDATION_ERROR`: Invalid request data"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description" : "- `GOOGLE_AUTH_FAILED`: Google could not verify this sign-in"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description" : "- `ACCOUNT_DISABLED`: This account is disabled"
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description" : "- `WRONG_AUTH_METHOD`: This email is registered with a different sign-in method"
+          },
+          "429" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description" : "- `RATE_LIMITED`: Too many requests"
+          },
+          "503" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description" : "- `SERVICE_UNAVAILABLE`: A dependent service is not responding, please try again"
+          }
+        },
+        "security" : [ ],
+        "summary" : "Sign in with Google (customers)",
+        "tags" : [ "Auth" ]
+      }
+    },
     "/api/v1/identity/auth/login" : {
       "post" : {
         "description" : "Signs in to one account: `accountType` is the web app's channel (CUSTOMER, SELLER or ADMIN). Returns an access token (15 min) and the current profile; the refresh token is set as the HttpOnly `refresh_token` cookie (Path /api/v1/identity/auth), never in the body. Unknown email, wrong password and an account of another type all give the same error. A seller signs in only once approved. Limited per client IP; failed attempts never lock the account (P-18).",
@@ -3005,6 +3096,17 @@
           }
         }
       },
+      "ApiResponseGoogleAuthTokens" : {
+        "type" : "object",
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/GoogleAuthTokens"
+          },
+          "meta" : {
+            "description" : "Lists: { page, size, totalItems, totalPages }; some endpoints add their own, e.g. { maxAddresses } or { sourceVersion, fetchedAt }. Absent otherwise."
+          }
+        }
+      },
       "ApiResponseListAddress" : {
         "type" : "object",
         "properties" : {
@@ -3596,6 +3698,46 @@
           }
         },
         "required" : [ "email" ]
+      },
+      "GoogleAuthTokens" : {
+        "type" : "object",
+        "properties" : {
+          "accessMode" : {
+            "type" : "string",
+            "enum" : [ "FULL", "OPEN_ORDERS_ONLY", "ORDERS_AND_WITHDRAWAL", "WITHDRAWAL_ONLY", "OBLIGATIONS_READ_ONLY", "LOGIN_BLOCKED" ]
+          },
+          "accessToken" : {
+            "type" : "string"
+          },
+          "accessTokenExpiresIn" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "accountType" : {
+            "type" : "string",
+            "enum" : [ "CUSTOMER", "SELLER", "ADMIN" ]
+          },
+          "isNewAccount" : {
+            "type" : "boolean"
+          },
+          "profile" : {
+            "$ref" : "#/components/schemas/UserSelfProfile"
+          },
+          "tokenType" : {
+            "type" : "string"
+          }
+        }
+      },
+      "GoogleSignIn" : {
+        "type" : "object",
+        "properties" : {
+          "idToken" : {
+            "type" : "string",
+            "maxLength" : 4096,
+            "minLength" : 0
+          }
+        },
+        "required" : [ "idToken" ]
       },
       "Item" : {
         "type" : "object",

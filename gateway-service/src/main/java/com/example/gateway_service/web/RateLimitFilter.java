@@ -46,7 +46,8 @@ class RateLimitFilter implements WebFilter {
 
 	private static final Logger log = LoggerFactory.getLogger(RateLimitFilter.class);
 
-	static final Set<String> SENSITIVE = Set.of("/api/v1/identity/auth/login", "/api/v1/identity/auth/register",
+	static final Set<String> SENSITIVE = Set.of("/api/v1/identity/auth/login", "/api/v1/identity/auth/google",
+			"/api/v1/identity/auth/register",
 			"/api/v1/identity/auth/register-seller", "/api/v1/identity/auth/refresh",
 			"/api/v1/identity/auth/password/forgot", "/api/v1/identity/auth/password/reset",
 			"/api/v1/identity/auth/seller-reapplication/challenge", "/api/v1/identity/auth/seller-reapplication");

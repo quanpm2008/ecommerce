@@ -13,6 +13,7 @@ public enum ErrorCode {
 	TOKEN_STALE(HttpStatus.UNAUTHORIZED, "Access token permissions are out of date; refresh the token"),
 	INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "Refresh token is invalid, expired or revoked"),
 	INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "Email or password is incorrect"),
+	GOOGLE_AUTH_FAILED(HttpStatus.UNAUTHORIZED, "Google could not verify this sign-in"),
 	ACCOUNT_DISABLED(HttpStatus.FORBIDDEN, "This account is disabled"),
 	ACCOUNT_BANNED(HttpStatus.FORBIDDEN, "This account is banned; only its open obligations are available"),
 	ACCOUNT_RESTORE_WINDOW_EXPIRED(HttpStatus.CONFLICT,

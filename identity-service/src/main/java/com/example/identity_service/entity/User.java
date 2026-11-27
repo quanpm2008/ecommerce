@@ -95,6 +95,23 @@ public class User {
 		return user;
 	}
 
+	/**
+	 * A new ACTIVE customer account that signs in with Google (DB §3.1.1: GOOGLE is for customers only, no password,
+	 * no phone until the customer adds one).
+	 */
+	public static User google(String email, String googleSubject, String fullName) {
+		User user = new User();
+		user.accountType = AccountType.CUSTOMER;
+		user.email = normalizeEmail(email);
+		user.authMethod = AuthMethod.GOOGLE;
+		user.googleSubject = Objects.requireNonNull(googleSubject);
+		user.fullName = Objects.requireNonNull(fullName);
+		user.status = UserStatus.ACTIVE;
+		user.accessMode = AccessMode.FULL;
+		user.authzVersion = 1;
+		return user;
+	}
+
 	/** Emails are stored trimmed and lowercase; the database rejects anything else. */
 	public static String normalizeEmail(String email) {
 		return email.strip().toLowerCase(Locale.ROOT);
