@@ -1,11 +1,11 @@
 package com.example.identity_service;
 
-import com.example.identity_service.auth.AuthController;
-import com.example.identity_service.rbac.RoleAssignments;
-import com.example.identity_service.rbac.RoleCode;
-import com.example.identity_service.user.AccountType;
-import com.example.identity_service.user.User;
-import com.example.identity_service.user.UserRepository;
+import com.example.identity_service.controller.AuthController;
+import com.example.identity_service.service.RoleAssignments;
+import com.example.identity_service.entity.RoleCode;
+import com.example.identity_service.entity.AccountType;
+import com.example.identity_service.entity.User;
+import com.example.identity_service.repository.UserRepository;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;

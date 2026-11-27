@@ -1,0 +1,188 @@
+package com.example.identity_service.controller;
+
+import com.example.identity_service.service.AdminDirectory;
+import com.example.identity_service.service.AdminViews;
+import com.example.identity_service.service.ModerationService;
+import com.example.identity_service.service.SellerReviewService;
+import com.example.identity_service.config.ErrorCodes;
+import com.example.identity_service.security.Caller;
+import com.example.identity_service.dto.ApiResponse;
+import com.example.identity_service.entity.CustomerStatus;
+import com.example.identity_service.entity.SellerApprovalStatus;
+import com.example.identity_service.entity.SellerStatus;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import static com.example.identity_service.exception.ErrorCode.ACCOUNT_RESTORE_WINDOW_EXPIRED;
+import static com.example.identity_service.exception.ErrorCode.ALREADY_PROCESSED;
+import static com.example.identity_service.exception.ErrorCode.INVALID_STATE_TRANSITION;
+import static com.example.identity_service.exception.ErrorCode.NOT_FOUND;
+import static com.example.identity_service.exception.ErrorCode.SELF_APPROVAL_FORBIDDEN;
+import static com.example.identity_service.exception.ErrorCode.SERVICE_UNAVAILABLE;
+
+/**
+ * Admin API of Identity (API §6.1, UC-E01, E03, E06). Each endpoint checks its own permission; the acting admin is
+ * always the token's {@code sub}.
+ */
+@Tag(name = "Admin", description = "Customer and seller lists, seller review and bans (UC-E01, E03, E06)")
+@RestController
+@RequestMapping("/api/v1/identity/admin")
+@RequiredArgsConstructor
+public class AdminController {
+
+	private final AdminDirectory directory;
+
+	private final SellerReviewService reviews;
+
+	private final ModerationService moderation;
+
+	@Operation(summary = "List customers", description = "`q` matches name, email or phone (case-insensitive).")
+	@Parameter(name = "page", in = ParameterIn.QUERY, schema = @Schema(type = "integer", defaultValue = "1",
+			minimum = "1"))
+	@Parameter(name = "size", in = ParameterIn.QUERY, schema = @Schema(type = "integer", defaultValue = "20",
+			minimum = "1", maximum = "100"))
+	@Parameter(name = "sort", in = ParameterIn.QUERY, description = "`createdAt` (default, newest first) or "
+			+ "`fullName`, optionally `,asc` / `,desc`", schema = @Schema(type = "string", example = "fullName,asc"))
+	@GetMapping("/customers")
+	@PreAuthorize("hasAuthority('operations:read:any')")
+	ApiResponse<List<AdminViews.CustomerAdminView>> customers(@RequestParam(required = false) String q,
+			@RequestParam(required = false) CustomerStatus status, @Parameter(hidden = true) Pageable pageable) {
+		return ApiResponse.page(directory.customers(q, status, pageable));
+	}
+
+	@Operation(summary = "A customer", description = "Order counts come from Order (GET /orders/admin/orders).")
+	@ErrorCodes(NOT_FOUND)
+	@GetMapping("/customers/{customerId}")
+	@PreAuthorize("hasAuthority('operations:read:any')")
+	ApiResponse<AdminViews.CustomerAdminView> customer(@PathVariable UUID customerId) {
+		return ApiResponse.of(directory.customer(customerId));
+	}
+
+	@Operation(summary = "List sellers, including applications", description = "`q` matches shop name, email or "
+			+ "contact phone. The review queue is `approvalStatus=PENDING&sort=registeredAt,asc`.")
+	@Parameter(name = "page", in = ParameterIn.QUERY, schema = @Schema(type = "integer", defaultValue = "1",
+			minimum = "1"))
+	@Parameter(name = "size", in = ParameterIn.QUERY, schema = @Schema(type = "integer", defaultValue = "20",
+			minimum = "1", maximum = "100"))
+	@Parameter(name = "sort", in = ParameterIn.QUERY, description = "`registeredAt` (default, newest first) or "
+			+ "`fullName` (the shop name), optionally `,asc` / `,desc`", schema = @Schema(type = "string",
+					example = "registeredAt,asc"))
+	@GetMapping("/sellers")
+	@PreAuthorize("hasAuthority('operations:read:any')")
+	ApiResponse<List<AdminViews.SellerAdminView>> sellers(@RequestParam(required = false) String q,
+			@RequestParam(required = false) SellerApprovalStatus approvalStatus,
+			@RequestParam(required = false) SellerStatus status, @Parameter(hidden = true) Pageable pageable) {
+		return ApiResponse.page(directory.sellers(q, approvalStatus, status, pageable));
+	}
+
+	@Operation(summary = "A seller", description = "Wallet summary comes from Finance (GET /finance/admin/wallets).")
+	@ErrorCodes(NOT_FOUND)
+	@GetMapping("/sellers/{sellerId}")
+	@PreAuthorize("hasAuthority('operations:read:any')")
+	ApiResponse<AdminViews.SellerAdminView> seller(@PathVariable UUID sellerId) {
+		return ApiResponse.of(directory.seller(sellerId));
+	}
+
+	@Operation(summary = "A seller's applications", description = "Every submission, newest first: each one keeps the "
+			+ "shop name and phone it was sent with, its decision and reason. A REJECTED seller applies again with a new "
+			+ "one, never by changing the old.")
+	@ErrorCodes(NOT_FOUND)
+	@GetMapping("/sellers/{sellerId}/applications")
+	@PreAuthorize("hasAuthority('operations:read:any')")
+	ApiResponse<List<AdminViews.SellerApplicationView>> applications(@PathVariable UUID sellerId) {
+		return ApiResponse.of(directory.applications(sellerId));
+	}
+
+	@Operation(summary = "Approve a seller application", description = "The latest application, PENDING only. Grants "
+			+ "SELLER, bumps `authzVersion`, writes the audit row and `seller.approved` (Finance creates the wallet) in "
+			+ "one transaction.")
+	@ErrorCodes({ NOT_FOUND, ALREADY_PROCESSED, SELF_APPROVAL_FORBIDDEN })
+	@PostMapping("/sellers/{sellerId}/approve")
+	@PreAuthorize("hasAuthority('seller:approve')")
+	ApiResponse<AdminViews.SellerAdminView> approve(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID sellerId) {
+		return ApiResponse.of(reviews.approve(Caller.of(jwt).userId(), sellerId));
+	}
+
+	@Operation(summary = "Reject a seller application", description = "The latest application, PENDING only. `reason` "
+			+ "is one of the P-21d labels (`Thông tin đăng ký không chính xác/không nhất quán`, `Thông tin gian hàng "
+			+ "không phù hợp`, `Khác`), optionally followed by `: description` (required for `Khác`), 1–1000 "
+			+ "characters. The seller cannot sign in; the account and the application stay, the shop name becomes "
+			+ "free, and the seller may apply again through the public reapplication endpoints.")
+	@ErrorCodes({ NOT_FOUND, ALREADY_PROCESSED, SELF_APPROVAL_FORBIDDEN })
+	@PostMapping("/sellers/{sellerId}/reject")
+	@PreAuthorize("hasAuthority('seller:approve')")
+	ApiResponse<AdminViews.SellerAdminView> reject(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID sellerId,
+			@Valid @RequestBody RejectRequest body) {
+		return ApiResponse.of(reviews.reject(Caller.of(jwt).userId(), sellerId, body.reason().strip()));
+	}
+
+	@Operation(summary = "Ban a customer or seller account", description = """
+			G-14, one lifecycle, no `scope` (sending it is a 400). Only this account, never other accounts of the same \
+			person; never an ADMIN account (403) or a seller that is not APPROVED (409). `reason` is a P-21d label, \
+			optionally `Label: description` (required for `Khác`): `Gian lận/lừa đảo` or `Khác` for a customer; also \
+			`Kinh doanh hàng cấm`, `Kinh doanh hàng giả/vi phạm sở hữu trí tuệ` for a seller.
+
+			The account's obligations are read again from Order (and Finance for a seller): open ones → BANNED with a \
+			limited session (`accessMode`); every one verified gone → DISABLED, every session revoked, restorable for \
+			30 days (`restoreUntil`). A source that cannot answer → 503 and nothing is changed. Banning a banned \
+			account again changes and announces nothing.""")
+	@ErrorCodes({ NOT_FOUND, INVALID_STATE_TRANSITION, SERVICE_UNAVAILABLE })
+	@io.swagger.v3.oas.annotations.parameters.RequestBody(
+			content = @Content(schema = @Schema(implementation = BanRequest.class)))
+	@PostMapping("/ban/{userId}")
+	@PreAuthorize("hasAuthority('account:moderate')")
+	ApiResponse<ModerationService.BanResult> ban(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID userId,
+			@RequestBody Map<String, Object> body) {
+		return ApiResponse.of(moderation.ban(Caller.of(jwt).userId(), userId, body));
+	}
+
+	@Operation(summary = "Lift a ban", description = "BANNED at any time; DISABLED until `restoreUntil` (409 "
+			+ "ACCOUNT_RESTORE_WINDOW_EXPIRED after; nothing is deleted). Back to ACTIVE with the episode's timestamps "
+			+ "cleared; cancelled orders, hidden products and unapproved seller rights are not restored. Already ACTIVE "
+			+ "→ 200 with nothing written. No `scope`.")
+	@ErrorCodes({ NOT_FOUND, INVALID_STATE_TRANSITION, ACCOUNT_RESTORE_WINDOW_EXPIRED })
+	@io.swagger.v3.oas.annotations.parameters.RequestBody(
+			content = @Content(schema = @Schema(implementation = UnbanRequest.class)))
+	@PostMapping("/unban/{userId}")
+	@PreAuthorize("hasAuthority('account:moderate')")
+	ApiResponse<ModerationService.BanResult> unban(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID userId,
+			@RequestBody(required = false) Map<String, Object> body) {
+		return ApiResponse.of(moderation.unban(Caller.of(jwt).userId(), userId, body == null ? Map.of() : body));
+	}
+
+	record RejectRequest(@NotBlank @Size(max = 1000) String reason) {
+	}
+
+	@Schema(description = "Exactly this field; `scope` and anything else are rejected.")
+	record BanRequest(@Schema(requiredMode = Schema.RequiredMode.REQUIRED, maxLength = 1000,
+			example = "Gian lận/lừa đảo: chargeback abuse") String reason) {
+	}
+
+	@Schema(description = "Optional reason; `scope` and anything else are rejected.")
+	record UnbanRequest(@Schema(maxLength = 1000) String reason) {
+	}
+
+}

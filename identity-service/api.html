@@ -2475,6 +2475,68 @@
         "tags" : [ "Internal" ]
       }
     },
+    "/internal/v1/identity/sellers/sale-evidence" : {
+      "post" : {
+        "description" : "**Permission:** `service:order-service`",
+        "operationId" : "read",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/Query"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseEvidence"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description" : "- `VALIDATION_ERROR`: Invalid request data"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description" : "- `UNAUTHENTICATED`: Not logged in or token is invalid\n- `TOKEN_EXPIRED`: Access token has expired\n- `TOKEN_STALE`: Access token permissions are out of date; refresh the token"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description" : "- `FORBIDDEN`: You do not have permission to perform this action"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "seller-sale-evidence-controller" ]
+      }
+    },
     "/internal/v1/identity/sellers/status" : {
       "get" : {
         "description" : "1–100 ids, comma-separated. One entry per known id in request order; `sellable` is G-06. No personal data.\n\n**Callers:** `product-service`, `cart-service`, `order-service`, `finance-service`",
@@ -2926,6 +2988,17 @@
         "properties" : {
           "data" : {
             "$ref" : "#/components/schemas/CustomerAdminView"
+          },
+          "meta" : {
+            "description" : "Lists: { page, size, totalItems, totalPages }; some endpoints add their own, e.g. { maxAddresses } or { sourceVersion, fetchedAt }. Absent otherwise."
+          }
+        }
+      },
+      "ApiResponseEvidence" : {
+        "type" : "object",
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/Evidence"
           },
           "meta" : {
             "description" : "Lists: { page, size, totalItems, totalPages }; some endpoints add their own, e.g. { maxAddresses } or { sourceVersion, fetchedAt }. Absent otherwise."
@@ -3476,6 +3549,21 @@
           }
         }
       },
+      "Evidence" : {
+        "type" : "object",
+        "properties" : {
+          "completedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/Item"
+            }
+          }
+        }
+      },
       "FileSpec" : {
         "type" : "object",
         "properties" : {
@@ -3508,6 +3596,18 @@
           }
         },
         "required" : [ "email" ]
+      },
+      "Item" : {
+        "type" : "object",
+        "properties" : {
+          "decision" : {
+            "type" : "string"
+          },
+          "sellerId" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }
       },
       "Login" : {
         "type" : "object",
@@ -3552,6 +3652,25 @@
             "type" : "string"
           }
         }
+      },
+      "Query" : {
+        "type" : "object",
+        "properties" : {
+          "completedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "sellerIds" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "format" : "uuid"
+            },
+            "maxItems" : 2147483647,
+            "minItems" : 1
+          }
+        },
+        "required" : [ "completedAt", "sellerIds" ]
       },
       "Register" : {
         "type" : "object",
