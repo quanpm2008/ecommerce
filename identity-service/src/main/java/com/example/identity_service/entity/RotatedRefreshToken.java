@@ -22,12 +22,15 @@ public class RotatedRefreshToken {
 	@Id
 	private String tokenHash;
 
+	private UUID userId;
+
 	private UUID sessionId;
 
 	private Instant rotatedAt;
 
-	public RotatedRefreshToken(String tokenHash, UUID sessionId, Instant rotatedAt) {
+	public RotatedRefreshToken(String tokenHash, UUID userId, UUID sessionId, Instant rotatedAt) {
 		this.tokenHash = tokenHash;
+		this.userId = userId;
 		this.sessionId = sessionId;
 		this.rotatedAt = rotatedAt;
 	}

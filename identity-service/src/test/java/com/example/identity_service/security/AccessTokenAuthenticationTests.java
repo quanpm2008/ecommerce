@@ -129,7 +129,7 @@ class AccessTokenAuthenticationTests {
 	@Test
 	void tokenOfARevokedSessionIsRejected() throws Exception {
 		IssuedTokens tokens = sessions.start(newUser());
-		sessions.revoke(tokens.sessionId());
+		sessions.revokeAllOf(tokens.userId());
 
 		expectError(call(tokens.accessToken()), "UNAUTHENTICATED");
 	}

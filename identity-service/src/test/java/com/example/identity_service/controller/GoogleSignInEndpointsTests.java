@@ -56,10 +56,10 @@ class GoogleSignInEndpointsTests extends EndpointTestSupport {
 	}
 
 	@Test
-	void theSameGoogleAccountSignsInAgainToTheSameAccount() throws Exception {
+	void theSameGoogleAccountSignsInAgainAndReplacesTheSession() throws Exception {
 		String email = uniqueEmail();
 		String subject = UUID.randomUUID().toString();
-		String first = body(signIn(google.issue(subject, email, "An")).andExpect(status().isOk()));
+		String first = withRefreshToken(signIn(google.issue(subject, email, "An")).andExpect(status().isOk()));
 
 		String second = body(signIn(google.issue(subject, email, "An")).andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.isNewAccount").value(false)));
@@ -67,6 +67,7 @@ class GoogleSignInEndpointsTests extends EndpointTestSupport {
 		assertThat(read(second, "$.data.profile.userId")).isEqualTo(read(first, "$.data.profile.userId"));
 		assertThat(jdbc.queryForObject("select count(*) from users where google_subject = ?", Integer.class,
 				subject)).isOne();
+		refresh(read(first, "$.refreshToken")).andExpect(status().isUnauthorized());
 	}
 
 	@Test

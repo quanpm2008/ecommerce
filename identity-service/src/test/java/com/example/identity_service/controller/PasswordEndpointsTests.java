@@ -138,16 +138,18 @@ class PasswordEndpointsTests extends EndpointTestSupport {
 	// --- change ---
 
 	@Test
-	void changePasswordEndsEverySessionIncludingTheCurrentOne() throws Exception {
+	void changePasswordEndsTheCurrentSession() throws Exception {
 		String email = uniqueEmail();
 		registerCustomer(email);
-		String current = read(loginBody(email), "$.data.accessToken");
-		String other = loginBody(email);
+		String session = loginBody(email);
+		String current = read(session, "$.data.accessToken");
 
 		changePassword(current, PASSWORD, NEW_PASSWORD, NEW_PASSWORD).andExpect(status().isNoContent());
 
 		changePassword(current, NEW_PASSWORD, "Third7890", "Third7890").andExpect(status().isUnauthorized());
-		refresh(read(other, "$.refreshToken")).andExpect(status().isUnauthorized());
+		refresh(read(session, "$.refreshToken")).andExpect(status().isUnauthorized());
+		assertThat(jdbc.queryForObject("select session_id from users where email = ?", java.util.UUID.class, email))
+				.isNull();
 		login(email, NEW_PASSWORD).andExpect(status().isOk());
 	}
 

@@ -1,7 +1,5 @@
 package com.example.identity_service.security;
 
-import com.example.identity_service.entity.AuthSession;
-import com.example.identity_service.repository.AuthSessionRepository;
 import com.example.identity_service.entity.User;
 import com.example.identity_service.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -26,8 +24,6 @@ public class SessionTokenValidator implements OAuth2TokenValidator<Jwt> {
 
 	public static final String TOKEN_STALE = "TOKEN_STALE";
 
-	private final AuthSessionRepository sessions;
-
 	private final UserRepository users;
 
 	@Override
@@ -38,12 +34,11 @@ public class SessionTokenValidator implements OAuth2TokenValidator<Jwt> {
 		if (userId.isEmpty() || sessionId.isEmpty() || !(version instanceof Number authzVersion)) {
 			return invalid("Token is missing sub, sessionId or authzVersion");
 		}
-		Optional<AuthSession> session = sessions.findById(sessionId.get());
-		if (session.isEmpty() || !session.get().getUserId().equals(userId.get()) || session.get().isRevoked()) {
+		Optional<User> user = users.findById(userId.get());
+		if (user.isEmpty() || !user.get().hasSession(sessionId.get())) {
 			return invalid("Session is not active");
 		}
-		Optional<User> user = users.findById(userId.get()).filter(User::isActive);
-		if (user.isEmpty()) {
+		if (!user.get().isActive()) {
 			return invalid("User is not active");
 		}
 		long current = user.get().getAuthzVersion();

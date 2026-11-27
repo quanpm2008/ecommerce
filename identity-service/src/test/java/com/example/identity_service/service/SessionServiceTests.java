@@ -109,7 +109,7 @@ class SessionServiceTests {
 		assertThat(Duration.between(claims.getIssueTime().toInstant(), claims.getExpirationTime().toInstant()))
 				.isEqualTo(Duration.ofMinutes(5));
 		assertThat(tokens.accessTokenExpiresIn()).isEqualTo(300);
-		Instant sessionExpiry = jdbc.queryForObject("select expires_at from auth_sessions where session_id = ?",
+		Instant sessionExpiry = jdbc.queryForObject("select refresh_token_expires_at from users where session_id = ?",
 				Instant.class, tokens.sessionId());
 		assertThat(sessionExpiry).isCloseTo(now.plus(Duration.ofDays(2)), within(1, ChronoUnit.SECONDS));
 	}
@@ -118,7 +118,7 @@ class SessionServiceTests {
 	void onlyTheRefreshTokenHashIsStored() {
 		IssuedTokens tokens = sessions.start(newUser());
 
-		String stored = jdbc.queryForObject("select refresh_token_hash from auth_sessions where session_id = ?",
+		String stored = jdbc.queryForObject("select refresh_token_hash from users where session_id = ?",
 				String.class, tokens.sessionId());
 		assertThat(stored).isNotEqualTo(tokens.refreshToken()).isEqualTo(OpaqueTokens.hash(tokens.refreshToken()));
 	}
@@ -144,7 +144,54 @@ class SessionServiceTests {
 
 		assertInvalidRefresh(first.refreshToken());
 
-		assertThat(revokedAt(first.sessionId())).isNotNull();
+		assertThat(currentSessionOf(first.userId())).isNull();
+		assertInvalidRefresh(second.refreshToken());
+	}
+
+	@Test
+	void refreshKeepsTheSessionAndMovesItsExpiry() {
+		IssuedTokens first = sessions.start(newUser());
+		clock.advance(Duration.ofDays(1));
+
+		IssuedTokens second = sessions.refresh(first.refreshToken(), account -> {
+		});
+
+		assertThat(second.sessionId()).isEqualTo(first.sessionId());
+		Instant expiry = jdbc.queryForObject("select refresh_token_expires_at from users where user_id = ?",
+				Instant.class, first.userId());
+		assertThat(expiry).isCloseTo(clock.instant().plus(Duration.ofDays(2)), within(1, ChronoUnit.SECONDS));
+	}
+
+	@Test
+	void aNewSessionReplacesTheOldOneAndItsTokensCannotEndIt() {
+		User user = newUser();
+		IssuedTokens old = sessions.start(user);
+		IssuedTokens oldRotated = sessions.refresh(old.refreshToken(), account -> {
+		});
+		IssuedTokens current = sessions.start(user);
+
+		assertThat(current.sessionId()).isNotEqualTo(old.sessionId());
+		assertInvalidRefresh(oldRotated.refreshToken());
+		assertInvalidRefresh(old.refreshToken());
+		sessions.logout(user.getUserId(), old.sessionId(), oldRotated.refreshToken());
+
+		assertThat(currentSessionOf(user.getUserId())).isEqualTo(current.sessionId());
+		assertThat(sessions.refresh(current.refreshToken(), account -> {
+		}).sessionId()).isEqualTo(current.sessionId());
+		assertThat(jdbc.queryForObject("select count(*) from rotated_refresh_tokens where session_id = ?",
+				Integer.class, old.sessionId())).isZero();
+	}
+
+	@Test
+	void logoutAcceptsARotatedTokenOfTheCurrentSession() {
+		User user = newUser();
+		IssuedTokens first = sessions.start(user);
+		IssuedTokens second = sessions.refresh(first.refreshToken(), account -> {
+		});
+
+		sessions.logout(user.getUserId(), second.sessionId(), first.refreshToken());
+
+		assertThat(currentSessionOf(user.getUserId())).isNull();
 		assertInvalidRefresh(second.refreshToken());
 	}
 
@@ -177,7 +224,7 @@ class SessionServiceTests {
 	@Test
 	void refreshOfARevokedSessionIsRejected() {
 		IssuedTokens tokens = sessions.start(newUser());
-		sessions.revoke(tokens.sessionId());
+		sessions.revokeAllOf(tokens.userId());
 
 		assertInvalidRefresh(tokens.refreshToken());
 	}
@@ -195,17 +242,18 @@ class SessionServiceTests {
 	}
 
 	@Test
-	void revokeAllEndsEverySessionOfThatUserOnly() {
+	void revokeAllEndsTheSessionOfThatUserOnly() {
 		User user = newUser();
-		IssuedTokens phone = sessions.start(user);
-		IssuedTokens laptop = sessions.start(user);
+		IssuedTokens mine = sessions.start(user);
 		IssuedTokens someoneElse = sessions.start(newUser());
 
 		sessions.revokeAllOf(user.getUserId());
 
-		assertThat(revokedAt(phone.sessionId())).isNotNull();
-		assertThat(revokedAt(laptop.sessionId())).isNotNull();
-		assertThat(revokedAt(someoneElse.sessionId())).isNull();
+		assertThat(jdbc.queryForMap("""
+				select refresh_token_hash, refresh_token_expires_at, session_id from users where user_id = ?""",
+				mine.userId())).containsOnlyKeys("refresh_token_hash", "refresh_token_expires_at", "session_id")
+				.allSatisfy((column, value) -> assertThat(value).isNull());
+		assertThat(currentSessionOf(someoneElse.userId())).isEqualTo(someoneElse.sessionId());
 	}
 
 	private void assertInvalidRefresh(String refreshToken) {
@@ -214,9 +262,8 @@ class SessionServiceTests {
 				ex -> assertThat(ex.code()).isEqualTo(ErrorCode.INVALID_REFRESH_TOKEN));
 	}
 
-	private Instant revokedAt(UUID sessionId) {
-		return jdbc.queryForObject("select revoked_at from auth_sessions where session_id = ?", Instant.class,
-				sessionId);
+	private UUID currentSessionOf(UUID userId) {
+		return jdbc.queryForObject("select session_id from users where user_id = ?", UUID.class, userId);
 	}
 
 	private static long authzVersion(IssuedTokens tokens) throws Exception {

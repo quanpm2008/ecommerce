@@ -1,35 +1,33 @@
 # identity-service — `SessionService.refresh` flow
 
-> Đặc tả [Thẻ 15](../docs/requirements/coverage.md#the-15) đã đổi: login/refresh/J7 phải đánh giá nghĩa vụ hiện tại và quyền giới hạn. Đồ thị dưới đây mô tả implementation đã khảo sát, chưa được kiểm chứng theo contract mới; không phải bằng chứng J7 hay khôi phục quyền đã triển khai.
+How `SessionService.refresh(refreshToken)` (`src/main/java/com/example/identity_service/service/SessionService.java`) exchanges a refresh token for a new token pair. Spec: API §3.2 and §6.1 `POST /identity/auth/refresh`, [decision 0003](../docs/decisions/0003-mot-phien-refresh-tren-user.md) (one session per User, on `users`), DB §6 `RotatedRefreshToken`.
 
-How `SessionService.refresh(refreshToken)` (`src/main/java/com/example/identity_service/service/SessionService.java`) exchanges a refresh token for a new token pair. Spec: API §3.2 and §6.1 `POST /identity/auth/refresh`, DB §6 `AuthSession`.
-
-The whole method runs in one transaction with `noRollbackFor = ApiException.class`, so revoking a session on token reuse is committed even though the call then fails with `INVALID_REFRESH_TOKEN`.
+The whole method runs in one transaction with `noRollbackFor = ApiException.class`, so ending a session on token reuse is committed even though the call then fails with `INVALID_REFRESH_TOKEN`.
 
 ```mermaid
 flowchart TD
     start(["refresh(refreshToken)"]) --> hash["now = clock.instant()<br/>hash = SHA-256(refreshToken)"]
-    hash --> findCurrent["auth_sessions: find by refresh_token_hash = hash<br/>(PESSIMISTIC_WRITE lock)"]
-    findCurrent --> isCurrent{"Is it a session's<br/>current token?"}
+    hash --> findCurrent["users: find by refresh_token_hash = hash<br/>(PESSIMISTIC_WRITE lock)"]
+    findCurrent --> isCurrent{"Is it a user's<br/>current token?"}
 
     %% Not current: unknown token or an already rotated one
     isCurrent -- No --> findRotated["rotated_refresh_tokens: find by token_hash = hash"]
     findRotated --> wasRotated{"Rotated away<br/>before?"}
     wasRotated -- "No: unknown token" --> invalid
-    wasRotated -- "Yes: token reuse" --> lockSession["auth_sessions: find by session_id<br/>(PESSIMISTIC_WRITE lock)"]
-    lockSession --> alreadyRevoked{"Session already<br/>revoked?"}
-    alreadyRevoked -- Yes --> invalid
-    alreadyRevoked -- No --> revoke["Log a warning<br/>session.revoke(now)<br/>(the whole token chain dies)"]
+    wasRotated -- "Yes" --> lockUser["users: find by mark.user_id<br/>(PESSIMISTIC_WRITE lock)"]
+    lockUser --> sameSession{"users.session_id =<br/>mark.session_id?"}
+    sameSession -- "No: session already replaced or ended" --> invalid
+    sameSession -- "Yes: token reuse" --> revoke["Log a warning<br/>user.endSession() + delete the user's marks<br/>(the whole chain dies)"]
     revoke --> invalid
 
     %% Current token: check session and user, then rotate
-    isCurrent -- Yes --> canRefresh{"session.canRefresh(now)?<br/>not revoked and now before expires_at"}
+    isCurrent -- Yes --> canRefresh{"user.canRefresh(now)?<br/>session set and now before refresh_token_expires_at"}
     canRefresh -- No --> invalid
-    canRefresh -- Yes --> loadUser["users: find by session.user_id"]
-    loadUser --> active{"User ACTIVE?"}
+    canRefresh -- Yes --> active{"User ACTIVE?"}
     active -- "No: DISABLED" --> invalid
-    active -- Yes --> keepOld["rotated_refresh_tokens: insert (hash, session_id, now)"]
-    keepOld --> rotate["next = 256 random bits, base64url<br/>session.rotate(SHA-256(next), now + refresh-ttl)"]
+    active -- Yes --> signIn["signIn.accept(user)<br/>seller approval, ban rules"]
+    signIn --> keepOld["rotated_refresh_tokens: insert (hash, user_id, session_id, now)"]
+    keepOld --> rotate["next = 256 random bits, base64url<br/>user.rotateRefreshToken(SHA-256(next), now + refresh-ttl)<br/>session_id unchanged"]
     rotate --> issue["AccessTokenIssuer.issue(user, sessionId)<br/>RS256 JWT with the user's current authzVersion"]
     issue --> ok(["Return IssuedTokens<br/>userId, sessionId, accessToken,<br/>accessTokenExpiresIn, refreshToken = next"])
 
@@ -47,15 +45,16 @@ flowchart TD
 
 | Situation | Result | Side effect |
 |---|---|---|
-| Current token, session active, user ACTIVE | New `IssuedTokens` | Old hash saved in `rotated_refresh_tokens`; session gets the new hash and a new `expires_at` (sliding) |
+| Current token, session not expired, user ACTIVE | New `IssuedTokens` | Old hash saved in `rotated_refresh_tokens`; `users` gets the new hash and `refresh_token_expires_at` = now + TTL; `session_id` kept |
 | Unknown token | `INVALID_REFRESH_TOKEN` | None |
-| Rotated token presented again (reuse) | `INVALID_REFRESH_TOKEN` | Session revoked, so the newest refresh token and every access token of that session stop working |
-| Current token, but session revoked or expired | `INVALID_REFRESH_TOKEN` | None |
-| Current token, but user DISABLED | `INVALID_REFRESH_TOKEN` | None (disabling the user revokes its sessions separately) |
+| Rotated token of the current session (reuse) | `INVALID_REFRESH_TOKEN` | Session ended (three `users` fields null), so the newest refresh token and every access token of that session stop working |
+| Token of a session replaced by a newer login | `INVALID_REFRESH_TOKEN` | None: it cannot end the new session |
+| Current token, but expired | `INVALID_REFRESH_TOKEN` | None |
+| Current token, but user DISABLED | `INVALID_REFRESH_TOKEN` | None (disabling the user ends its session separately) |
 
 ## Notes
 
 - Only hashes are stored or looked up; the raw refresh token never touches the database.
-- The lock on the session row serializes two refreshes with the same token. The second one no longer finds the token as current, finds it in `rotated_refresh_tokens`, and revokes the session: a client racing itself must log in again (strict on purpose, see `identity-service.md`).
-- Roles and permissions are not in the token. The new access token carries the user's `authzVersion` read from the database at refresh time, and the step 3 refresh endpoint builds the profile from the current roles.
-- Tests: `session/SessionServiceTests.java` (rotation, reuse, expired, revoked, disabled, unknown, current `authzVersion`).
+- Login (`start`) locks the user row, sets a new `session_id` and deletes the marks of older sessions; the previous session's access tokens fail the validator (`users.session_id` no longer matches) on their next request.
+- The lock on the user row serializes two refreshes with the same token. The second one no longer finds the token as current, finds its mark for the current session, and ends the session: a client racing itself must log in again (decision 0003, no grace period).
+- Tests: `service/SessionServiceTests.java` (rotation, expiry move, reuse, replaced session, logout with a rotated token, expired, disabled, unknown, current `authzVersion`), `controller/AuthEndpointsTests.java` (a new login replaces the previous session).

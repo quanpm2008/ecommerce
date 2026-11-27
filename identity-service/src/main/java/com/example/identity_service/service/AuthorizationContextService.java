@@ -8,7 +8,6 @@ import com.example.identity_service.entity.SellerApprovalStatus;
 import com.example.identity_service.repository.SellerRepository;
 import com.example.identity_service.entity.SellerStatus;
 import com.example.identity_service.security.AccessTokenDecoderConfig;
-import com.example.identity_service.repository.AuthSessionRepository;
 import com.example.identity_service.security.TokenClaims;
 import com.example.identity_service.config.TokenProperties;
 import com.example.identity_service.entity.AccessMode;
@@ -46,8 +45,6 @@ public class AuthorizationContextService {
 
 	private final UserRepository users;
 
-	private final AuthSessionRepository sessions;
-
 	private final CustomerRepository customers;
 
 	private final SellerRepository sellers;
@@ -55,11 +52,10 @@ public class AuthorizationContextService {
 	private final PermissionResolver permissions;
 
 	AuthorizationContextService(RSAKey signingKey, TokenProperties tokenProperties, Clock clock, UserRepository users,
-			AuthSessionRepository sessions, CustomerRepository customers, SellerRepository sellers,
+			CustomerRepository customers, SellerRepository sellers,
 			PermissionResolver permissions) throws JOSEException {
 		this.tokens = AccessTokenDecoderConfig.decoder(signingKey, tokenProperties, clock);
 		this.users = users;
-		this.sessions = sessions;
 		this.customers = customers;
 		this.sellers = sellers;
 		this.permissions = permissions;
@@ -80,8 +76,7 @@ public class AuthorizationContextService {
 		if (version.longValue() > user.getAuthzVersion()) {
 			throw new ApiException(ErrorCode.UNAUTHENTICATED);
 		}
-		boolean sessionActive = sessions.findById(sessionId)
-				.filter(session -> session.getUserId().equals(userId) && !session.isRevoked()).isPresent();
+		boolean sessionActive = user.hasSession(sessionId);
 		boolean usable = sessionActive && user.isActive();
 		CustomerAccess customer = customers.findById(userId)
 				.map(c -> new CustomerAccess(c.getStatus(), c.getStatus() == CustomerStatus.BANNED))

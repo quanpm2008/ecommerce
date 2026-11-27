@@ -3,6 +3,7 @@ package com.example.identity_service.controller;
 import com.example.identity_service.EndpointTestSupport;
 import com.example.identity_service.entity.RoleCode;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpMethod;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.params.ParameterizedTest;
 
@@ -237,7 +238,7 @@ class AuthEndpointsTests extends EndpointTestSupport {
 
 		assertThat(wrongChannel).isEqualTo(wrongPassword);
 		assertThat(jdbc.queryForObject("""
-				select count(*) from auth_sessions s join users u using (user_id) where u.email = ?""", Integer.class,
+				select count(*) from users where email = ? and session_id is not null""", Integer.class,
 				email)).isZero();
 	}
 
@@ -310,7 +311,7 @@ class AuthEndpointsTests extends EndpointTestSupport {
 				.andExpect(jsonPath("$.data.accountType").value("SELLER"))
 				.andExpect(jsonPath("$.data.profile.roles", contains("SELLER")))
 				.andExpect(jsonPath("$.data.profile.customerProfile").isEmpty());
-		assertThat(jdbc.queryForObject("select count(*) from auth_sessions where user_id in (?, ?)", Integer.class,
+		assertThat(jdbc.queryForObject("select count(*) from users where user_id in (?, ?) and session_id is not null", Integer.class,
 				rejected.userId(), users.findByEmail(pending).orElseThrow().getUserId())).isZero();
 	}
 
@@ -363,19 +364,52 @@ class AuthEndpointsTests extends EndpointTestSupport {
 	// --- logout ---
 
 	@Test
-	void logoutEndsOnlyTheCurrentSession() throws Exception {
+	void logoutEndsTheSession() throws Exception {
+		String session = loginBody(withCustomer(uniqueEmail()));
+
+		logout(read(session, "$.refreshToken"), read(session, "$.data.accessToken"))
+				.andExpect(status().isNoContent());
+
+		refresh(read(session, "$.refreshToken")).andExpect(status().isUnauthorized());
+		call(HttpMethod.GET, "/users/me", null, read(session, "$.data.accessToken"))
+				.andExpect(status().isUnauthorized());
+		logout(read(session, "$.refreshToken"), read(session, "$.data.accessToken"))
+				.andExpect(status().isUnauthorized());
+	}
+
+	/** Decision 0003: one session per user. A new login replaces the previous one, which cannot touch the new one. */
+	@Test
+	void aNewLoginReplacesThePreviousSession() throws Exception {
 		String email = uniqueEmail();
 		registerCustomer(email);
 		String phone = loginBody(email);
 		String laptop = loginBody(email);
 
-		logout(read(phone, "$.refreshToken"), read(phone, "$.data.accessToken"))
-				.andExpect(status().isNoContent());
-
-		refresh(read(phone, "$.refreshToken")).andExpect(status().isUnauthorized());
+		refresh(read(phone, "$.refreshToken")).andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.error.code").value("INVALID_REFRESH_TOKEN"));
+		call(HttpMethod.GET, "/users/me", null, read(phone, "$.data.accessToken"))
+				.andExpect(status().isUnauthorized());
 		logout(read(phone, "$.refreshToken"), read(phone, "$.data.accessToken"))
 				.andExpect(status().isUnauthorized());
+		logout(read(phone, "$.refreshToken"), read(laptop, "$.data.accessToken"))
+				.andExpect(status().isNoContent());
+
+		call(HttpMethod.GET, "/users/me", null, read(laptop, "$.data.accessToken")).andExpect(status().isOk());
 		refresh(read(laptop, "$.refreshToken")).andExpect(status().isOk());
+		assertThat(jdbc.queryForMap("""
+				select refresh_token_hash, refresh_token_expires_at, session_id from users where email = ?""", email))
+				.doesNotContainValue(null);
+	}
+
+	@Test
+	void aFailedLoginKeepsTheCurrentSession() throws Exception {
+		String email = uniqueEmail();
+		registerCustomer(email);
+		String session = loginBody(email);
+
+		login(email, "Wrong1234").andExpect(status().isUnauthorized());
+
+		refresh(read(session, "$.refreshToken")).andExpect(status().isOk());
 	}
 
 	@Test

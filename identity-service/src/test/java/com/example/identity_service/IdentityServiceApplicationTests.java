@@ -26,7 +26,7 @@ class IdentityServiceApplicationTests {
 		List<String> versions = jdbcTemplate.queryForList("""
 				select version from identity.flyway_schema_history
 				where success and version is not null order by installed_rank""", String.class);
-		assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12");
+		assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13");
 	}
 
 	@Test
@@ -34,9 +34,10 @@ class IdentityServiceApplicationTests {
 		List<String> tables = jdbcTemplate.queryForList(
 				"select table_name from information_schema.tables where table_schema = 'identity'", String.class);
 		// No LoginIdentifier or AdminAccount table: email/google_subject are unique on users and admins are User + ADMIN.
+		// No auth_sessions: the one refresh session is on users (decision 0003).
 		// seller_sale_evidence: seller sale-eligibility history for Order (API §7, sale-evidence).
 		assertThat(tables).containsExactlyInAnyOrder("flyway_schema_history", "users", "customers", "sellers",
-				"customer_addresses", "roles", "permissions", "user_roles", "role_permissions", "auth_sessions",
+				"customer_addresses", "roles", "permissions", "user_roles", "role_permissions",
 				"rotated_refresh_tokens", "password_reset_tokens", "admin_audit_log", "outbox_events",
 				"address_touches", "seller_applications", "seller_reapplication_tokens", "region_dataset", "region_provinces",
 				"region_wards", "seller_sale_evidence");

@@ -71,6 +71,14 @@ public class User {
 
 	private long authzVersion;
 
+	/** The current refresh session (decision 0003): all three set, or all three null. Only the token's hash. */
+	private String refreshTokenHash;
+
+	private Instant refreshTokenExpiresAt;
+
+	/** The {@code sessionId} claim of this session's access tokens. */
+	private UUID sessionId;
+
 	@CreationTimestamp
 	private Instant createdAt;
 
@@ -110,6 +118,42 @@ public class User {
 		user.accessMode = AccessMode.FULL;
 		user.authzVersion = 1;
 		return user;
+	}
+
+	/**
+	 * Replaces any current session with a new one (one session per user, decision 0003) and returns its id. The
+	 * caller holds the row lock.
+	 */
+	public UUID startSession(String refreshTokenHash, Instant expiresAt) {
+		this.sessionId = UUID.randomUUID();
+		this.refreshTokenHash = Objects.requireNonNull(refreshTokenHash);
+		this.refreshTokenExpiresAt = Objects.requireNonNull(expiresAt);
+		return sessionId;
+	}
+
+	/** Refresh: a new token hash and expiry for the same session. */
+	public void rotateRefreshToken(String refreshTokenHash, Instant expiresAt) {
+		if (sessionId == null) {
+			throw new IllegalStateException("No session to rotate");
+		}
+		this.refreshTokenHash = Objects.requireNonNull(refreshTokenHash);
+		this.refreshTokenExpiresAt = Objects.requireNonNull(expiresAt);
+	}
+
+	/** Ends the current session, if any. */
+	public void endSession() {
+		this.sessionId = null;
+		this.refreshTokenHash = null;
+		this.refreshTokenExpiresAt = null;
+	}
+
+	/** {@code sessionId} is this user's current session. */
+	public boolean hasSession(UUID sessionId) {
+		return this.sessionId != null && this.sessionId.equals(sessionId);
+	}
+
+	public boolean canRefresh(Instant now) {
+		return sessionId != null && now.isBefore(refreshTokenExpiresAt);
 	}
 
 	/** Emails are stored trimmed and lowercase; the database rejects anything else. */

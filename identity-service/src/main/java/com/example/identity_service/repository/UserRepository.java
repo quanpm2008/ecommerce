@@ -28,6 +28,14 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 	@Query("select u from User u where u.userId = :userId")
 	Optional<User> findLockedById(UUID userId);
 
+	/** Locks the user whose current refresh token this is, so two refreshes with it cannot both rotate it. */
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	Optional<User> findByRefreshTokenHash(String refreshTokenHash);
+
+	/** The owner of a current refresh token, without locking anything. */
+	@Query("select u.userId from User u where u.refreshTokenHash = :refreshTokenHash")
+	Optional<UUID> findUserIdByRefreshTokenHash(String refreshTokenHash);
+
 	/** Accounts in a ban episode (BANNED or DISABLED), for J7. */
 	@Query("select u.userId from User u where u.bannedAt is not null order by u.bannedAt")
 	java.util.List<UUID> findIdsOfBannedAccounts();
